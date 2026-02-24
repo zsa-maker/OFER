@@ -1,0 +1,468 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+body {
+    font-family: 'Rubik', 'Inter', sans-serif;
+}
+
+.screenbg {
+    background-color: rgb(242 237 209);
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 40;
+    /* UPDATED: 40 כדי להיות מתחת ל-Toast (z-index: 50) */
+}
+
+.modal-content {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 1rem;
+    width: 100%;
+    max-width: 768px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.max-h-screen-75 {
+    max-height: 75vh;
+}
+
+.screen {
+    width: 100%;
+    min-height: 100%;
+}
+
+.goal-button {
+    min-width: 80px;
+}
+
+.headers {
+    color: rgb(115 67 43);
+    background-color: rgb(220 204 165 / 84%);
+}
+
+.side {
+    --tw-bg-opacity: 1;
+    background-color: rgb(155 118 81);
+}
+
+.ofertitale {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.btgray {
+    --tw-bg-opacity: 1;
+    background-color: rgb(98 61 42);
+}
+
+.regularbtn {
+    background-color: rgb(108 210 145);
+}
+
+.partbtn {
+    --tw-bg-opacity: 1;
+    background-color: rgb(236 169 113);
+}
+
+.cancelbtn {
+    --tw-bg-opacity: 1;
+    background-color: rgb(234 111 111);
+}
+
+.flighttb {
+    --tw-bg-opacity: 1;
+    background-color: rgb(245 242 225 / 71%);
+}
+
+.btgray:hover {
+    background-color: rgb(60, 38, 26);
+}
+
+.btchoice {
+    background-color: rgb(205 173 141)
+}
+
+.btchoice:hover {
+    background-color: rgb(231, 202, 151)
+}
+
+/* --- סגנונות שהועברו מתוך תגית <style> ב-index.html --- */
+
+/* סגנון הלוגו */
+.logo {
+    width: 40px;
+    /* גודל הלוגו */
+    height: 40px;
+    margin-left: 10px;
+    /* רווח מהכותרת */
+}
+
+/* סגנון חדש למסך ההתחברות */
+#login-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    /* ה-display נשלט כעת ע"י flex/hidden ב-JS */
+    justify-content: center;
+    align-items: center;
+    z-index: 50;
+}
+
+#login-content {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    width: 90%;
+    max-width: 400px;
+}
+
+/* עיצוב לכפתור מחיקה אדום */
+.btn-danger {
+    background-color: #dc3545;
+    /* אדום */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    /* אדום כהה יותר במעבר עכבר */
+}
+
+#fault-system-class-trigger {
+    position: relative;
+    z-index: 10;
+    transition: all 0.2s;
+}
+
+#fault-system-class-trigger:hover {
+    border-color: #f97316; /* צבע הכתום של עופר */
+}
+
+#fault-system-class-menu {
+    z-index: 100; /* וודאי שזה מעל הכל */
+    background-color: white;
+    border: 1px solid #e5e7eb;
+}
+
+/* עיצוב לתת-תפריט שנפתח צדדית */
+#fault-system-class-menu .group:hover > div[class*="absolute"] {
+    display: block !important;
+}
+/* public/css/style.css */
+
+/* מניעת חיתוך של תפריטים נפתחים בתוך המודל */
+#fault-reporting-section {
+    overflow: visible !important;
+}
+
+#fault-system-class-container {
+    position: relative;
+}
+
+#fault-system-class-menu {
+    z-index: 9999 !important; /* מעל כל רכיבי המודל */
+}
+
+/* הצגת תת-תפריט ב-Hover */
+#fault-system-class-menu .group:hover > div {
+    display: block !important;
+}
+
+/* התאמת כיוון הופעת תת התפריט לשמאל בגלל עברית */
+.right-full {
+    right: 100%;
+}
+/* מניעת חיתוך של תפריטים נפתחים בתוך המודל או רכיבי הטופס */
+#fault-reporting-section, .modal-content {
+    overflow: visible !important;
+}
+
+/* הגדרה לתפריט המשנה שייפתח מצד שמאל (בגלל שהאתר בעברית - RTL) */
+.sub-menu-side {
+    position: absolute;
+    top: 0;
+    right: 100%; /* פותח את התפריט שמאלה מהתפריט הראשי */
+    margin-right: 2px;
+    z-index: 1000;
+    display: none;
+}
+
+/* הצגת תפריט המשנה בריחופ עכבר */
+.group:hover > .sub-menu-side {
+    display: block !important;
+}
+
+/* ביטול גלילה מיותרת במכולה הראשית של התפריט */
+#fault-system-class-menu, #modal-system-class-menu {
+    overflow: visible !important;
+    max-height: none !important; 
+}
+
+.text-hours {
+    font-size: 3rem;
+    line-height: inherit;
+}
+
+.text-title {
+    font-size: 1.1rem;
+}
+
+.text-title-small {
+    font-size: 0.9rem;
+    line-height: 1rem;
+}
+
+.heightgr{
+    height: 25vh;
+}
+
+/* קיבוע כותרת טבלת מאגר הגיחות */
+#flight-table-container-db {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-top: 0 !important; /* מבטל את הרווח העליון שגורם לתוכן להיראות מעל הכותרת */
+    position: relative;
+}
+
+#flight-table-container-db table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #f9fafb; /* bg-gray-50 */
+    box-shadow: inset 0 -1px 0 #e5e7eb;
+}
+
+#flight-table-container-db table {
+    border-collapse: separate; /* נדרש עבור sticky header */
+    border-spacing: 0;
+    width: 100%;
+}
+
+#flight-table-container-db table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #f9fafb; /* צבע רקע אטום (חובה כדי למנוע טקסט משתקף) */
+    border-bottom: 2px solid #e5e7eb; /* קו הפרדה ברור */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* צל עדין להפרדה */
+}
+
+/* וידוא שהשורות לא עולות על הכותרת */
+#flight-table-container-db tbody tr td {
+    border-bottom: 1px solid #f3f4f6;
+    background-color: inherit; /* יורש את צבע הרקע של השורה */
+}
+
+
+.text-white {
+    color: white !important;
+}
+
+.text-gray-600 {
+    color: #4b5563 !important;
+}
+
+.hover\:bg-gray-50:hover {
+    background-color: #f9fafb !important;
+}
+
+/* --- שאר הסגנונות הקיימים --- */
+.screenbg {
+    background-color: rgb(242 237 209);
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 40;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 1rem;
+    width: 100%;
+    max-width: 768px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    overflow: visible !important; /* למניעת חיתוך דרופדאונים */
+}
+
+/* קיבוע כותרת טבלת מאגר הגיחות */
+#flight-table-container-db {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+#flight-table-container-db table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+}
+
+#flight-table-container-db table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #f9fafb;
+    border-bottom: 2px solid #e5e7eb;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+#flight-table-container-db tbody tr td {
+    border-bottom: 1px solid #f3f4f6;
+    background-color: inherit;
+}
+
+/* סגנונות נוספים מהקובץ המקורי */
+.headers { color: rgb(115 67 43); background-color: rgb(220 204 165 / 84%); }
+.side { background-color: rgb(155 118 81); }
+.ofertitale { color: white; font-size: 1.5rem; font-weight: 700; }
+.btgray { background-color: rgb(98 61 42); }
+.btgray:hover { background-color: rgb(60, 38, 26); }
+.flighttb { background-color: rgb(245 242 225 / 71%); }
+
+#fault-system-class-menu {
+    z-index: 9999 !important;
+    overflow: visible !important;
+    max-height: none !important;
+}
+
+.sub-menu-side {
+    position: absolute;
+    top: 0;
+    right: 100%;
+    margin-right: 2px;
+    z-index: 1000;
+    display: none;
+}
+
+.group:hover > .sub-menu-side {
+    display: block !important;
+}
+
+/* public/css/style.css */
+
+/* ביטול padding עליון בכל מכולות הטבלאות שמשמשות לגלילה */
+#flight-table-container-db,
+#fault-table-container,
+.overflow-x-auto {
+    padding-top: 0 !important;
+    position: relative;
+}
+
+/* הגדרה גנרית לכל טבלה שצריכה כותרת דביקה */
+table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #f9fafb; /* צבע gray-50 אטום */
+    box-shadow: inset 0 -1px 0 #e5e7eb, 0 1px 2px rgba(0,0,0,0.05); /* קו תחתון וצל עדין */
+}
+
+
+/* public/css/style.css */
+
+/* 1. ביטול ריווח עליון בכל מכולה שמכילה טבלה נגנלת */
+#flight-table-container-db,
+#fault-table-container,
+#profile-flights-table-container,
+.overflow-x-auto,
+.overflow-y-auto {
+    padding-top: 0 !important;
+    position: relative;
+    scroll-padding-top: 0;
+}
+
+/* 2. הגדרה גנרית לכל כותרות הטבלאות במערכת */
+table thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important; /* מוודא שהכותרת מעל כל תוכן אחר */
+    background-color: #f9fafb !important; /* צבע אפור בהיר אטום (bg-gray-50) */
+    box-shadow: inset 0 -1px 0 #e5e7eb, 0 1px 2px rgba(0,0,0,0.1); /* קו תחתון וצל למניעת "זליגה" */
+    opacity: 1 !important;
+}
+
+/* 3. וידוא שהטבלה נצמדת לקצה העליון ללא רווח */
+table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    margin-top: 0 !important;
+}
+
+/* 4. תיקון ספציפי למאגר התקלות למניעת חיתוך דרופדאונים */
+#fault-reporting-section, 
+.modal-content,
+#fault-table-container {
+    overflow: visible !important;
+}
+
+/* --- תוספת עבור כותרות דביקות בטבלאות --- */
+
+/* 1. הגדרת המיכל של הטבלה כבעל גלילה */
+#flight-table-container,
+#flight-table-container-db {
+    max-height: 70vh; /* גובה מקסימלי לטבלה כדי לאפשר גלילה */
+    overflow-y: auto; /* אפשור גלילה אנכית */
+    position: relative;
+    border: 1px solid #e5e7eb; /* מסגרת עדינה */
+}
+
+/* 2. קיבוע הכותרות */
+#flight-table-container table thead th,
+#flight-table-container-db table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20; /* מוודא שהכותרת תהיה מעל התוכן */
+    background-color: #f9fafb; /* צבע רקע (חובה כדי שהטקסט לא יעלה אחד על השני) */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* צל קטן להפרדה */
+}
+
+blockquote, dd, dl, figure, h1, h2, h3, h4, h5, h6, hr, p, pre {
+    margin: 10px!important; 
+}
+
+.btnsdb{
+    margin-top: 10px;
+    justify-content: flex-end;
+}
+
+.vertical-header {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    padding: 10px 5px !important;
+    text-align: center;
+    width: 40px; /* גודל אחיד לכל העמודות */
+}

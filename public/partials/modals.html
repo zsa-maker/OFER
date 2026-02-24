@@ -1,0 +1,456 @@
+<div id="form-step-2" class="modal-overlay hidden">
+    <div class="modal-content max-w-4xl max-h-screen-75 flex flex-col">
+
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 class="text-2xl font-bold">טופס גיחה חדש</h2>
+            <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-1 px-3 rounded-lg"
+                data-action="confirm-go-home">חזרה לדף הבית</button>
+        </div>
+
+        <div id="future-flight-status-selector" class="mb-4 hidden">
+            <h3 class="text-xl font-bold text-gray-800 mb-2">מצב דיווח גיחה:</h3>
+            <div class="flex space-x-3 space-x-reverse">
+                <button data-report-status="full"
+                    class="flight-report-status-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors duration-200">
+                    גיחה מלאה
+                </button>
+                <button data-report-status="partial"
+                    class="flight-report-status-btn bg-ofer-light-orange hover:bg-ofer-orange text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors duration-200">
+                    גיחה חלקית
+                </button>
+                <button data-report-status="cancel"
+                    class="flight-report-status-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors duration-200">
+                    ביטול גיחה
+                </button>
+                <button data-report-status="not_reported"
+                    class="flight-report-status-btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors">
+                    טרם דווחה
+                </button>
+            </div>
+        </div>
+
+        <div class="overflow-y-auto max-h-96 pr-4 flex-grow">
+
+            <div id="cancellation-section" class="hidden mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h3 class="text-lg font-bold text-red-800 mb-2">פרטי ביטול גיחה</h3>
+                <div class="mb-4">
+                    <label for="cancellation-reason-select" class="block text-sm font-medium text-gray-700 mb-1">סיבת
+                        הביטול (חובה)</label>
+                    <select id="cancellation-reason-select"
+                        class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500 p-2">
+                        <option value="" disabled selected>בחר סיבה...</option>
+                        <!-- <option value="טכני"> טכני </option>
+                        <option value="איוש">איוש</option>
+                        <option value="תיאום">תיאום</option>
+                        <option value="אישי">אישי</option>
+                        <option value="טייסת">טייסת</option>
+                        <option value="אחר">אחר</option> -->
+                    </select>
+                </div>
+
+                <div id="cancellation-details-wrapper" class="hidden">
+                    <label for="cancellation-reason-details" class="block text-sm font-medium text-gray-700 mb-1">פירוט
+                        (חובה בבחירת 'אחר')</label>
+                    <textarea id="cancellation-reason-details" rows="2"
+                        class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500"
+                        placeholder="פרט את סיבת הביטול..."></textarea>
+                </div>
+            </div>
+
+            <div id="partial-flight-section" class="hidden mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">פרטי גיחה חלקית</h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">האם נדרש לבצע שוב?</label>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">שעת תחילת גיחה חלקית</label>
+                            <input type="time" id="partial-start-time"
+                                class="w-full border-gray-300 rounded-md shadow-sm p-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">שעת סיום גיחה חלקית</label>
+                            <input type="time" id="partial-end-time"
+                                class="w-full border-gray-300 rounded-md shadow-sm p-2">
+                        </div>
+                    </div>
+                    <div class="flex space-x-4 space-x-reverse">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="repeat-required" value="yes" class="form-radio text-ofer-orange">
+                            <span class="mr-2">כן</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="repeat-required" value="no" class="form-radio text-ofer-orange">
+                            <span class="mr-2">לא</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="repeat-details-container" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">פירוט ביצוע חוזר (חובה)</label>
+                    <textarea id="repeat-details" rows="2"
+                        class="w-full border-gray-300 rounded-md shadow-sm focus:border-ofer-orange focus:ring-ofer-orange"
+                        placeholder="פרט מה נדרש לבצע שוב..."></textarea>
+                </div>
+            </div>
+
+            <div id="general-data-section" class="space-y-4 mb-4">
+                <h3 class="text-xl font-bold">נתונים כלליים</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="flex flex-col col-span-2 md:col-span-4">
+                        <label class="block text-sm font-medium text-gray-700">סוג גיחה (חובה)</label>
+                        <select id="flight-type-select" data-field="סוג גיחה"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר סוג...</option>
+                            <!-- <option value="יום אימון">יום אימון</option>
+                            <option value="חניכים">חניכים</option>
+                            <option value="הסבת מדריכים">הסבת מדריכים</option>
+                            <option value="צ'ק">צ'ק</option>
+                            <option value="השכלה">השכלה</option>
+                            <option value="פנימי">פנימי</option>
+                            <option value="אבלואציה">אבלואציה</option>
+                            <option value="אחר">אחר</option> -->
+                        </select>
+                        <input type="text" id="flight-type-other" placeholder="פרט סוג גיחה אחר..."
+                            class="mt-2 hidden w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                    </div>
+                    <div class="flex flex-col col-span-2 md:col-span-4">
+                        <label class="block text-sm font-medium text-gray-700">שם גיחה (חובה)</label>
+                        <select id="flight-name" data-field="שם גיחה"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר שם גיחה...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">תאריך (חובה)</label>
+                        <input type="date" id="flight-date" data-field="תאריך"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">שעת התחלה (חובה)</label>
+                        <input type="time" id="start-time" data-field="שעת התחלה"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">שעת סיום (חובה)</label>
+                        <input type="time" id="end-time" data-field="שעת סיום"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">שעות טיסה (דקות)</label>
+                        <input type="text" id="flight-duration-minutes" data-field="שעות טיסה (דקות)" readonly disabled
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm bg-gray-100 cursor-not-allowed transition-all">
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">סימולטור (חובה)</label>
+                        <select id="simulator-select" data-field="סימולטור"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר סימולטור...</option>
+                            <!-- <option value="VIPT1">VIPT1</option>
+                            <option value="VIPT2">VIPT2</option>
+                            <option value="FFS1">FFS1</option>
+                            <option value="FFS2">FFS2</option> -->
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">מדריכה (חובה)</label>
+                        <select id="instructor-name-1" data-field="מדריכה"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר מדריכה...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">מדריכה נוספת</label>
+                        <select id="instructor-name-2" data-field="מדריכה נוספת"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר מדריכה...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">מתצפת</label>
+                        <select id="observer" data-field="מתצפת"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר מתצפת...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">טייס ימין (חובה)</label>
+                        <select id="pilot-right" data-field="טייס ימין"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר טייס...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700">טייס שמאל (חובה)</label>
+                        <select id="pilot-left" data-field="טייס שמאל"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all">
+                            <option value="" disabled selected>בחר טייס...</option>
+                        </select>
+                    </div>
+                    <div id="general-remarks-container" class="hidden mt-4 col-span-2">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">הערות כלליות (יום אימון)</label>
+                        <textarea id="general-remarks-input"
+                            class="w-full border p-2 rounded bg-white text-gray-700 focus:ring-ofer-primary-500 focus:border-ofer-primary-500"
+                            rows="3" placeholder="הזן הערות ליום האימון..."></textarea>
+                    </div>
+                    <div class="flex flex-col col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">לקחי מתאמן - ימין</label>
+                        <textarea id="lessons-right" data-field="לקחי מתאמן - ימין" rows="2"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all"></textarea>
+                    </div>
+                    <div class="flex flex-col col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">לקחי מתאמן - שמאל</label>
+                        <textarea id="lessons-left" data-field="לקחי מתאמן - שמאל" rows="2"
+                            class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:ring-2 focus:ring-ofer-orange focus:border-ofer-orange transition-all"></textarea>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="goals-container" class="space-y-2 mb-4"></div>
+            <div id="metrics-container" class="hidden mt-6 border-t pt-4">
+            </div>
+
+            <div id="fault-reporting-section" class="space-y-4 mb-4 p-4 bg-white rounded-lg shadow-md">
+                <h3 class="text-xl font-bold">דיווח תקלות במאמן</h3>
+
+                <div id="simulator-selection-area" class="pb-2 border-b border-gray-200">
+                    <div id="simulator-display" class="hidden text-lg font-semibold text-gray-800">
+                        סימולטור שנבחר: <span id="selected-simulator-name" class="text-ofer-orange"></span>
+                    </div>
+                    <div id="simulator-select-container">
+                        <p class="text-gray-600">יש לבחור סימולטור ב**נתונים הכלליים** כדי להזין תקלות.</p>
+                    </div>
+                </div>
+
+                <div id="fault-entry-area" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end hidden">
+                    <div class="flex flex-col">
+                        <label for="fault-select" class="block text-sm font-medium text-gray-700 mb-1">בחר תקלה
+                            קיימת</label>
+                        <select id="fault-select" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+                            <option value="" disabled selected>בחר תקלה...</option>
+                        </select>
+                    </div>
+
+                    <div class="flex flex-col relative" id="fault-system-class-container">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">שם מערכת</label>
+                        <div id="fault-system-class-trigger"
+                            class="w-full border border-gray-300 rounded-md shadow-sm p-2 flex justify-between items-center bg-white cursor-pointer h-[38px]">
+                            <span id="fault-system-class-display" class="text-sm text-gray-700 truncate">בחר
+                                מערכת...</span>
+                            <i class="fas fa-chevron-down text-xs text-gray-500"></i>
+                        </div>
+                        <input type="hidden" id="fault-system-class" value="">
+                        <div id="fault-system-class-menu"
+                            class="hidden absolute top-full right-0 z-50 w-64 bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">רמת הפרעה</label>
+                        <select id="fault-severity"
+                            class="w-full rounded-md border border-gray-300 shadow-sm p-2 text-sm">
+                            <option value="קל">קל</option>
+                            <option value="בינוני">בינוני</option>
+                            <option value="חמור">חמור</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col justify-end pb-2">
+                        <label class="flex items-center space-x-2 space-x-reverse cursor-pointer">
+                            <input type="checkbox" id="fault-is-downtime"
+                                class="form-checkbox text-ofer-orange border-gray-300 rounded">
+                            <span class="text-sm font-medium text-gray-700">השבית את המאמן?</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="other-fault-group" class="hidden mt-4">
+                    <label for="other-fault-text" class="block text-sm font-medium text-gray-700 mb-1">תיאור תקלה
+                        חדשה</label>
+                    <textarea id="other-fault-text" rows="5"
+                        class="w-full rounded-md border border-gray-300 shadow-sm p-2 text-sm focus:ring-ofer-orange focus:border-ofer-orange"
+                        placeholder="פרט את התקלה בפירוט..."></textarea>
+                </div>
+
+                <div id="add-fault-container" class="hidden mt-4 flex justify-start">
+                    <button id="add-fault-btn" type="button"
+                        class="bg-ofer-orange hover:bg-ofer-light-orange text-white font-bold py-2 px-8 rounded-lg transition-colors duration-200 shadow-md">
+                        + הוסף תקלה
+                    </button>
+                </div>
+
+                <div id="faults-list-container">
+                    <p class="text-gray-500 mt-2">לא דווחו תקלות בגיחה זו.</p>
+                </div>
+            </div>
+
+        </div>
+        <div class="flex justify-between mt-6 pt-4 border-t border-gray-200" id="form-buttons-container">
+            <div id="regular-action-buttons" class="flex gap-2">
+                <button type="button" id="close-modal-btn"
+                    class="text-gray-500 hover:text-gray-700 font-bold py-2 px-4 rounded">
+                    ביטול
+                </button>
+                <button type="button" id="save-flight-btn"
+                    class="bg-ofer-primary-500 text-white px-6 py-2 rounded hover:bg-ofer-primary-600 font-bold">
+                    דווח גיחה
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+<div id="flight-details-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-4xl max-h-screen-75">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 id="details-modal-title" class="text-2xl font-bold">פרטי גיחה: [שם גיחה]</h2>
+            <div id="details-modal-actions" class="flex space-x-2">
+                <button id="details-edit-button"
+                    class="bg-ofer-orange hover:bg-ofer-light-orange text-white py-1 px-3 rounded-lg">עריכה</button>
+                <button id="details-close-button" class="bg-gray-300 text-gray-800 py-1 px-3 rounded-lg">סגירה</button>
+            </div>
+        </div>
+        <div id="flight-details-content" class="overflow-y-auto max-h-96 pr-4 space-y-4"></div>
+        <div id="details-edit-actions" class="flex justify-end mt-4 space-x-2 hidden">
+            <button id="details-cancel-edit-button"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg">ביטול</button>
+            <button id="details-save-edit-button"
+                class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">סיום</button>
+        </div>
+    </div>
+</div>
+<div id="alert-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2 id="alert-title" class="text-xl font-bold mb-4"></h2>
+        <p id="alert-message" class="mb-4"></p>
+        <div class="flex justify-end space-x-2">
+            <button id="alert-cancel-button" class="bg-gray-300 text-gray-800 py-2 px-4 rounded-lg">בטל</button>
+            <button id="alert-confirm-button"
+                class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg">המשך</button>
+        </div>
+    </div>
+</div>
+<div id="fault-resolution-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-2xl">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 id="fault-resolution-modal-title" class="text-2xl font-bold">ניהול תקלה: [תיאור תקלה]</h2>
+            <button id="fault-resolution-close-button"
+                class="bg-gray-300 text-gray-800 py-1 px-3 rounded-lg">סגירה</button>
+        </div>
+        <div id="fault-resolution-content" class="overflow-y-auto max-h-96 pr-4 space-y-4"></div>
+    </div>
+</div>
+<div id="toast-notification"
+    class="fixed bottom-5 right-5 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl hidden z-50">
+    יש למלא את כל הנתונים
+</div>
+<div id="login-screen" class="hidden">
+    <div id="login-content" class="space-y-4 text-center">
+        <h2 class="text-3xl font-bold text-gray-800">התחברות למערכת עופר</h2>
+        <p class="text-red-500 hidden" id="login-error-message">שם משתמש או סיסמה שגויים.</p>
+        <div id="login-form-fields">
+            <div class="flex flex-col space-y-2">
+                <input type="text" id="username-input" placeholder="שם משתמש"
+                    class="p-3 border border-gray-300 rounded-md focus:ring-ofer-primary-500 focus:border-ofer-primary-500 transition-all">
+                <input type="password" id="password-input" placeholder="סיסמה"
+                    class="p-3 border border-gray-300 rounded-md focus:ring-ofer-primary-500 focus:border-ofer-primary-500 transition-all"
+                    onkeypress="if(event.key === 'Enter') document.getElementById('login-button').click()">
+            </div>
+            <button id="login-button"
+                class="w-full bg-ofer-orange hover:bg-ofer-light-orange text-white font-bold py-3 rounded-md transition-colors duration-200 shadow-md mt-4">
+                התחבר
+            </button>
+        </div>
+        <div id="password-change-form" class="space-y-2 text-right hidden">
+            <hr>
+            <p class="text-sm font-semibold mb-2 text-center">שינוי סיסמה:</p>
+            <label for="username-input-change" class="block text-sm font-medium text-gray-700">שם משתמש (חובה):</label>
+            <input type="text" id="username-input-change" placeholder="שם משתמש"
+                class="w-full p-3 border border-gray-300 rounded-md focus:ring-ofer-primary-500 focus:border-ofer-primary-500 transition-all">
+            <label for="password-input-current" class="block text-sm font-medium text-gray-700 pt-2">סיסמה נוכחית
+                (חובה):</label>
+            <input type="password" id="password-input-current" placeholder="הסיסמה הנוכחית"
+                class="w-full p-3 border border-gray-300 rounded-md focus:ring-ofer-primary-500 focus:border-ofer-primary-500 transition-all">
+            <label for="admin-password-input" class="block text-sm font-medium text-gray-700 pt-2">סיסמת מנהלים
+                (חובה):</label>
+            <input type="password" id="admin-password-input" placeholder="סיסמת מנהלים"
+                class="w-full p-3 border border-gray-300 rounded-md focus:ring-ofer-primary-500 focus:border-ofer-primary-500 transition-all">
+            <label for="new-password-input" class="block text-sm font-medium text-gray-700 pt-2">סיסמה חדשה
+                (חובה):</label>
+            <input type="password" id="new-password-input" placeholder="הסיסמה החדשה"
+                class="w-full p-3 border border-gray-300 rounded-md focus:ring-ofer-primary-500 focus:border-ofer-primary-500 transition-all"
+                onkeypress="if(event.key === 'Enter') document.getElementById('save-new-password-button').click()">
+            <p class="text-red-500 hidden text-right text-sm" id="change-error-message"></p>
+            <button id="save-new-password-button"
+                class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-md transition-colors duration-200 shadow-md mt-4">
+                שמור סיסמה חדשה והתחבר
+            </button>
+            <button id="cancel-change-button"
+                class="w-full bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 rounded-md transition-colors duration-200 shadow-md mt-2">
+                בטל
+            </button>
+        </div>
+        <button id="toggle-change-mode"
+            class="text-sm text-gray-600 hover:text-ofer-orange transition-colors mt-2 underline">
+            שנה סיסמה
+        </button>
+    </div>
+</div>
+<div id="admin-login-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-sm">
+        <h2 class="text-xl font-bold mb-4 text-ofer-dark-brown">כניסת מנהל מערכת</h2>
+        <div class="mb-4">
+            <label class="block text-sm font-bold mb-2">שם משתמש</label>
+            <input type="email" id="admin-email-input" class="w-full p-2 border rounded" placeholder="UserName">
+        </div>
+        <div class="mb-6">
+            <label class="block text-sm font-bold mb-2">סיסמה</label>
+            <input type="password" id="admin-pass-input" class="w-full p-2 border rounded" placeholder="******">
+        </div>
+        <div class="flex justify-end gap-2">
+            <button onclick="document.getElementById('admin-login-modal').classList.add('hidden')"
+                class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">ביטול</button>
+            <button onclick="handleAdminLogin()"
+                class="px-4 py-2 bg-ofer-orange text-white rounded hover:bg-ofer-dark-brown">התחבר</button>
+        </div>
+    </div>
+</div>
+<div id="export-report-modal"
+    class="modal-overlay hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96">
+        <h3 class="text-lg font-bold mb-4 border-b pb-2 text-ofer-dark-brown"> ייצוא דוח תקופה</h3>
+
+        <div class="space-y-4 mb-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">מתאריך:</label>
+                <input type="date" id="export-start-date"
+                    class="w-full p-2 border border-gray-300 rounded focus:ring-ofer-orange focus:border-ofer-orange">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">עד תאריך:</label>
+                <input type="date" id="export-end-date"
+                    class="w-full p-2 border border-gray-300 rounded focus:ring-ofer-orange focus:border-ofer-orange">
+            </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 space-x-reverse">
+            <button onclick="document.getElementById('export-report-modal').classList.add('hidden')"
+                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded">
+                ביטול
+            </button>
+            <button id="btn-perform-export"
+                class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded font-bold shadow flex items-center">
+                <span class="ml-2">📥</span> הורד אקסל
+            </button>
+        </div>
+    </div>
+</div>
+<div id="generic-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-2xl">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 id="modal-title" class="text-2xl font-bold"></h2>
+            <button onclick="document.getElementById('generic-modal').classList.add('hidden')"
+                class="bg-gray-300 text-gray-800 py-1 px-3 rounded-lg">סגירה</button>
+        </div>
+        <div id="modal-content" class="overflow-y-auto max-h-96 pr-4 space-y-4"></div>
+    </div>
+</div>

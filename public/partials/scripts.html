@@ -1,0 +1,46 @@
+<script type="module">
+    // 1. ייבוא פונקציות ה-SDK של Firebase (נותר כפי שהוא)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-analytics.js";
+    import {
+        getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc
+    } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+    // 2. *** קוד אתחול Firebase (חובה להסיר את ההערה ולשים את הקוד האמיתי) ***
+
+    // --- דוגמה לקוד שאמור להיות כאן (החלף בנתונים שלך!) ---
+const firebaseConfig = {
+  apiKey: "AIzaSyA6jqQUciskCupLYiJ6Ypp0Bw9o092vleo",
+  authDomain: "ofertihkur.firebaseapp.com",
+  projectId: "ofertihkur",
+  storageBucket: "ofertihkur.firebasestorage.app",
+  messagingSenderId: "138234040828",
+  appId: "1:138234040828:web:502dcb0162a7fb7f7ca279",
+  measurementId: "G-THFVR6VHP4"
+};
+
+    const app = initializeApp(firebaseConfig);
+    // getAnalytics(app); // במידת הצורך
+    window.db = getFirestore(app);
+    window.getServerTimestamp = serverTimestamp; // חשיפה גלובלית ל-serverTimestamp
+
+    // *** חשיפת הפונקציות הגלובליות לשימוש בקבצים המודולריים ***
+    window.firestoreFunctions = {
+        getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc
+    };
+    // ------------------------------------------------------------------
+
+    // 3. קריאה לפונקציות האתחול
+    import { initializeAuth } from './js/auth/auth.js';
+    import { initializeAppEventListeners } from './js/core/app.js';
+    import { initializeImportFeature } from './js/features/flightFormEvents.js'; // *** ייבוא חדש ***
+
+    // *** הקריאה חייבת להיות אחרי האתחול המלא של window.firestoreFunctions ***
+    initializeAuth();
+    initializeAppEventListeners();
+    initializeImportFeature(); // *** קריאה לפונקציה החדשה המפעילה את כפתור הייבוא ***
+</script>
+<script type="module" src="./js/core/util.js"></script>
+<script type="module" src="./js/features/executionStatusManager.js"></script>
+<script type="module" src="./js/features/flightFormEvents.js"></script>
+<script type="module" src="./js/features/flightImport.js"></script>

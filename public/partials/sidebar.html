@@ -1,0 +1,50 @@
+<nav id="sidebar" class="w-64 side flex-shrink-0 p-4 flex flex-col justify-between shadow-xl hidden">
+    <div>
+        <div class="mb-6">
+            <h2 class="ofertitale mb-2">עופר</h2>
+            <button
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200"
+                data-screen-id="flight-form-screen">טופס גיחה</button>
+            <button
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200"
+                data-screen-id="mission-database-screen">מאגר גיחות</button>
+            <button
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200"
+                data-screen-id="fault-database-screen">מאגר תקלות</button>
+            <button
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200"
+                data-screen-id="stats-screen">סטטיסטיקות ונתונים</button>
+            <button
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200"
+                data-screen-id="profile-screen">מעקב טייסים</button>
+            <button
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200"
+                data-screen-id="simulator-management-screen">ניהול מאמנים</button>
+
+            <button id="nav-admin"
+                class="btchoice w-full text-white font-bold py-2 px-4 rounded-lg mb-2 transition-colors duration-200 hidden"
+                data-screen-id="admin-screen">
+                ניהול מערכת
+            </button>
+
+        </div>
+    </div>
+    <div class="space-y-2">
+    </div>
+    <div class="mt-auto border-t border-ofer-dark-brown pt-4 px-6">
+        <button id="btn-open-export"
+            class="w-full flex items-center justify-center bg-ofer-dark-brown hover:bg-opacity-50 text-white text-sm font-bold py-2 px-3 rounded mb-4 shadow transition-colors">
+            <span class="ml-2"></span> ייצוא דוח פורמט
+        </button>
+
+        <button id="btn-admin-login" onclick="document.getElementById('admin-login-modal').classList.remove('hidden')"
+            class="flex items-center text-gray-300 hover:text-white text-sm justify-center w-full">
+            <span class="mr-2"></span> כניסת מנהל
+        </button>
+
+        <button id="btn-admin-logout" onclick="window.handleLogout()"
+            class="hidden flex items-center text-red-300 hover:text-red-100 text-sm">
+            <span class="mr-2">🚪</span> יציאה מניהול
+        </button>
+    </div>
+</nav>

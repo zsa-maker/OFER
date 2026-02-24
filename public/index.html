@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>תוכנת תחקור מאמן עופר</title>
+    <link rel="icon" type="image/png" href="ofer-logo.png">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'ofer-orange': '#F29E56',
+                        'ofer-light-orange': '#F3AD55',
+                        'ofer-yellow': '#FECF77',
+                        'ofer-light-brown': '#A06344',
+                        'ofer-dark-brown': '#4C2818',
+                        'ofer-bg-tint': '#FFF7EE',
+                        'ofer-primary-50': '#FFF7EE',
+                        'ofer-primary-500': '#F29E56',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-100 font-inter">
+
+    <div id="app" class="flex flex-col h-screen overflow-hidden">
+
+        <div id="header-placeholder"></div>
+
+        <main class="flex-grow flex overflow-hidden">
+
+            <div id="sidebar-placeholder"></div>
+
+            <div id="screen-container" class="flex-grow p-6 screenbg overflow-y-auto">
+            </div>
+
+        </main>
+    </div>
+
+    <div id="modals-placeholder"></div>
+    </div>
+
+    <script>
+        /**
+         * טוען רכיב ומחליף את ה-Placeholder בתוכן הרכיב עצמו.
+         * זה מונע יצירת div עוטף ששובר את ה-Flexbox.
+         */
+        async function replaceWithComponent(placeholderId, filePath) {
+            try {
+                const response = await fetch(filePath);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const html = await response.text();
+
+                // יצירת אלמנט זמני כדי להפוך את הטקסט ל-DOM
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+
+                // שליפת האלמנט הראשי מתוך הקובץ (למשל <nav> או <header>)
+                const newContent = tempDiv.firstElementChild;
+
+                const placeholder = document.getElementById(placeholderId);
+                if (placeholder && newContent) {
+                    // ביצוע ההחלפה: ה-Placeholder נמחק, והתוכן החדש תופס את מקומו
+                    placeholder.replaceWith(newContent);
+                }
+            } catch (error) {
+                console.error(`שגיאה בטעינת ${filePath}:`, error);
+            }
+        }
+
+        /**
+         * מוסיף מסך לרשימת המסכים (append)
+         */
+        async function appendScreen(filePath) {
+            try {
+                const response = await fetch(filePath);
+                const html = await response.text();
+                const container = document.getElementById('screen-container');
+                container.insertAdjacentHTML('beforeend', html);
+            } catch (error) {
+                console.error(`שגיאה בטעינת מסך ${filePath}:`, error);
+            }
+        }
+
+        /**
+         * טוען את המודלים לסוף הגוף (Body) כדי שלא יושפעו מ-overflow של אלמנטים אחרים
+         */
+        async function loadModals(filePath) {
+            try {
+                const response = await fetch(filePath);
+                const html = await response.text();
+                document.body.insertAdjacentHTML('beforeend', html);
+
+                // מחיקת ה-placeholder שכבר לא בשימוש
+                const ph = document.getElementById('modals-placeholder');
+                if (ph) ph.remove();
+            } catch (error) {
+                console.error(`שגיאה בטעינת מודלים ${filePath}:`, error);
+            }
+        }
+
+        async function initApp() {
+            // 1. טעינת רכיבי הבסיס והחלפת ה-Placeholders (שומר על העיצוב)
+            await Promise.all([
+                replaceWithComponent('header-placeholder', 'partials/header.html'),
+                replaceWithComponent('sidebar-placeholder', 'partials/sidebar.html'),
+                loadModals('partials/modals.html'),
+                appendScreen('partials/screens/stats-screen.html')
+            ]);
+
+            // 2. טעינת המסכים
+            await Promise.all([
+                appendScreen('partials/screens/home-screen.html'),
+                appendScreen('partials/screens/flight-form-screen.html'),
+                appendScreen('partials/screens/mission-database-screen.html'),
+                appendScreen('partials/screens/fault-database-screen.html'),
+                appendScreen('partials/screens/admin-screen.html'),
+                appendScreen('partials/screens/profile-screen.html'),
+                appendScreen('partials/screens/simulator-management-screen.html') // <-- הוסף שורה זו
+            ]);
+
+            // 3. חשיפת ה-Sidebar (אם הוא הוגדר כ-hidden בקובץ המקור)
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                sidebar.classList.remove('hidden');
+            }
+
+            // 4. טעינת הסקריפטים והפעלת האפליקציה - רק לאחר שה-HTML קיים!
+            const mainScript = document.createElement('script');
+            mainScript.type = 'module';
+            mainScript.innerHTML = `
+                import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+                import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc } 
+                    from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+                
+                // הגדרות Firebase
+                const firebaseConfig = {
+  apiKey: "AIzaSyA6jqQUciskCupLYiJ6Ypp0Bw9o092vleo",
+  authDomain: "ofertihkur.firebaseapp.com",
+  projectId: "ofertihkur",
+  storageBucket: "ofertihkur.firebasestorage.app",
+  messagingSenderId: "138234040828",
+  appId: "1:138234040828:web:502dcb0162a7fb7f7ca279",
+  measurementId: "G-THFVR6VHP4"
+                };
+
+                const app = initializeApp(firebaseConfig);
+                window.db = getFirestore(app);
+                window.getServerTimestamp = serverTimestamp;
+                
+                // חשיפת פונקציות גלובליות לשימוש בקבצים אחרים
+                window.firestoreFunctions = { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc };
+
+                // טעינת המודולים של האפליקציה
+                import { initializeAuth } from './js/auth/auth.js';
+                import { initializeAppEventListeners } from './js/core/app.js';
+                import { initializeImportFeature } from './js/features/flightFormEvents.js';
+
+                // הפעלת האפליקציה
+                initializeAuth();
+                initializeAppEventListeners();
+                initializeImportFeature();
+            `;
+            document.body.appendChild(mainScript);
+
+            // טעינת קבצי JS נוספים
+            const jsFiles = [
+                './js/core/util.js',
+                './js/features/executionStatusManager.js',
+                './js/features/flightFormEvents.js',
+                './js/features/flightImport.js',
+                './js/features/statsManager.js',
+                './js/features/adminManager.js',
+                './js/features/profileManager.js'
+            ];
+
+            jsFiles.forEach(src => {
+                const s = document.createElement('script');
+                s.type = 'module';
+                s.src = src;
+                document.body.appendChild(s);
+            });
+        }
+
+        // התחלת הטעינה
+        initApp();
+    </script>
+
+</body>
+
+</html>

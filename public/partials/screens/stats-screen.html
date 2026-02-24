@@ -1,0 +1,170 @@
+<div id="stats-screen" class="screen hidden">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">סטטיסטיקות ונתונים</h1>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-4 mb-8">
+        <div class="flex flex-col gap-4">
+            <div class="flex flex-wrap items-end gap-4 border-b border-gray-100 pb-4">
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">סנן זמן לפי:</label>
+                    <select id="stats-filter-type"
+                        class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange focus:ring-ofer-orange">
+                        <option value="period">תקופה</option>
+                        <option value="week">שבוע</option>
+                        <option value="range">טווח תאריכים</option>
+                    </select>
+                </div>
+
+                <div id="filter-period-group" class="filter-group">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">תקופה:</label>
+                    <select id="stats-period-select"
+                        class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange focus:ring-ofer-orange">
+                    </select>
+                </div>
+
+                <div id="filter-week-group" class="filter-group flex gap-2 hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">שנה:</label>
+                        <input type="number" id="stats-week-year" class="w-24 rounded-md border-gray-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">מספר שבוע:</label>
+                        <select id="stats-week-value" class="w-24 rounded-md border-gray-300 shadow-sm">
+                        </select>
+                    </div>
+                </div>
+
+                <div id="filter-range-group" class="filter-group flex gap-2 hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">מ-:</label>
+                        <input type="date" id="stats-date-start" class="rounded-md border-gray-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">עד-:</label>
+                        <input type="date" id="stats-date-end" class="rounded-md border-gray-300 shadow-sm">
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">סוג גיחה:</label>
+                    <select id="filter-flight-type" onchange="window.statsManager.renderStatsDashboard()"
+                        class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange focus:ring-ofer-orange">
+                        <option value="">כל הסוגים</option>
+                    </select>
+                </div>
+
+
+                <div class="mr-auto flex gap-2">
+                    <button id="toggle-percent-btn" onclick="window.statsManager.toggleValueType()"
+                        class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors text-sm">
+                        הצג באחוזים %
+                    </button>
+                    <button onclick="window.statsManager.renderStatsDashboard()"
+                        class="bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white font-bold py-2 px-6 rounded-lg shadow transition-colors">
+                        הצג נתונים
+                    </button>
+                    <button id="export-report-btn" onclick="window.statsManager.exportReport()"
+                        class="hidden bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors text-sm">
+                        <i class="fas fa-file-download ml-2"></i>הפקת דוח מסוכם
+                    </button>
+                </div>
+            </div>
+
+            <div id="crew-filter-helper-text" class="text-sm text-gray-500 italic hidden">
+                * הרשימות מציגות רק אנשי צוות שהיו פעילים בטווח הזמן שנבחר.
+            </div>
+        </div>
+    </div>
+
+    <div class="p-4 bg-gray-50 min-h-screen rtl">
+        <div class="mb-6 flex flex-wrap gap-4 items-end bg-white p-4 rounded-xl shadow-sm">
+        </div>
+
+        <div id="stats-charts-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-min">
+
+            <div id="stats-card-planning"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer md:col-span-2 md:row-span-2 border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-planning')">
+                <h3 class="text-lg font-bold text-gray-700 mb-2 border-b pb-2">תכנון מול ביצוע (צבירה שבועית)</h3>
+                <div class="chart-wrapper h-[500px] w-full relative">
+                    <canvas id="chart-planning-execution"></canvas>
+                </div>
+            </div>
+
+            <div id="stats-card-execution"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-execution')">
+                <h3 class="text-sm font-bold text-gray-700 mb-2 border-b pb-1 text-center">סטטוס ביצוע</h3>
+                <div class="chart-wrapper h-[200px] w-full relative transition-all duration-500"> <canvas
+                        id="chart-execution-status"></canvas>
+                </div>
+            </div>
+
+            <div id="stats-card-cancellation"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-cancellation')">
+                <h3 class="text-sm font-bold text-gray-700 mb-2 border-b pb-1 text-center">סיבות ביטול</h3>
+                <div class="chart-wrapper h-[200px] w-full relative">
+                    <canvas id="chart-cancellation-reasons"></canvas>
+                </div>
+            </div>
+
+            <div id="stats-card-types"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-types')">
+                <h3 class="text-sm font-bold text-gray-700 mb-2 border-b pb-1 text-center">סוגי גיחות</h3>
+                <div class="chart-wrapper h-[200px] w-full relative">
+                    <canvas id="chart-flight-types"></canvas>
+                </div>
+            </div>
+
+            <div id="stats-card-instructors"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-instructors')">
+                <h3 class="text-sm font-bold text-gray-700 mb-2 border-b pb-1 text-center">פירוט מדריכות</h3>
+                <div class="chart-wrapper h-[200px] w-full relative">
+                    <canvas id="chart-instructors"></canvas>
+                </div>
+            </div>
+
+            <div id="stats-card-sim-hours"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-sim-hours')">
+                <h3 class="text-sm font-bold text-gray-700 mb-2 border-b pb-1 text-center">שעות שימוש במאמנים</h3>
+                <div class="chart-wrapper h-[200px] w-full relative">
+                    <canvas id="chart-sim-hours"></canvas>
+                </div>
+            </div>
+            <div id="stats-card-goals"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-goals')">
+                <div class="flex justify-between items-center mb-2 border-b pb-1">
+                    <h3 class="text-sm font-bold text-gray-700">עמידה ביעדים</h3>
+                    <select id="stats-goal-flight-selector" onclick="event.stopPropagation()"
+                        class="text-[10px] border rounded p-1" onchange="window.statsManager.refreshGoalsChart()">
+                        <option value="">כל הגיחות</option>
+                    </select>
+                </div>
+                <div class="chart-wrapper h-[200px] w-full relative">
+                    <canvas id="chart-goals-status"></canvas>
+                </div>
+            </div>
+            <div id="stats-card-metrics-utilization"
+                class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
+                onclick="window.statsManager.swapToMain('stats-card-metrics-utilization')">
+                <div class="flex justify-between items-center mb-2 border-b pb-1">
+                    <h3 class="text-sm font-bold text-gray-700">מיצוי מדדי ביצוע</h3>
+                    <select id="stats-metric-selector" onclick="event.stopPropagation()"
+                        class="text-[10px] border rounded p-1" onchange="window.statsManager.refreshMetricsChart()">
+                        <option value="">בחר מדד...</option>
+                    </select>
+                </div>
+                <div class="chart-wrapper h-[200px] w-full relative">
+                    <canvas id="chart-metrics-utilization"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

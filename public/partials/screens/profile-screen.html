@@ -1,0 +1,134 @@
+<div id="profile-screen" class="screen hidden p-6">
+    <div class="mb-6 border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8 space-x-reverse">
+            <button onclick="window.profileManager.switchMainTab('individual')" id="tab-profile-individual"
+                class="border-ofer-orange text-ofer-orange py-4 px-1 border-b-2 font-medium text-lg">פרופיל
+                אישי</button>
+            <button onclick="window.profileManager.switchMainTab('group')" id="tab-profile-group"
+                class="border-transparent text-gray-500 hover:text-gray-700 py-4 px-1 border-b-2 font-medium text-lg">מעקב
+                קבוצתי</button>
+        </nav>
+    </div>
+
+    <div id="individual-view" class="space-y-6">
+        <div class="max-w-6xl mx-auto space-y-6">
+            <h2 class="text-3xl font-bold text-gray-800 border-b pb-2">פרופיל טייס</h2>
+
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <label class="block text-title font-bold text-gray-700 mb-2">חפש ובחר טייס</label>
+                <div class="relative w-full md:w-1/2">
+                    <input type="text" id="profile-pilot-search" autocomplete="off" placeholder="הקלד שם..."
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:ring-ofer-orange focus:border-ofer-orange text-title">
+                    <div id="pilot-search-results"
+                        class="hidden absolute top-full right-0 left-0 z-[100] bg-white border border-gray-200 shadow-xl rounded-md mt-1 max-h-60 overflow-y-auto">
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div
+                    class="bg-white p-6 rounded-lg shadow-md text-center flex flex-col items-center justify-center h-48">
+                    <h3 class="text-gray-500 text-sm font-bold uppercase">שעות טיסה מצטברות</h3>
+                    <p id="profile-total-hours" class="text-4xl font-bold text-ofer-orange mt-2">00:00</p>
+                    <span class="text-xs text-gray-400">שעות כולל</span>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md h-48 flex flex-col">
+                    <div class="flex justify-between items-center mb-2 cursor-pointer hover:text-ofer-orange"
+                        onclick="window.showAllHistory('goals')">
+                        <h3 class="text-gray-500 text-sm font-bold uppercase">יעדי גיחה אחרונה</h3>
+                        <span class="text-blue-500 text-xs">הכל ←</span>
+                    </div>
+                    <ul id="profile-last-goals-list" class="text-sm space-y-1 overflow-y-auto"></ul>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md h-48 flex flex-col">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-gray-500 text-sm font-bold uppercase cursor-pointer hover:text-ofer-orange"
+                            onclick="window.showAllHistory('lessons')">לקחי גיחות</h3>
+                        <select id="profile-lessons-type-select" onchange="window.profileManager.refreshLessons()"
+                            onclick="event.stopPropagation()" class="text-[10px] border-gray-300 rounded p-1 w-24">
+                            <option value="all">הכל</option>
+                        </select>
+                    </div>
+                    <ul id="profile-last-lessons" class="text-xs space-y-2 overflow-y-auto pr-2"></ul>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-white p-4 rounded-lg shadow-md lg:col-span-1">
+                    <h3 class="font-bold mb-4 text-center">עמידה ביעדים</h3>
+                    <select id="profile-chart-type-select" onchange="window.profileManager.refreshChart()"
+                        class="mb-4 block w-full text-sm border-gray-300 rounded"></select>
+                    <div class="h-64"><canvas id="profile-goals-chart"></canvas></div>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg shadow-md lg:col-span-2">
+                    <h3 class="font-bold mb-4">פירוט גיחות (מסונן)</h3>
+                    <div class="overflow-x-auto max-h-[300px]">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-2 text-right">תאריך</th>
+                                    <th class="px-4 py-2 text-right">שם גיחה</th>
+                                    <th class="px-4 py-2 text-right">סטטוס</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profile-flights-table" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="group-view" class="hidden space-y-6">
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="flex flex-wrap gap-6 mb-6 items-end">
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-gray-700">בחר תקופה:</label>
+                    <select id="matrix-period" onchange="window.profileManager.updateMatrix()"
+                        class="border p-2 rounded-md shadow-sm bg-blue-50 font-bold min-w-[120px]">
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-gray-700">סוג אוכלוסייה:</label>
+                    <select id="matrix-pop-type" onchange="window.profileManager.initMatrixFilters()"
+                        class="border p-2 rounded-md shadow-sm">
+                        <option value="students">חניכים</option>
+                        <option value="instructors">מדריכים</option>
+                        <option value="conversion">מדריכים בהסבה</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-gray-700">תת אוכלוסייה:</label>
+                    <select id="matrix-sub-pop" onchange="window.profileManager.updateMatrix()"
+                        class="border p-2 rounded-md shadow-sm"></select>
+                </div>
+
+                <div id="instructor-flight-type-container" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">סוג גיחות להצגה:</label>
+                    <div class="flex gap-4 p-2 border rounded-md bg-gray-50">
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" name="ins-flight-type" value="instructor" checked
+                                onchange="window.profileManager.updateMatrix()">
+                            <span class="text-sm">גיחות מדריך</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" name="ins-flight-type" value="student"
+                                onchange="window.profileManager.updateMatrix()">
+                            <span class="text-sm">גיחות חניכים</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto border rounded-lg">
+                <table class="min-w-full border-collapse text-sm">
+                    <thead id="matrix-head" class="bg-gray-100"></thead>
+                    <tbody id="matrix-body" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

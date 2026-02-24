@@ -1,0 +1,66 @@
+<div id="flight-form-screen" class="screen hidden">
+    <h1 class="text-3xl font-bold text-gray-800">טופס גיחה</h1>
+
+    <p class="mb-4 text-gray-600"> גיחות שלא דווחו </p>
+
+    <div id="filter-section" class="flighttb rounded-lg shadow-md p-4 mb-6 hidden">
+        <h2 class="text-xl font-semibold mb-2">תכנון שבועי</h2>
+        <div class="grid grid-cols-2 gap-4 mt-2">
+            <div>
+                <label class="block text-sm font-bold text-gray-700">תקופה</label>
+                <input type="text" id="auto-period" class="w-full border p-2 rounded bg-gray-100 text-gray-600" readonly
+                    placeholder="מחושב אוטומטית...">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700">שבוע</label>
+                <input type="text" id="auto-week" class="w-full border p-2 rounded bg-gray-100 text-gray-600" readonly
+                    placeholder="מחושב אוטומטית...">
+            </div>
+        </div>
+    </div>
+
+    <div id="flight-table-container" class="flighttb rounded-lg shadow-md p-4 overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-right" dir="rtl">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700 text-center hidden pending-select-col">
+                        <input type="checkbox" onchange="window.toggleAllPending(this.checked)">
+                    </th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">תאריך</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">שם גיחה</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">מדריכה</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">סוג</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">התחלה</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">סיום</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700">סטטוס</th>
+                    <th class="px-4 py-3 text-sm font-bold text-gray-700 text-center">#</th>
+                </tr>
+            </thead>
+            <tbody id="flight-table-body" class="bg-white divide-y divide-gray-200">
+            </tbody>
+        </table>
+    </div>
+    <div class="flex items-center space-x-4 space-x-reverse btnsdb">
+        <div class="relative">
+            <button id="import-flights-btn"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors duration-200">
+                טען מקובץ
+            </button>
+            <input type="file" id="flights-file-input" accept=".csv" class="hidden">
+        </div>
+        <button id="create-flight-btn"
+            class="bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors duration-200">
+            הזן גיחה
+        </button>
+        <div id="pending-admin-controls" class="hidden items-center ml-4 space-x-2 space-x-reverse">
+            <button id="toggle-pending-mode-btn" onclick="window.togglePendingAdminMode()"
+                class="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors text-sm">
+                <i class="fas fa-edit"></i>מצב ניהול
+            </button>
+            <button id="delete-pending-selected-btn" onclick="window.deletePendingSelected()"
+                class="hidden bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors text-sm">
+                <i class="fas fa-trash-alt ml-2"></i> מחק (<span id="pending-selected-count">0</span>)
+            </button>
+        </div>
+    </div>
+</div>

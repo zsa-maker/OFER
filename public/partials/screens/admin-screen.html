@@ -1,0 +1,487 @@
+<div id="admin-screen" class="screen hidden p-6 bg-gray-50 min-h-screen">
+
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">ממשק ניהול</h1>
+    </div>
+
+    <div class="mb-6 border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8 space-x-reverse" aria-label="Tabs">
+            <button id="tab-btn-planning" onclick="window.switchAdminTab('planning')"
+                class="border-ofer-orange text-ofer-orange hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200">
+                תכנון תקופה
+            </button>
+            <button id="tab-btn-personnel" onclick="window.switchAdminTab('personnel')"
+                class="border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200">
+                ניהול רשימות
+            </button>
+            <button id="tab-btn-goals" onclick="window.switchAdminTab('goals')"
+                class="border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200">
+                ניהול יעדים ומדדים
+            </button>
+            <button id="tab-btn-populations" onclick="window.switchAdminTab('populations')"
+                class="border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200">
+                ניהול אוכלוסיות
+            </button>
+        </nav>
+    </div>
+
+    <div id="tab-content-personnel" class="admin-tab-content hidden">
+        <div class="flex justify-end mb-4">
+            <button onclick="window.syncFromExistingFlights()"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors">
+                סנכרן נתונים מגיחות עבר
+            </button>
+            <button onclick="window.savePersonnelLists()"
+                class="mr-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors">
+                שמור שינויים
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- <div class="bg-white p-4 rounded-lg shadow"> -->
+            <!-- <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('instructorsMale', 'מדריכים')">
+                    מדריכים <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-instructorsMale" placeholder="הוסף..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('instructorsMale')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-instructorsMale" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul> -->
+            <!-- </div> -->
+
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('instructorsFemale', 'מדריכות')">
+                    מדריכות <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-instructorsFemale" placeholder="הוסף..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('instructorsFemale')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-instructorsFemale" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('pilots', 'טייסים')">
+                    טייסים <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-pilots" placeholder="הוסף..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('pilots')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-pilots" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('observers', 'מתצפתים')">
+                    מתצפתים <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-observers" placeholder="הוסף..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('observers')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-observers" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+
+
+
+            <div class="bg-white p-4 rounded-lg shadow border-t-4 border-blue-200">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('simulators', 'סוגי מאמנים')">
+                    סוגי מאמנים <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-simulators" placeholder="הוסף מאמן..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('simulators')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-simulators" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow border-t-4 border-blue-200">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('flightTypes', 'סוגי גיחות')">
+                    סוגי גיחות <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-flightTypes" placeholder="הוסף סוג..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('flightTypes')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-flightTypes" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow border-t-4 border-blue-200">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('flightNames', 'שמות גיחות')">
+                    שמות גיחות <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-flightNames" placeholder="הוסף שם גיחה..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('flightNames')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-flightNames" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
+                    onclick="window.openAdvancedPersonnel('technicians', 'טכנאים')">
+                    טכנאים <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
+                </h3>
+                <div class="flex mb-2">
+                    <input type="text" id="input-technicians" placeholder="הוסף טכנאי..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addPerson('technicians')"
+                        class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
+                </div>
+                <ul id="list-technicians" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow border-t-4 border-purple-200 col-span-1 md:col-span-1">
+                <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2">סיווג מערכות ותקלות</h3>
+                <div class="flex mb-4 gap-2">
+                    <input type="text" id="input-new-system" placeholder="שם מערכת ראשית..."
+                        class="flex-grow border rounded-r px-2 py-1 text-sm">
+                    <button onclick="window.addSystemCategory()"
+                        class="bg-purple-600 text-white px-3 rounded-l hover:bg-purple-700">+</button>
+                </div>
+                <div id="systems-container"
+                    class="space-y-4 h-64 overflow-y-auto custom-scrollbar p-2 bg-gray-50 rounded">
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <div id="tab-content-goals" class="admin-tab-content hidden">
+        <div class="mb-4 flex space-x-4 space-x-reverse border-b">
+            <button onclick="window.switchAdvancedTab('goals-sub')" id="btn-sub-goals"
+                class="py-2 px-4 border-b-2 border-ofer-orange text-ofer-orange font-bold">ניהול יעדים</button>
+            <button onclick="window.switchAdvancedTab('metrics-sub')" id="btn-sub-metrics"
+                class="py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700">ניהול מדדים</button>
+        </div>
+        <div id="sub-tab-goals" class="advanced-tab-section">
+            <div class="bg-white p-6 rounded-lg shadow mb-6">
+                <h3 class="font-bold text-xl mb-4 text-gray-800">הגדרת יעדים אוטומטיים</h3>
+                <div class="bg-white p-6 rounded-lg shadow mb-6">
+                    <h3 class="font-bold text-xl mb-4 text-gray-800">הגדרת יעדים אוטומטיים</h3>
+                    <p class="text-sm text-gray-600 mb-4">בחר שילוב של סוג גיחה ושם גיחה, והגדר את היעדים שיופיעו
+                        אוטומטית.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                        <div>
+                            <label class="block text-sm font-bold mb-1">סוג גיחה</label>
+                            <select id="goal-config-type" class="w-full p-2 border border-gray-300 rounded"></select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-1">שם גיחה</label>
+                            <select id="goal-config-name" class="w-full p-2 border border-gray-300 rounded"></select>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3 mb-6">
+                        <div id="goals-container" class="space-y-2 mb-2">
+                        </div>
+
+                        <button type="button" onclick="window.addGoalInput()"
+                            class="text-sm text-ofer-primary-600 hover:text-ofer-primary-800 font-medium flex items-center gap-1 mb-4">
+                            <i class="fas fa-plus"></i> הוסף יעד נוסף
+                        </button>
+                    </div>
+
+                    <button onclick="window.saveGoalConfig()"
+                        class="bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white font-bold py-2 px-6 rounded shadow">
+                        שמור הגדרה
+                    </button>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="font-bold text-lg mb-4 text-gray-800">הגדרות קיימות</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">סוג
+                                        גיחה</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">שם גיחה
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">יעדים
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">פעולות
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="goals-config-table-body" class="bg-white divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="sub-tab-metrics" class="advanced-tab-section hidden">
+            <div class="bg-white p-6 rounded-lg shadow mb-6">
+                <h3 class="font-bold text-xl mb-4 text-gray-800">הגדרת מדדים (Metrics)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1">סוג גיחה</label>
+                        <select id="metric-config-type" class="w-full p-2 border border-gray-300 rounded"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">שם גיחה</label>
+                        <select id="metric-config-name" class="w-full p-2 border border-gray-300 rounded"></select>
+                    </div>
+                </div>
+
+                <div id="metrics-editor-container" class="space-y-4 mb-6">
+                </div>
+
+                <button onclick="window.addNewMetricGroup()" class="text-sm text-purple-600 font-medium mb-4">+ הוסף מדד
+                    חדש</button>
+                <div class="mt-4">
+                    <button onclick="window.saveMetricConfig()"
+                        class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded shadow">שמור
+                        מדדים</button>
+                </div>
+                <div class="mt-8 bg-white p-6 rounded-lg shadow">
+                    <h3 class="font-bold text-lg mb-4 text-gray-800">מדדים מוגדרים במערכת</h3>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500">סוג גיחה</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500">שם גיחה</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500">מדדים</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500">פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metrics-config-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-content-planning" class="admin-tab-content">
+        <div class="bg-white p-4 rounded-lg shadow mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex gap-2 items-center mx-auto">
+                <button onclick="window.changePlanningMonth(-1)"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded">&lt;</button>
+                <h2 id="planning-current-month" class="text-xl font-bold w-40 text-center"></h2>
+                <button onclick="window.changePlanningMonth(1)"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded">&gt;</button>
+            </div>
+            <div>
+                <button onclick="window.savePlanningData()"
+                    class="bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white font-bold py-2 px-6 rounded shadow">שמור
+                    שינויים</button>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow overflow-x-auto mb-8">
+            <table class="min-w-full divide-y divide-gray-200">
+                <tbody id="planning-calendar-body" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+            </table>
+            <div class="flex gap-4 items-end mb-4 flex-wrap" dir="rtl">
+                <div>
+                    <label id="label-period-prev" class="block text-xs font-bold text-gray-600 mb-1">תקופה קודמת</label>
+                    <input type="date" id="input-period-prev"
+                        class="border rounded px-2 py-1 text-sm shadow-sm focus:ring-2 focus:ring-ofer-orange">
+                </div>
+                <div class="flex gap-2 items-end">
+                    <div>
+                        <label id="label-period-curr"
+                            class="block text-xs font-bold text-gray-600 mb-1 text-blue-700">תקופה נוכחית</label>
+                        <input type="date" id="input-period-curr"
+                            class="border rounded px-2 py-1 text-sm shadow-sm border-blue-300">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1 text-blue-700">נק"ע (%)</label>
+                        <input type="number" id="input-period-naka" min="0" max="100" placeholder="85"
+                            class="border rounded px-2 py-1 text-sm shadow-sm border-blue-300 w-14 text-center">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1 text-green-700">מזער</label>
+                        <input type="number" id="input-period-min" placeholder="0"
+                            class="border rounded px-2 py-1 text-sm shadow-sm border-green-300 w-14 text-center">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1 text-green-700">יעד</label>
+                        <input type="number" id="input-period-target" placeholder="0"
+                            class="border rounded px-2 py-1 text-sm shadow-sm border-green-300 w-14 text-center">
+                    </div>
+                </div>
+                <div>
+                    <label id="label-period-next" class="block text-xs font-bold text-gray-600 mb-1">תקופה באה</label>
+                    <input type="date" id="input-period-next" class="border rounded px-2 py-1 text-sm shadow-sm">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="day-plan-modal"
+        class="modal-overlay hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-96">
+            <h3 id="day-plan-date-display" class="text-lg font-bold mb-4 border-b pb-2 text-ofer-dark-brown text-right">
+            </h3>
+
+            <div class="space-y-4 mb-6 text-right" dir="rtl">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">כמות גיחות מתוכננת:</label>
+                    <input type="number" id="day-plan-input"
+                        class="w-full p-2 border border-gray-300 rounded focus:ring-ofer-orange focus:border-ofer-orange">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">מנהל יומי:</label>
+                    <input type="text" id="day-plan-manager"
+                        class="w-full p-2 border border-gray-300 rounded focus:ring-ofer-orange focus:border-ofer-orange">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="day-plan-support"
+                        class="h-4 w-4 text-ofer-orange focus:ring-ofer-orange border-gray-300 rounded">
+                    <label for="day-plan-support" class="text-sm text-gray-900">יש תמיכה (טכנאי/תגבור)</label>
+                </div>
+            </div>
+
+            <div class="flex justify-start space-x-2 space-x-reverse">
+                <button onclick="document.getElementById('day-plan-modal').classList.add('hidden')"
+                    class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded">
+                    ביטול
+                </button>
+                <button onclick="window.confirmDayPlan()"
+                    class="bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white py-2 px-4 rounded font-bold shadow">
+                    אישור
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="personnel-manage-modal"
+        class="modal-overlay hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center border-b pb-4 mb-4">
+                <h3 id="personnel-modal-title" class="text-xl font-bold text-gray-800">ניהול רשימה</h3>
+                <button onclick="document.getElementById('personnel-manage-modal').classList.add('hidden')"
+                    class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+
+            <div class="space-y-4 flex-grow overflow-hidden flex flex-col">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">חיפוש ברשימה:</label>
+                        <input type="text" id="personnel-search-input" oninput="window.filterPersonnelModal()"
+                            placeholder="הקלד לחיפוש..." class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">הוספת שם חדש:</label>
+                        <div class="flex">
+                            <input type="text" id="personnel-new-name" class="flex-grow border rounded-r px-2 py-1">
+                            <button onclick="window.addFromPersonnelModal()"
+                                class="bg-ofer-orange text-white px-4 rounded-l hover:bg-ofer-dark-brown">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-grow overflow-y-auto border rounded p-2 bg-gray-50"
+                    id="personnel-modal-list-container">
+                </div>
+            </div>
+
+            <div class="mt-6 pt-4 border-t flex justify-end">
+                <button onclick="document.getElementById('personnel-manage-modal').classList.add('hidden')"
+                    class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-6 rounded shadow">סגור</button>
+            </div>
+        </div>
+    </div>
+    <div id="tab-content-populations" class="admin-tab-content hidden">
+        <div class="bg-white p-6 rounded-lg shadow mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-xl text-gray-800">סיווג אוכלוסיות טייסים</h3>
+                <button onclick="window.savePopulations()"
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow">שמור
+                    שינויים</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="border p-4 rounded-lg bg-blue-50 flex flex-col h-[600px]">
+                    <div class="flex justify-between items-center mb-3 border-b pb-2">
+                        <h4 class="font-bold text-blue-800">מדריכים לפי קבוצות</h4>
+                        <button onclick="window.addNewInstructorGroup()"
+                            class="text-xs bg-blue-600 text-white px-3 py-1 rounded">+ קבוצה חדשה</button>
+                    </div>
+                    <div id="instructor-groups-container"
+                        class="flex-grow space-y-4 overflow-y-auto p-2 custom-scrollbar"></div>
+                </div>
+
+                <div class="border p-4 rounded-lg bg-orange-50 flex flex-col h-[600px]">
+                    <div class="flex justify-between items-center mb-3 border-b pb-2">
+                        <h4 class="font-bold text-orange-800">חניכים לפי קורסים</h4>
+                        <button onclick="window.addNewCourse()"
+                            class="text-xs bg-orange-600 text-white px-3 py-1 rounded">+ קורס חדש</button>
+                    </div>
+                    <div id="courses-container" class="flex-grow space-y-4 overflow-y-auto p-2 custom-scrollbar"></div>
+                </div>
+
+                <div class="border p-4 rounded-lg bg-purple-50 flex flex-col h-[600px]">
+                    <div class="flex justify-between items-center mb-3 border-b pb-2">
+                        <h4 class="font-bold text-purple-800">מדריכים בהסבה</h4>
+                        <button onclick="window.addNewConversionGroup()"
+                            class="text-xs bg-purple-600 text-white px-3 py-1 rounded">+ קבוצה חדשה</button>
+                    </div>
+                    <div id="conversion-groups-container"
+                        class="flex-grow space-y-4 overflow-y-auto p-2 custom-scrollbar"></div>
+                </div>
+            </div>
+
+            <div class="border p-4 rounded-lg bg-gray-50 flex flex-col mt-6">
+                <h4 class="font-bold text-gray-800 mb-3 border-b pb-2">סיווג שמות גיחות לאוכלוסיות</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-3 rounded shadow border-r-4 border-orange-400">
+                        <h5 class="font-bold text-orange-800 mb-2 text-sm">גיחות חניכים</h5>
+                        <input type="text" id="search-flight-mapping-students" oninput="window.renderFlightMappingUI()"
+                            placeholder="חפש..." class="w-full border rounded p-1 text-xs mb-1">
+                        <div id="options-flight-mapping-students"
+                            class="border rounded p-1 h-32 overflow-y-auto mb-1 bg-gray-50"></div>
+                        <button onclick="window.addFlightsToMapping('students')"
+                            class="w-full bg-orange-500 text-white py-1 rounded text-xs">הוסף נבחרים</button>
+                        <ul id="selected-flights-students" class="space-y-1 mt-2"></ul>
+                    </div>
+
+                    <div class="bg-white p-3 rounded shadow border-r-4 border-blue-400">
+                        <h5 class="font-bold text-blue-800 mb-2 text-sm">גיחות מדריכים</h5>
+                        <input type="text" id="search-flight-mapping-instructors"
+                            oninput="window.renderFlightMappingUI()" placeholder="חפש..."
+                            class="w-full border rounded p-1 text-xs mb-1">
+                        <div id="options-flight-mapping-instructors"
+                            class="border rounded p-1 h-32 overflow-y-auto mb-1 bg-gray-50"></div>
+                        <button onclick="window.addFlightsToMapping('instructors')"
+                            class="w-full bg-blue-500 text-white py-1 rounded text-xs">הוסף נבחרים</button>
+                        <ul id="selected-flights-instructors" class="space-y-1 mt-2"></ul>
+                    </div>
+
+                    <div class="bg-white p-3 rounded shadow border-r-4 border-purple-400">
+                        <h5 class="font-bold text-purple-800 mb-2 text-sm">גיחות הסבה</h5>
+                        <input type="text" id="search-flight-mapping-conversion"
+                            oninput="window.renderFlightMappingUI()" placeholder="חפש..."
+                            class="w-full border rounded p-1 text-xs mb-1">
+                        <div id="options-flight-mapping-conversion"
+                            class="border rounded p-1 h-32 overflow-y-auto mb-1 bg-gray-50"></div>
+                        <button onclick="window.addFlightsToMapping('conversion')"
+                            class="w-full bg-purple-500 text-white py-1 rounded text-xs">הוסף נבחרים</button>
+                        <ul id="selected-flights-conversion" class="space-y-1 mt-2"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
