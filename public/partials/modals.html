@@ -330,19 +330,32 @@
     </div>
 </div>
 <div id="fault-resolution-modal" class="modal-overlay hidden">
-    <div class="modal-content max-w-2xl">
+    <div class="modal-content max-w-4xl">
         <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h2 id="fault-resolution-modal-title" class="text-2xl font-bold">ניהול תקלה: [תיאור תקלה]</h2>
-            <button id="fault-resolution-close-button"
-                class="bg-gray-300 text-gray-800 py-1 px-3 rounded-lg">סגירה</button>
+            <h2 id="fault-resolution-modal-title" class="text-2xl font-bold">פרטי תקלה</h2>
+            <button onclick="document.getElementById('fault-resolution-modal').classList.add('hidden')"
+                class="text-gray-500 hover:text-gray-800 text-3xl font-bold leading-none">&times;</button>
         </div>
-        <div id="fault-resolution-content" class="overflow-y-auto max-h-96 pr-4 space-y-4"></div>
+        <div id="fault-resolution-content" class="overflow-y-auto max-h-[75vh] pr-4 space-y-4"></div>
     </div>
 </div>
+
 <div id="toast-notification"
-    class="fixed bottom-5 right-5 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl hidden z-50">
+    class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl hidden z-[100] text-center font-bold min-w-[300px]">
     יש למלא את כל הנתונים
 </div>
+
+<div id="generic-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-4xl">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 id="modal-title" class="text-2xl font-bold"></h2>
+            <button onclick="document.getElementById('generic-modal').classList.add('hidden')"
+                class="text-gray-500 hover:text-gray-800 text-3xl font-bold leading-none">&times;</button>
+        </div>
+        <div id="modal-content" class="overflow-y-auto max-h-[75vh] pr-4 space-y-4"></div>
+    </div>
+</div>
+
 <div id="login-screen" class="hidden">
     <div id="login-content" class="space-y-4 text-center">
         <h2 class="text-3xl font-bold text-gray-800">התחברות למערכת עופר</h2>
@@ -442,15 +455,5 @@
                 <span class="ml-2">📥</span> הורד אקסל
             </button>
         </div>
-    </div>
-</div>
-<div id="generic-modal" class="modal-overlay hidden">
-    <div class="modal-content max-w-2xl">
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h2 id="modal-title" class="text-2xl font-bold"></h2>
-            <button onclick="document.getElementById('generic-modal').classList.add('hidden')"
-                class="bg-gray-300 text-gray-800 py-1 px-3 rounded-lg">סגירה</button>
-        </div>
-        <div id="modal-content" class="overflow-y-auto max-h-96 pr-4 space-y-4"></div>
     </div>
 </div>

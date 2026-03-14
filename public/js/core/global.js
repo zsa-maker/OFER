@@ -21,13 +21,7 @@ export const simulatorFaults = {};
 let isPendingSelectionMode = false;
 let pendingSelectedSet = new Set();
 
-// רשימות קבועות
 export const flightTypes = ['גיחה רגילה', 'ביצוע חלקי', 'ביטול גיחה'];
-export const flightGroundingOptions = ['גיחה', 'קרקוע'];
-export const crewRoles = ['טייס', 'מדריכה', 'מכונן', 'נווט'];
-export const elementCategories = ['אחר', 'הטסה', 'משימה', 'אלמנט טקטי', 'מדריכות', 'תקלות'];
-export const elementOptions = ['אלמנט 1', 'אלמנט 2', 'אלמנט 3', 'אלמנט 4'];
-export const performanceOptions = ['בוצע', 'לא בוצע', 'נוסף לשיקול המדריכה'];
 
 // משתנים גלובליים דינמיים
 export let savedFlights = [];
@@ -326,14 +320,3 @@ window.deletePendingSelected = async function () {
         showToast('שגיאה במחיקה', 'red');
     }
 };
-
-export async function deleteAllFlights() {
-    if (!confirm('למחוק את כל הגיחות?')) return;
-    const { collection, getDocs, deleteDoc, doc } = window.firestoreFunctions;
-    try {
-        const snapshot = await getDocs(collection(window.db, "flights"));
-        await Promise.all(snapshot.docs.map(d => deleteDoc(doc(window.db, "flights", d.id))));
-        showToast('נמחק.', 'green');
-        fetchFlights();
-    } catch (e) { console.error(e); }
-}

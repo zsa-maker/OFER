@@ -13,11 +13,6 @@ const simulatorFaults = {
 };
 
 const flightTypes = ['גיחה רגילה', 'ביצוע חלקי', 'ביטול גיחה'];
-const flightGroundingOptions = ['גיחה', 'קרקוע'];
-const crewRoles = ['טייס', 'מדריכה', 'מכונן', 'נווט'];
-const elementCategories = ['אחר', 'הטסה', 'משימה', 'אלמנט טקטי', 'מדריכות', 'תקלות'];
-const elementOptions = ['אלמנט 1', 'אלמנט 2', 'אלמנט 3', 'אלמנט 4'];
-const performanceOptions = ['בוצע', 'לא בוצע', 'נוסף לשיקול המדריכה'];
 
 let savedFlights = [];
 let currentForm = {};

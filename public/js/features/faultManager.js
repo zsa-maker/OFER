@@ -1,7 +1,7 @@
 // public/js/features/faultManager.js
 
 import { showToast, hideAllModals } from '../components/modals.js';
-import { fetchFlights } from '../core/global.js';
+import { fetchFlights} from '../core/global.js';
 import { getPeriodDisplay } from '../core/util.js';
 
 // משתנה עזר גלובלי לשמירת סטטוס היישום במודאל הפתוח
@@ -31,7 +31,7 @@ window.switchFaultTab = function (tab) {
     const adminControls = document.getElementById('fault-admin-controls-container');
     if (adminControls) {
         // מציג רק אם יש הרשאת ניהול (חלון.isAdmin מוגדר ב-auth.js)
-        adminControls.classList.toggle('hidden', !isTable || !window.isAdmin);
+        adminControls.classList.toggle('hidden', !window.isAdmin);
     }
 
     const tableBtn = document.getElementById('fault-tab-btn-table');
@@ -154,7 +154,7 @@ export function renderFaultStatistics() {
 
     createFaultChart('chart-fault-categories', 'pie', Object.keys(stats.categories), Object.values(stats.categories), ['#3B82F6', '#10B981', '#F59E0B', '#EF4444']);
     createFaultChart('chart-fault-verification', 'pie', Object.keys(stats.verification), Object.values(stats.verification), ['#10B981', '#EF4444']);
-    createFaultChart('chart-fault-severity', 'bar', Object.keys(stats.severity), Object.values(stats.severity), ['#60A5FA', '#FBBF24', '#F87171']);
+    createFaultChart('chart-fault-severity', 'pie', Object.keys(stats.severity), Object.values(stats.severity), ['#60A5FA', '#FBBF24', '#F87171']);
     createFaultChart('chart-fault-status-ratio', 'pie', Object.keys(stats.statusRatio), Object.values(stats.statusRatio), ['#EF4444', '#10B981']);
 }
 
@@ -523,10 +523,10 @@ export function renderFaultDatabaseTable() {
         return;
     }
 
-tableBody.innerHTML = filteredFaults.map(fault => {
+    tableBody.innerHTML = filteredFaults.map(fault => {
         const isResolved = fault.status.isResolved;
         const isChecked = faultSelectedSet.has(fault.key);
-        
+
         // יצירת מזהה בטוח כדי למנוע קריסת HTML בגלל גרשיים
         const safeKey = fault.key ? fault.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
 
@@ -727,8 +727,30 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
     const currentTime = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
     const currentDate = now.toISOString().split('T')[0];
 
+    // חילוץ תאריך ושעת פתיחת התקלה
+    const firstReportDate = new Date(faultData.firstReportTimestamp);
+    const openDateStr = firstReportDate.toLocaleDateString('he-IL');
+    const openTimeStr = firstReportDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+
     const techOptions = (window.personnelLists?.technicians || [])
         .map(t => `<option value="${t}">${t}</option>`).join('');
+
+    // בניית אפשרויות סיווג מערכת (לשינוי סיווג קיים)
+    const systems = window.systemClassifications || {};
+    let sysOptions = '<option value="">ללא סיווג / בחר מערכת...</option>';
+    Object.keys(systems).sort().forEach(category => {
+        const subItems = systems[category] || [];
+        if (subItems.length > 0) {
+            subItems.forEach(sub => {
+                const val = `${category} - ${sub}`;
+                const selected = (faultData.systemClassification === val) ? 'selected' : '';
+                sysOptions += `<option value="${val}" ${selected}>${val}</option>`;
+            });
+        } else {
+            const selected = (faultData.systemClassification === category) ? 'selected' : '';
+            sysOptions += `<option value="${category}" ${selected}>${category}</option>`;
+        }
+    });
 
     let existingData = {};
     if (isEditMode && faultData.status) {
@@ -743,7 +765,25 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 <p><strong>רמת הפרעה:</strong> <span class="font-bold">${severity}</span></p>
             </div>
 
-           <div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold mb-1 text-gray-500">תאריך פתיחה</label>
+                    <input type="text" class="w-full border rounded p-2 bg-gray-100 text-gray-500 cursor-not-allowed" value="${openDateStr}" disabled>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-1 text-gray-500">שעת פתיחה</label>
+                    <input type="text" class="w-full border rounded p-2 bg-gray-100 text-gray-500 cursor-not-allowed" value="${openTimeStr}" disabled>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold mb-1">סיווג מערכת (ניתן לשינוי)</label>
+                <select id="res-system-class" class="w-full border rounded p-2 focus:ring-ofer-primary-500 focus:border-ofer-primary-500">
+                    ${sysOptions}
+                </select>
+            </div>
+
+            <div>
                 <label class="block text-xs font-bold mb-1">שם טכנאי מטפל (חובה)</label>
                 <div class="flex gap-2">
                     <select id="res-technician" class="w-full border rounded p-2" onchange="if(this.value === 'OTHER') { document.getElementById('new-tech-container').classList.remove('hidden'); } else { document.getElementById('new-tech-container').classList.add('hidden'); }">
@@ -812,7 +852,7 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 </div>
             </div>
 
-<button onclick="window.processFaultClosure('${faultKey.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition-colors">
+            <button onclick="window.processFaultClosure('${faultKey.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition-colors">
                 ${isEditMode ? 'עדכן וסגור' : 'אישור וסגירה'}
             </button>
         </div>`;
@@ -833,7 +873,6 @@ async function processFaultClosure(faultKey) {
         if (!newTech) { showToast("יש להזין שם טכנאי חדש", "red"); return; }
         technician = newTech;
 
-        // הוספה לרשימה ב-adminManager (צריך לוודא שזה נשמר ב-Firestore)
         if (window.personnelLists && window.personnelLists.technicians) {
             if (!window.personnelLists.technicians.includes(newTech)) {
                 window.personnelLists.technicians.push(newTech);
@@ -844,6 +883,10 @@ async function processFaultClosure(faultKey) {
     }
     const verifiedRadio = document.querySelector('input[name="verified-status"]:checked');
     const description = document.getElementById('res-desc').value.trim();
+
+    // קריאת הסיווגים
+    const faultCategoryVal = document.getElementById('res-category').value;
+    const systemClassVal = document.getElementById('res-system-class').value;
 
     if (!technician) { showToast("יש לבחור טכנאי", "red"); return; }
     if (!verifiedRadio) { showToast("יש לסמן האם התקלה אומתה", "red"); return; }
@@ -857,6 +900,8 @@ async function processFaultClosure(faultKey) {
     const closureData = {
         isResolved: true,
         technicianName: technician,
+        faultCategory: faultCategoryVal, // <- התיקון לסיווג סגירה חסר!
+        systemClassification: systemClassVal, // <- שמירת סיווג המערכת המעודכן
         isVerified: verifiedRadio.value === 'true',
         resolutionDescription: description,
         isClosedWithPermission: isPermission,
@@ -866,14 +911,16 @@ async function processFaultClosure(faultKey) {
         timestamp: Date.now()
     };
 
-try {
+    try {
         const { doc, setDoc } = window.firestoreFunctions;
         await setDoc(doc(window.db, "fault_resolutions", faultKey), closureData);
 
-        if (!window.faultResolutionStatus) window.faultResolutionStatus = {}; // שורת ההגנה
+        if (!window.faultResolutionStatus) window.faultResolutionStatus = {}; 
         window.faultResolutionStatus[faultKey] = closureData;
+        
         if (window.unifiedFaultsDatabase[faultKey]) {
             window.unifiedFaultsDatabase[faultKey].status = closureData;
+            window.unifiedFaultsDatabase[faultKey].systemClassification = systemClassVal; // עדכון מקומי של סיווג המערכת
         }
 
         showToast("התקלה נסגרה/עודכנה בהצלחה", "green");

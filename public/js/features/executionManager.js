@@ -11,7 +11,6 @@ const REQUIRED_FIELDS_FOR_EXECUTION = [
  * מפעיל/מנטרל את מצב העריכה המלא (ולידציה חובה) בהתאם לסטטוס שנבחר.
  * @param {string} status סטטוס הביצוע החדש שנבחר.
  */
-// קובץ: executionManager.js (בתוך toggleEditingByStatus)
 
 export function toggleEditingByStatus(status) {
     const isFullEditMode = status === 'דווחה'; // *** שינוי: שימוש בסטטוס 'דווחה' ***

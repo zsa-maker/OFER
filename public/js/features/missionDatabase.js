@@ -100,7 +100,7 @@ const missionDatabase = {
             if (headerCheckbox) headerCheckbox.classList.add('hidden');
             if (bulkActions) bulkActions.classList.add('hidden');
             if (toggleBtn) {
-                toggleBtn.innerHTML = '<i class="fas fa-edit ml-2"></i> מצב ניהול ומחיקה';
+                toggleBtn.innerHTML = '<i class="fas fa-edit ml-2"></i> בחירת גיחות';
                 toggleBtn.classList.replace('bg-gray-500', 'bg-gray-700');
             }
             // איפוס בחירות ביציאה

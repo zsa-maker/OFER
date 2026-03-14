@@ -1,4 +1,4 @@
-import { showScreen, populateWeekOptions, renderFlightTable, deleteAllFlights, currentForm, savedFlights } from './global.js';
+import { showScreen, populateWeekOptions, renderFlightTable, currentForm, savedFlights } from './global.js';
 import { calculateFlightDuration } from './util.js';
 import { initializeAuth } from '../auth/auth.js';
 
@@ -10,25 +10,18 @@ import { setupFormEvents } from '../features/flightFormEvents.js';
 import { loadPersonnelLists, initAdminPage, loadGoalsAndSystems } from '../features/adminManager.js';
 import { setPeriodDates } from './util.js';
 import { initProfilePage } from '../features/profileManager.js';
+import { initSimulatorManager } from '../features/simulatorManager.js';
 
 
 export function initializeAppEventListeners() {
-    window.showFaultDetailsModal = showFaultDetailsModal;
+
+    showFaultDetailsModal();
     initializeAuth();
     setupFormEvents();
     loadPersonnelLists();
     loadGoalsAndSystems();
-
-    document.getElementById('fault-system-filter')?.addEventListener('change', () => {
-        renderFaultDatabaseTable();
-    });
-
-    // *** מאזין לכידה גלובלי (לDEBUG) ***
-    document.body.addEventListener('click', (e) => {
-        if (e.target.id === 'login-button') {
-            console.log('--- DEBUG: כפתור ההתחברות נלחץ! מעביר ל-handleLogin.');
-        }
-    });
+    initSimulatorManager();
+    initProfilePage();
 
     // *** המאזינים של סרגל הניווט (showScreen) ***
     document.querySelectorAll('#sidebar button[data-screen-id]').forEach(button => {
@@ -39,13 +32,11 @@ export function initializeAppEventListeners() {
             if (screenId === 'admin-screen') {
                 initAdminPage();
             }
-            if (screenId === 'profile-screen') {
-                initProfilePage(); // Now screenId is defined!
-            }
-            if (screenId === 'simulator-management-screen') {
-                import('../features/simulatorManager.js').then(module => module.initSimulatorManager());
-            }
         });
+    });
+
+    document.getElementById('fault-system-filter')?.addEventListener('change', () => {
+        renderFaultDatabaseTable();
     });
 
     // *** יצירת טופס חדש (הזן גיחה) ***
@@ -61,16 +52,6 @@ export function initializeAppEventListeners() {
     const cancelButton = document.getElementById('alert-cancel-button');
     if (confirmButton) confirmButton.addEventListener('click', goHomeConfirmed);
     if (cancelButton) cancelButton.addEventListener('click', hideAlert);
-
-    // *** מאזין לכפתור מחיקת הכל ***
-    const deleteAllBtn = document.getElementById('delete-all-flights-btn');
-    if (deleteAllBtn) {
-        deleteAllBtn.addEventListener('click', () => {
-            if (window.confirm('האם אתה בטוח שברצונך למחוק את כל הגיחות? פעולה זו בלתי הפיכה!')) {
-                deleteAllFlights();
-            }
-        });
-    }
 
     const flightTableContainer = document.getElementById('flight-table-container');
     const flightTableContainerDb = document.getElementById('flight-table-container-db');
@@ -113,9 +94,7 @@ export function initializeAppEventListeners() {
         // מאזין ללחיצות (כפתורים)
         formStep2.addEventListener('click', (e) => {
             const target = e.target;
-
-            // שינוי 2: הוסר הבלוק של goal-button כי הוא הוחלף ב-Select
-
+            
             // טיפול בכפתור מחיקת תקלה
             const deleteBtn = target.closest('.delete-fault-btn');
             if (deleteBtn) {
