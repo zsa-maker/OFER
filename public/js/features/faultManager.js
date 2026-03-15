@@ -1,7 +1,6 @@
 // public/js/features/faultManager.js
 
 import { showToast, hideAllModals } from '../components/modals.js';
-import { fetchFlights} from '../core/global.js';
 import { getPeriodDisplay } from '../core/util.js';
 
 // משתנה עזר גלובלי לשמירת סטטוס היישום במודאל הפתוח
@@ -421,7 +420,19 @@ export function addFaultFromForm() {
     const faultSelect = document.getElementById('fault-select');
     const severity = document.getElementById('fault-severity').value;
     const instructorName = document.getElementById('instructor-name-1').value;
+
+    if (!faultSelect.value) {
+        import('../components/modals.js').then(m => m.showToast('יש לבחור תקלה קיימת או לבחור באחר / תקלה חדשה', 'red'));
+        return;
+    }
+
     let faultDescription = (faultSelect.value === 'OTHER') ? document.getElementById('other-fault-text').value.trim() : faultSelect.value;
+
+    if (faultSelect.value === 'OTHER' && !faultDescription) {
+        import('../components/modals.js').then(m => m.showToast('יש להזין פירוט עבור תקלה חדשה', 'red'));
+        return;
+    }
+
     const isDowntime = document.getElementById('fault-is-downtime')?.checked || false;
 
     const newFault = {
@@ -435,6 +446,24 @@ export function addFaultFromForm() {
     };
     window.currentForm.faults.push(newFault);
     renderFaultsTable(window.currentForm.faults);
+
+    // איפוס השדות כדי שהוולידציה לא תזהה אותם כ"באמצע הזנה"
+    faultSelect.value = '';
+    const otherFaultInput = document.getElementById('other-fault-text');
+    if (otherFaultInput) otherFaultInput.value = '';
+    const otherFaultGroup = document.getElementById('other-fault-group');
+    if (otherFaultGroup) otherFaultGroup.classList.add('hidden');
+
+    const sysClass = document.getElementById('fault-system-class');
+    if (sysClass) sysClass.value = '';
+    const sysClassDisplay = document.getElementById('fault-system-class-display');
+    if (sysClassDisplay) sysClassDisplay.textContent = 'בחר מערכת...';
+
+    const isDowntimeCb = document.getElementById('fault-is-downtime');
+    if (isDowntimeCb) isDowntimeCb.checked = false;
+
+    const severitySelect = document.getElementById('fault-severity');
+    if (severitySelect) severitySelect.value = 'קל';
 }
 
 export function renderFaultsTable(faults) {
@@ -470,8 +499,14 @@ export function renderFaultDatabaseTable() {
     let filteredFaults = Object.values(window.unifiedFaultsDatabase);
 
     if (simulatorFilter !== 'ALL') filteredFaults = filteredFaults.filter(f => f.simulator === simulatorFilter);
-    if (statusFilter !== 'ALL') filteredFaults = filteredFaults.filter(f => f.status.isResolved === (statusFilter === 'RESOLVED'));
-
+    if (statusFilter !== 'ALL') {
+        filteredFaults = filteredFaults.filter(f => {
+            if (statusFilter === 'OPEN') return !f.status.isResolved;
+            if (statusFilter === 'RESOLVED') return f.status.isResolved && !f.status.isClosedWithPermission;
+            if (statusFilter === 'PERMISSION') return f.status.isResolved && f.status.isClosedWithPermission;
+            return true;
+        });
+    }
     filteredFaults = filteredFaults.filter(f => {
         const reportDate = new Date(f.firstReportTimestamp);
         reportDate.setHours(0, 0, 0, 0);
@@ -526,21 +561,27 @@ export function renderFaultDatabaseTable() {
     tableBody.innerHTML = filteredFaults.map(fault => {
         const isResolved = fault.status.isResolved;
         const isChecked = faultSelectedSet.has(fault.key);
-
-        // יצירת מזהה בטוח כדי למנוע קריסת HTML בגלל גרשיים
         const safeKey = fault.key ? fault.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
 
-        return `<tr class="bg-white border-b hover:bg-ofer-primary-50 transition" onclick="window.showFaultDetailsModal('${safeKey}')">
+        // עיצוב שונה לתקלה פתוחה שמשביתה את המאמן
+        const isDowntime = fault.isDowntime && !isResolved;
+        const rowBg = isDowntime ? 'bg-red-50 border-r-4 border-red-500 hover:bg-red-100' : 'bg-white hover:bg-ofer-primary-50';
+
+        return `<tr class="${rowBg} border-b transition cursor-pointer" onclick="window.showFaultDetailsModal('${safeKey}')">
             <td class="px-6 py-4 text-center ${isFaultSelectionMode ? '' : 'hidden'}" onclick="event.stopPropagation()">
                 <input type="checkbox" class="fault-checkbox" data-key="${safeKey}" 
                     ${isChecked ? 'checked' : ''} 
                     onchange="window.toggleFaultCheckbox('${safeKey}')">
             </td>
-            <td class="px-6 py-4 text-sm">${fault.simulator}</td>
-            <td class="px-6 py-4 text-sm font-medium text-gray-900">${fault.description}</td>
+            <td class="px-6 py-4 text-sm font-medium">${fault.simulator}</td>
+            <td class="px-6 py-4 text-sm font-bold text-gray-900">
+                ${fault.isDowntime ? '<span class="text-red-600 mr-1" title="תקלה משביתה">⚠️</span> ' : ''}${fault.description}
+            </td>
             <td class="px-6 py-4 text-sm">${fault.systemClassification || '-'}</td>
             <td class="px-6 py-4 text-sm text-gray-500">${new Date(fault.firstReportTimestamp).toLocaleDateString('he-IL')}</td>
-            <td class="px-6 py-4 text-sm ${isResolved ? 'text-green-600 font-bold' : 'text-red-600'}">${isResolved ? 'טופלה' : 'פתוחה'}</td>
+            <td class="px-6 py-4 text-sm ${isResolved ? (fault.status.isClosedWithPermission ? 'text-yellow-600 font-bold' : 'text-green-600 font-bold') : 'text-red-600'}">
+                ${isResolved ? `${fault.status.isClosedWithPermission ? 'נסגר בהיתר' : 'טופלה'} <div class="text-[10px] text-gray-500 mt-1 font-normal">סיווג סגירה: ${fault.status.faultCategory || '-'}</div>` : 'פתוחה'}
+            </td>
         </tr>`;
     }).join('');
 }
@@ -562,6 +603,7 @@ export async function showFaultDetailsModal(faultKey) {
             <h3 class="font-bold border-b mb-2">פרטי דיווח</h3>
             <p><strong>סימולטור:</strong> ${fault.simulator}</p>
             <p><strong>מערכת:</strong> ${fault.systemClassification || '-'}</p>
+            <p><strong>השבית את המאמן:</strong> <span class="${fault.isDowntime ? 'text-red-600 font-bold bg-red-100 px-1 rounded' : 'text-gray-600'}">${fault.isDowntime ? 'כן ⚠️' : 'לא'}</span></p>
             <p><strong>מדריכה מדווחת:</strong> ${fault.reportingInstructor}</p>
             <p><strong>תיאור:</strong> ${fault.description}</p>
         </div>`;
@@ -820,7 +862,7 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 </select>
             </div>
 
-            <div>
+<div id="verified-section">
                 <label class="block text-xs font-bold mb-1">האם התקלה אומתה? (חובה)</label>
                 <div class="flex gap-4 p-2 border rounded bg-gray-50">
                     <label class="flex items-center gap-1 cursor-pointer">
@@ -834,15 +876,15 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 </div>
             </div>
 
-            <div id="verified-text-area">
-                <label class="block text-xs font-bold mb-1">תיאור הטיפול / סיבת אי-אימות</label>
+            <div id="verified-text-area" class="mt-2">
+                <label class="block text-xs font-bold mb-1">תיאור הטיפול / סיבת אי-אימות (חובה)</label>
                 <textarea id="res-desc" class="w-full border rounded p-2" rows="3" 
                           placeholder="פרט כאן את אופן הטיפול...">${isEditMode ? (existingData.resolutionDescription || '') : ''}</textarea>
             </div>
 
-            <div class="p-2 border rounded bg-yellow-50 border-yellow-200">
+            <div class="p-2 border rounded bg-yellow-50 border-yellow-200 mt-4">
                 <div class="flex items-center gap-2">
-                    <input type="checkbox" id="res-permission" onchange="window.togglePermissionText(this.checked)"
+                    <input type="checkbox" id="res-permission" onchange="window.updateResolutionFieldsVisibility()"
                            ${(isEditMode && existingData.isClosedWithPermission) ? 'checked' : ''}>
                     <label for="res-permission" class="font-bold">נסגר בהיתר</label>
                 </div>
@@ -852,7 +894,24 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 </div>
             </div>
 
-            <button onclick="window.processFaultClosure('${faultKey.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition-colors">
+            ${isEditMode && existingData.isClosedWithPermission ? `
+            <div class="p-2 border rounded bg-blue-50 border-blue-200 mt-4">
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="res-final-closure" onchange="window.updateResolutionFieldsVisibility()">
+                    <label for="res-final-closure" class="font-bold text-blue-800">האם התקלה טופלה סופית?</label>
+                </div>
+            </div>` : ''}
+
+            ${faultData.isDowntime ? `
+            <div class="p-3 border-2 rounded bg-red-50 border-red-400 mt-4 mb-2">
+                <label class="block text-sm font-bold mb-2 text-red-800"><i class="fas fa-exclamation-triangle"></i> תקלה זו השביתה את המאמן!</label>
+                <div class="flex items-center gap-2 bg-white p-2 rounded border">
+                    <input type="checkbox" id="res-sim-returned" class="w-5 h-5 cursor-pointer accent-red-600">
+                    <label for="res-sim-returned" class="font-bold cursor-pointer text-red-700">אני מאשר/ת שהמאמן שב לפעול כרגיל</label>
+                </div>
+            </div>` : ''}
+
+            <button onclick="window.processFaultClosure('${faultKey.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition-colors mt-4">
                 ${isEditMode ? 'עדכן וסגור' : 'אישור וסגירה'}
             </button>
         </div>`;
@@ -863,11 +922,20 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
     }
 
     modal.classList.remove('hidden');
+    window.updateResolutionFieldsVisibility();
 }
 
 async function processFaultClosure(faultKey) {
-    let technician = document.getElementById('res-technician').value;
+    const faultEntry = window.unifiedFaultsDatabase[faultKey];
+    if (faultEntry && faultEntry.isDowntime) {
+        const simReturned = document.getElementById('res-sim-returned');
+        if (simReturned && !simReturned.checked) {
+            showToast("חובה לאשר שהמאמן שב לפעול כרגיל לפני סגירת התקלה", "red");
+            return;
+        }
+    }
 
+    let technician = document.getElementById('res-technician').value;
     if (technician === 'OTHER') {
         const newTech = document.getElementById('res-new-technician').value.trim();
         if (!newTech) { showToast("יש להזין שם טכנאי חדש", "red"); return; }
@@ -881,18 +949,26 @@ async function processFaultClosure(faultKey) {
             }
         }
     }
-    const verifiedRadio = document.querySelector('input[name="verified-status"]:checked');
-    const description = document.getElementById('res-desc').value.trim();
-
-    // קריאת הסיווגים
-    const faultCategoryVal = document.getElementById('res-category').value;
-    const systemClassVal = document.getElementById('res-system-class').value;
-
-    if (!technician) { showToast("יש לבחור טכנאי", "red"); return; }
-    if (!verifiedRadio) { showToast("יש לסמן האם התקלה אומתה", "red"); return; }
-    if (!description) { showToast("יש להזין פירוט על הטיפול", "red"); return; }
 
     const isPermission = document.getElementById('res-permission').checked;
+    const isFinalClosure = document.getElementById('res-final-closure')?.checked;
+    
+    // אם המשתמש סימן שזה טופל סופית - התקלה כבר אינה מוגדרת פתוחה תחת היתר
+    const finalIsClosedWithPermission = isFinalClosure ? false : isPermission;
+
+    const verifiedRadio = document.querySelector('input[name="verified-status"]:checked');
+    const description = document.getElementById('res-desc').value.trim();
+    const faultCategoryVal = document.getElementById('res-category').value;
+    const systemClassVal = document.getElementById('res-system-class').value;
+    const isEditMode = document.getElementById('res-final-closure') !== null;
+
+    if (!technician) { showToast("יש לבחור טכנאי", "red"); return; }
+    
+    // בדיקת ולידציה של אופן הטיפול רק אם זו לא סגירה רגילה בהיתר
+    if (!finalIsClosedWithPermission) {
+        if (!verifiedRadio) { showToast("יש לסמן האם התקלה אומתה", "red"); return; }
+        if (!description) { showToast("יש להזין פירוט על הטיפול", "red"); return; }
+    }
 
     const dateVal = document.getElementById('res-date').value;
     const timeVal = document.getElementById('res-time').value;
@@ -900,12 +976,13 @@ async function processFaultClosure(faultKey) {
     const closureData = {
         isResolved: true,
         technicianName: technician,
-        faultCategory: faultCategoryVal, // <- התיקון לסיווג סגירה חסר!
-        systemClassification: systemClassVal, // <- שמירת סיווג המערכת המעודכן
-        isVerified: verifiedRadio.value === 'true',
-        resolutionDescription: description,
-        isClosedWithPermission: isPermission,
-        permissionNote: isPermission ? document.getElementById('res-permission-note').value : "",
+        faultCategory: faultCategoryVal,
+        systemClassification: systemClassVal,
+        isVerified: verifiedRadio ? verifiedRadio.value === 'true' : false,
+        resolutionDescription: description || "נסגר בהיתר - ללא פירוט",
+        isClosedWithPermission: finalIsClosedWithPermission,
+        wasClosedWithPermission: isEditMode ? true : isPermission, // סימון לטובת המדדים אם עבר היתר
+        permissionNote: finalIsClosedWithPermission ? document.getElementById('res-permission-note').value : "",
         date: dateVal,
         time: timeVal,
         timestamp: Date.now()
@@ -915,9 +992,9 @@ async function processFaultClosure(faultKey) {
         const { doc, setDoc } = window.firestoreFunctions;
         await setDoc(doc(window.db, "fault_resolutions", faultKey), closureData);
 
-        if (!window.faultResolutionStatus) window.faultResolutionStatus = {}; 
+        if (!window.faultResolutionStatus) window.faultResolutionStatus = {};
         window.faultResolutionStatus[faultKey] = closureData;
-        
+
         if (window.unifiedFaultsDatabase[faultKey]) {
             window.unifiedFaultsDatabase[faultKey].status = closureData;
             window.unifiedFaultsDatabase[faultKey].systemClassification = systemClassVal; // עדכון מקומי של סיווג המערכת
@@ -936,6 +1013,30 @@ async function processFaultClosure(faultKey) {
         console.error(e);
         showToast("שגיאה בשמירה", "red");
     }
+}
+
+function calculateOperatingHoursBetween(startTs, endTs, flights) {
+    let operatingMinutes = 0;
+    flights.forEach(f => {
+        if (f.executionStatus === 'בוטלה') return;
+        const flightDate = f.date;
+        const fStart = f.data['שעת התחלה'];
+        const fEnd = f.data['שעת סיום'];
+        if (!flightDate || !fStart || !fEnd) return;
+        
+        const fStartTs = new Date(`${flightDate}T${fStart}:00`).getTime();
+        let fEndTs = new Date(`${flightDate}T${fEnd}:00`).getTime();
+        if (fEndTs < fStartTs) fEndTs += 24 * 60 * 60 * 1000; // במקרה של גלישה מעבר לחצות
+        
+        const overlapStart = Math.max(startTs, fStartTs);
+        const overlapEnd = Math.min(endTs, fEndTs);
+        
+        // אם הגיחה התקיימה בזמן שהתקלה הייתה פתוחה
+        if (overlapEnd > overlapStart) {
+            operatingMinutes += (overlapEnd - overlapStart) / 60000;
+        }
+    });
+    return operatingMinutes / 60; // החזרה בשעות
 }
 
 // --- לוגיקת בחירה ומחיקת תקלות ---
@@ -1066,6 +1167,28 @@ window.togglePermissionText = (show) => {
 window.onFaultFilterChange = function () {
     renderFaultStatistics();
     renderFaultDatabaseTable();
+};
+
+window.updateResolutionFieldsVisibility = () => {
+    const isPermission = document.getElementById('res-permission')?.checked;
+    const isFinal = document.getElementById('res-final-closure')?.checked;
+    
+    const verifiedSection = document.getElementById('verified-section');
+    const descSection = document.getElementById('verified-text-area');
+    const permTextArea = document.getElementById('permission-text-area');
+    
+    if (permTextArea) {
+        permTextArea.classList.toggle('hidden', !isPermission);
+    }
+
+    // אם נסגר בהיתר וזה לא סגירה סופית -> נסתיר את אופן הטיפול והאימות (אין חובה למלא)
+    if (isPermission && !isFinal) {
+        if (verifiedSection) verifiedSection.classList.add('hidden');
+        if (descSection) descSection.classList.add('hidden');
+    } else {
+        if (verifiedSection) verifiedSection.classList.remove('hidden');
+        if (descSection) descSection.classList.remove('hidden');
+    }
 };
 
 // חשיפת פונקציות גלובליות

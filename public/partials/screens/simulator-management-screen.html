@@ -8,7 +8,7 @@
         <div class="flex gap-2 bg-white p-2 rounded-lg shadow-sm border">
             <select id="sim-filter-period" class="text-sm border-gray-300 rounded-md focus:ring-ofer-orange">
                 <option value="">כל התקופות</option>
-                </select>
+            </select>
             <select id="sim-filter-month" class="text-sm border-gray-300 rounded-md focus:ring-ofer-orange">
                 <option value="">כל החודשים</option>
                 <option value="0">ינואר</option><option value="1">פברואר</option><option value="2">מרץ</option>
@@ -19,6 +19,12 @@
         </div>
     </div>
 
-    <div id="simulators-dashboard-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        </div>
+    <div id="simulators-dashboard-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-6">
+    </div>
+
+    <div class="flex justify-end border-t pt-4">
+        <button onclick="window.openGlobalCloseModal()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2">
+            <i class="fas fa-power-off"></i> סגור את כל המאמנים להיום
+        </button>
+    </div>
 </div>

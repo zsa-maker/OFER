@@ -450,7 +450,7 @@ function populateDatalists() {
             if (el && list) {
                 // שומר על אופציית 'אחר' אם מדובר ברשימת ביטול, אחרת סתם בחר...
                 const isCancelSelect = id === 'cancellation-reason-select';
-                
+
                 el.innerHTML = '<option value="" disabled selected>בחר...</option>';
 
                 if (addNoneOption) {
@@ -463,13 +463,13 @@ function populateDatalists() {
                 list.forEach(item => {
                     // כדי שלא נוסיף את "אחר" פעמיים (נוסיף אותו באופן ידני בסוף)
                     if (isCancelSelect && item === 'אחר') return;
-                    
+
                     const opt = document.createElement('option');
                     opt.value = item;
                     opt.textContent = item;
                     el.appendChild(opt);
                 });
-                
+
                 // הוספת "אחר" תמיד בסוף עבור רשימת הביטולים
                 if (isCancelSelect) {
                     const otherOpt = document.createElement('option');
@@ -489,7 +489,7 @@ function populateDatalists() {
     fill('pilot-right', personnelLists.pilots);
     fill('pilot-left', personnelLists.pilots);
     fill('flight-type-select', personnelLists.flightTypes);
-    
+
     // --- הוספת מילוי לרשימת סיבות הביטול ---
     fill('cancellation-reason-select', personnelLists.cancellationReasons || []);
 }
@@ -498,7 +498,7 @@ export function saveCurrentStepData() {
     const inputs = document.querySelectorAll('#general-data-section [data-field], #flight-name, #flight-date, #start-time, #end-time, #general-remarks-input');
     inputs.forEach(input => {
         if (input.id === 'flight-type-select') return;
-        
+
         // וידוא שהערות כלליות נשמרות רק ביום אימון
         const typeSelect = document.getElementById('flight-type-select');
         if (input.id === 'general-remarks-input' && typeSelect && typeSelect.value !== 'יום אימון') {
@@ -533,6 +533,29 @@ export function validateForm(isCancellation = false) {
     });
 
     if (!isValid) { showToast('יש למלא שם, סוג גיחה, תאריך, שעת התחלה וסיום.', 'red'); return false; }
+
+    const faultEntryArea = document.getElementById('fault-entry-area');
+    if (faultEntryArea && !faultEntryArea.classList.contains('hidden')) {
+        const faultSelect = document.getElementById('fault-select');
+        const otherFaultText = document.getElementById('other-fault-text');
+
+        let isPartiallyFilled = false;
+        if (faultSelect && faultSelect.value) {
+            if (faultSelect.value === 'OTHER') {
+                if (otherFaultText && otherFaultText.value.trim() !== '') {
+                    isPartiallyFilled = true;
+                }
+            } else {
+                // נבחרה תקלה מהרשימה
+                isPartiallyFilled = true;
+            }
+        }
+
+        if (isPartiallyFilled) {
+            showToast('שמת לב? התחלת להזין תקלה אבל לא לחצת על "+ הוסף תקלה". אנא הוסף את התקלה (או אפס את בחירת התקלה) כדי להמשיך בשמירה.', 'red');
+            return false; // עוצר את השמירה עד הוספה או איפוס
+        }
+    }
 
     if (currentReportMode !== 'cancel') {
         const rows = document.querySelectorAll('#goals-list-wrapper .goal-row');

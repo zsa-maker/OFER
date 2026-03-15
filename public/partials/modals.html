@@ -457,3 +457,42 @@
         </div>
     </div>
 </div>
+
+<div id="global-close-modal" class="modal-overlay hidden">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right" dir="rtl">
+        <h3 class="text-xl font-bold mb-4 text-red-700 border-b pb-2">סגירת מתקן יומית</h3>
+        <p class="text-sm text-gray-600 mb-4">פעולה זו תקבע את שעת הסיום של ההפעלה עבור כל המאמנים להיום.</p>
+        <div class="mb-6">
+            <label class="block text-sm font-bold mb-2">שעת סגירה:</label>
+            <input type="time" id="global-close-time-input" class="w-full p-2 border rounded focus:ring-red-500">
+        </div>
+        <div class="flex justify-end gap-2">
+            <button onclick="document.getElementById('global-close-modal').classList.add('hidden')"
+                class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">ביטול</button>
+            <button onclick="window.saveGlobalCloseTime()"
+                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">אשר סגירה</button>
+        </div>
+    </div>
+</div>
+
+<div id="missing-close-modal" class="modal-overlay hidden z-[100]">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right border-4 border-ofer-orange" dir="rtl">
+        <h3 class="text-xl font-bold mb-2 text-ofer-dark-brown"><i
+                class="fas fa-exclamation-circle text-ofer-orange"></i> שים לב!</h3>
+        <p class="text-sm text-gray-700 mb-4">נראה שאתמול (<span id="missing-date-display" class="font-bold"></span>)
+            התקיימו גיחות אך לא נלחץ כפתור סגירת המתקן.</p>
+        <p class="text-xs text-gray-500 mb-4">אנא השלם את שעת סגירת המתקן מאתמול כדי שמדדי שעות ההפעלה יהיו מדויקים.</p>
+        <div class="mb-6">
+            <label class="block text-sm font-bold mb-2">מתי המאמנים נסגרו אתמול?</label>
+            <input type="time" id="missing-close-time-input" class="w-full p-2 border rounded focus:ring-ofer-orange">
+            <input type="hidden" id="missing-date-input">
+        </div>
+        <div class="flex justify-end gap-2">
+            <button onclick="document.getElementById('missing-close-modal').classList.add('hidden')"
+                class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-xs">דלג (יחושב לפי סיום גיחה
+                אחרונה)</button>
+            <button onclick="window.saveMissingCloseTime()"
+                class="px-4 py-2 bg-ofer-orange text-white rounded hover:bg-ofer-dark-brown">שמור נתונים</button>
+        </div>
+    </div>
+</div>

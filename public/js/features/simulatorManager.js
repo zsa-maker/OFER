@@ -3,21 +3,23 @@
 import { getPeriodDisplay } from '../core/util.js';
 import { showFaultDetailsModal } from './faultManager.js';
 
+window.facilityCloseTimes = {};
+
 let isListenerAttached = false;
 // משתני פילטר מקומיים
 let currentFilter = {
     period: '',
     month: ''
 };
-export function initSimulatorManager() {
-    // אתחול הפילטרים ב-UI
+
+export async function initSimulatorManager() {
     setupFilters();
+    await fetchFacilityCloseTimes(); // משיכת שעות הסגירה מהדאטהבייס
     renderSimulatorDashboard();
+    checkMissingCloseTimes(); // בדיקה אם שכחו לסגור אתמול
 
     if (!isListenerAttached) {
         window.addEventListener('personnelListsUpdated', () => renderSimulatorDashboard());
-
-        // מאזינים לשינוי פילטרים
         document.getElementById('sim-filter-period')?.addEventListener('change', (e) => {
             currentFilter.period = e.target.value;
             renderSimulatorDashboard();
@@ -26,8 +28,55 @@ export function initSimulatorManager() {
             currentFilter.month = e.target.value;
             renderSimulatorDashboard();
         });
-
         isListenerAttached = true;
+    }
+}
+
+async function fetchFacilityCloseTimes() {
+    if(!window.db || !window.firestoreFunctions) return;
+    try {
+        const { collection, getDocs } = window.firestoreFunctions;
+        const snap = await getDocs(collection(window.db, "facility_status"));
+        snap.forEach(doc => {
+            window.facilityCloseTimes[doc.id] = doc.data().closeTime;
+        });
+    } catch(e) { console.error("Failed to fetch close times", e); }
+}
+
+
+function checkMissingCloseTimes() {
+    if(!window.savedFlights || window.savedFlights.length === 0) return;
+    
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const todayStr = today.toISOString().split('T')[0];
+
+    // בדיקה לאתמול
+    const hadFlightsYesterday = window.savedFlights.some(f => f.date === yesterdayStr && f.executionStatus !== 'בוטלה');
+    if (hadFlightsYesterday && !window.facilityCloseTimes[yesterdayStr]) {
+        showMissingCloseModal(yesterdayStr);
+        return;
+    }
+
+    // בדיקה להיום (אם השעה אחרי 21:00)
+    if (today.getHours() >= 21) {
+        const hadFlightsToday = window.savedFlights.some(f => f.date === todayStr && f.executionStatus !== 'בוטלה');
+        if (hadFlightsToday && !window.facilityCloseTimes[todayStr]) {
+            showMissingCloseModal(todayStr);
+        }
+    }
+}
+
+function showMissingCloseModal(dateStr) {
+    const display = document.getElementById('missing-date-display');
+    const inputDate = document.getElementById('missing-date-input');
+    const modal = document.getElementById('missing-close-modal');
+    if(display && inputDate && modal) {
+        display.textContent = new Date(dateStr).toLocaleDateString('he-IL');
+        inputDate.value = dateStr;
+        modal.classList.remove('hidden');
     }
 }
 
@@ -146,28 +195,32 @@ function createSimulatorCardHTML(simName, index) {
     const headerBgColor = isDown ? 'bg-red-600' : 'bg-ofer-dark-brown'; // צביעה באדום
     const metrics = calculateSimulatorMetrics(simName, faults, getFilteredFlights(simName));
     const openFaultsList = openFaults.length > 0
-        ? openFaults.map(f => {
-            // יצירת מחרוזות בטוחות כדי למנוע שבירה של ה-HTML בגלל גרשיים או מרכאות
+       ? openFaults.map(f => {
             const safeKey = f.key ? f.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
             const safeDesc = f.description ? f.description.replace(/"/g, '&quot;') : 'ללא תיאור';
             const displayDesc = f.description || 'ללא תיאור';
+            
+            // בדיקה האם התקלה השביתה
+            const isFaultDown = f.isDowntime;
+            const itemBg = isFaultDown ? 'bg-red-500 text-white border-red-600 shadow-sm' : 'bg-red-50 text-gray-800 border-red-100 hover:bg-red-100';
+            const textClass = isFaultDown ? 'font-bold' : 'font-medium';
+            const dateClass = isFaultDown ? 'text-red-100' : 'text-gray-500';
 
             return `
-            <div class="flex justify-between items-center bg-red-50 p-2 rounded border border-red-100 mb-1 cursor-pointer hover:bg-red-100 transition"
+            <div class="flex justify-between items-center p-2 rounded border mb-1 cursor-pointer transition ${itemBg}"
                  onclick="window.showFaultDetailsModal('${safeKey}')">
-                <span class="text-xs font-medium truncate w-2/3" title="${safeDesc}">${displayDesc}</span>
-                <span class="text-[10px] text-gray-500">${f.firstReportTimestamp ? new Date(f.firstReportTimestamp).toLocaleDateString('he-IL') : ''}</span>
+                <span class="text-xs ${textClass} truncate w-2/3" title="${safeDesc}">${isFaultDown ? '⚠️ ' : ''}${displayDesc}</span>
+                <span class="text-[10px] ${dateClass}">${f.firstReportTimestamp ? new Date(f.firstReportTimestamp).toLocaleDateString('he-IL') : ''}</span>
             </div>
           `;
         }).join('')
         : `<div class="text-center text-gray-400 text-xs py-2">אין תקלות פתוחות 🎉</div>`;
-
+        
     return `
 <div class="bg-white rounded-xl shadow-md overflow-hidden border ${isDown ? 'border-red-500 ring-2 ring-red-300' : 'border-gray-100'} flex flex-col h-[500px]">
         <div class="${headerBgColor} text-white px-4 py-3 flex justify-between items-center relative">
             <h2 class="font-bold text-lg cursor-pointer hover:text-ofer-light-orange transition underline" onclick="window.openSimulatorDetailsModal('${simName}')">${simName}</h2>
         <div class="flex items-center gap-2">
-           <button onclick="window.openCloseSimulatorModal('${simName}')" class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded shadow">סגור מאמן להיום</button>
            <span class="bg-white text-ofer-dark-brown text-xs px-2 py-1 rounded-full font-bold">
                ${openFaults.length} תקלות פתוחות
            </span>
@@ -197,17 +250,9 @@ function createSimulatorCardHTML(simName, index) {
     </div>
         <div class="flex-grow grid grid-cols-2 gap-4 p-4 min-h-0 text-right" dir="rtl">
             <div class="flex flex-col gap-4 overflow-hidden">
-                <div class="grid grid-cols-2 gap-2">
-                    <div class="bg-blue-50 p-3 rounded-lg text-center border border-blue-100 flex flex-col justify-center">
-                        <div class="text-[11px] text-gray-500 mb-1 leading-tight">זמן ממוצע לסגירת תקלה בהיתר</div>
-                        <div class="text-lg font-bold text-blue-700">${avgCloseTime}</div>
-                        <div class="text-[10px] text-gray-400">שעות</div>
-                    </div>
-                    <div class="bg-orange-50 p-3 rounded-lg text-center border border-orange-100 flex flex-col justify-center">
-                        <div class="text-xs text-gray-500 mb-1">סה"כ דווחו (חודשי)</div>
-                        <div class="text-lg font-bold text-ofer-orange" id="monthly-count-${index}">-</div>
-                        <div class="text-[10px] text-gray-400">החודש הנוכחי</div>
-                    </div>
+                <div class="bg-orange-50 p-3 rounded-lg text-center border border-orange-100 flex flex-col justify-center">
+                    <div class="text-xs text-gray-500 mb-1">סה"כ תקלות שדווחו החודש</div>
+                    <div class="text-2xl font-bold text-ofer-orange" id="monthly-count-${index}">-</div>
                 </div>
                 <div class="flex-grow flex flex-col min-h-0 border rounded-lg p-2">
                     <h3 class="text-xs font-bold text-gray-700 mb-2 border-b pb-1">פירוט תקלות פתוחות</h3>
@@ -219,7 +264,7 @@ function createSimulatorCardHTML(simName, index) {
             <div class="flex flex-col gap-2 min-h-0">
                 <div class="flex-grow relative border rounded-lg p-2 bg-gray-50 cursor-pointer hover:bg-gray-100 transition" 
                      onclick="window.openSimulatorTrendModal('${simName}')">
-                    <h3 id="trend-title-${index}" class="text-xs font-bold text-gray-700 absolute top-2 right-2 z-10">תקלות לפי חודשים (לחץ להגדלה)</h3>
+                    <h3 id="trend-title-${index}" class="text-xs font-bold text-gray-700 absolute top-2 right-2 z-10">תקלות לפי חודשים</h3>
                     <canvas id="chart-sim-trend-${index}"></canvas>
                 </div>
                 <div class="h-1/3 relative border rounded-lg p-2 bg-gray-50">
@@ -466,20 +511,49 @@ window.openSimulatorDetailsModal = function (simName) {
 
     title.textContent = `תמונת מצב מפורטת: ${simName}`;
 
-    // משיכת הנתונים על סמך הפילטרים הקיימים
     const faults = getFilteredFaults(simName);
     const openFaults = faults.filter(f => f.status && !f.status.isResolved);
+    const flights = getFilteredFlights(simName);
+
+    // ממוצע 24/7 לכלל התקלות שאינן בהיתר
+    const generalResolved = faults.filter(f => f.status?.isResolved && !f.status?.isClosedWithPermission && f.status?.timestamp && f.firstReportTimestamp);
+    let generalAvg = "0";
+    if(generalResolved.length > 0) {
+        const totalMs = generalResolved.reduce((acc, f) => acc + (f.status.timestamp - f.firstReportTimestamp), 0);
+        generalAvg = (totalMs / generalResolved.length / (1000 * 60 * 60)).toFixed(1);
+    }
+
+    // חישוב ממוצע סגירת תקלה בהיתר (רק לפי שעות הפעלה)
+    const permissionFaults = faults.filter(f => f.status && f.status.isResolved && (f.status.isClosedWithPermission || f.status.wasClosedWithPermission));
+    let totalOperatingHours = 0;
+    let validCount = 0;
+
+    permissionFaults.forEach(f => {
+        if (f.firstReportTimestamp && f.status.timestamp) {
+            totalOperatingHours += calculateOperatingHoursBetween(f.firstReportTimestamp, f.status.timestamp, flights);
+            validCount++;
+        }
+    });
+    const avgOpCloseTime = validCount > 0 ? (totalOperatingHours / validCount).toFixed(1) : "0";
 
     content.innerHTML = `
         <div class="p-4" dir="rtl">
-            <div class="grid grid-cols-2 gap-4 mb-6 text-center">
+            <div class="grid grid-cols-4 gap-4 mb-6 text-center">
                 <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 shadow-sm">
                     <div class="text-3xl font-bold text-blue-700">${faults.length}</div>
-                    <div class="text-sm text-gray-600 mt-1">סה"כ תקלות בתקופה זו</div>
+                    <div class="text-[10px] font-bold text-gray-600 mt-1">סה"כ תקלות</div>
                 </div>
                 <div class="bg-red-50 p-4 rounded-lg border border-red-100 shadow-sm">
                     <div class="text-3xl font-bold text-red-700">${openFaults.length}</div>
-                    <div class="text-sm text-gray-600 mt-1">תקלות פתוחות להמשך טיפול</div>
+                    <div class="text-[10px] font-bold text-gray-600 mt-1">תקלות פתוחות</div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <div class="text-2xl font-bold text-gray-700">${generalAvg} ש'</div>
+                    <div class="text-[10px] font-bold text-gray-600 mt-1">ממוצע זמן טיפול (24/7)</div>
+                </div>
+                <div class="bg-green-50 p-4 rounded-lg border border-green-200 shadow-sm">
+                    <div class="text-2xl font-bold text-green-700">${avgOpCloseTime} ש'</div>
+                    <div class="text-[10px] font-bold text-gray-600 mt-1">ממוצע שעות הפעלה לטיפול בהיתר</div>
                 </div>
             </div>
             
@@ -488,8 +562,8 @@ window.openSimulatorDetailsModal = function (simName) {
                 <ul class="list-disc list-inside text-sm space-y-2">
                     ${openFaults.length > 0 ?
             openFaults.map(f => `
-                            <li class="pb-1 border-b border-gray-200 last:border-0">
-                                <strong>${f.description || 'ללא תיאור'}</strong> 
+                            <li class="pb-1 border-b border-gray-200 last:border-0 ${f.isDowntime ? 'text-red-600 font-bold' : ''}">
+                                ${f.isDowntime ? '⚠️ ' : ''}<strong>${f.description || 'ללא תיאור'}</strong> 
                                 <span class="text-gray-500 text-xs mr-2">(דווח ב: ${f.firstReportTimestamp ? new Date(f.firstReportTimestamp).toLocaleDateString('he-IL') : 'לא ידוע'})</span>
                             </li>
                         `).join('')
@@ -502,28 +576,96 @@ window.openSimulatorDetailsModal = function (simName) {
     modal.classList.remove('hidden');
 };
 
-window.saveSimulatorCloseTime = async function (simName, dateStr) {
-    const timeVal = document.getElementById('sim-close-time-input').value;
-    if (!timeVal) {
-        alert("נא להזין שעה");
-        return;
+// פונקציה שמחשבת את חלון ההפעלה של יום ספציפי: 15 דק' לפני גיחה ראשונה עד שעת הסגירה
+export function getDailyOperatingWindow(dateStr, flights) {
+    const dayFlights = flights.filter(f => f.date === dateStr && f.executionStatus !== 'בוטלה' && f.data['שעת התחלה']);
+    if(dayFlights.length === 0) return null;
+
+    let earliest = "23:59";
+    let latest = "00:00";
+    dayFlights.forEach(f => {
+        if(f.data['שעת התחלה'] < earliest) earliest = f.data['שעת התחלה'];
+        if(f.data['שעת סיום'] > latest) latest = f.data['שעת סיום'];
+    });
+
+    // התחלה: 15 דקות לפני גיחה ראשונה
+    const startDt = new Date(`${dateStr}T${earliest}:00`);
+    startDt.setMinutes(startDt.getMinutes() - 15);
+
+    // סיום: שעת סגירה מהדאטהבייס, ואם אין - שעת סיום של גיחה אחרונה
+    let endDt;
+    const closeTimeStr = window.facilityCloseTimes[dateStr];
+    if (closeTimeStr) {
+        endDt = new Date(`${dateStr}T${closeTimeStr}:00`);
+        if(endDt < startDt) endDt.setDate(endDt.getDate() + 1); // אם גלש מעבר לחצות
+    } else {
+        endDt = new Date(`${dateStr}T${latest}:00`);
     }
 
+    return { start: startDt.getTime(), end: endDt.getTime(), durationHours: (endDt.getTime() - startDt.getTime()) / 3600000 };
+}
+
+// חישוב שעות חופפות בין זמן התקלה לזמני ההפעלה האמיתיים
+function calculateOperatingHoursBetween(startTs, endTs, flights) {
+    const datesWithFlights = [...new Set(flights.map(f => f.date))];
+    let operatingMs = 0;
+
+    datesWithFlights.forEach(dateStr => {
+        const opWindow = getDailyOperatingWindow(dateStr, flights);
+        if(!opWindow) return;
+
+        const overlapStart = Math.max(startTs, opWindow.start);
+        const overlapEnd = Math.min(endTs, opWindow.end);
+
+        if (overlapEnd > overlapStart) {
+            operatingMs += (overlapEnd - overlapStart);
+        }
+    });
+
+    return operatingMs / (1000 * 60 * 60);
+}
+
+window.openGlobalCloseModal = function() {
+    const now = new Date();
+    document.getElementById('global-close-time-input').value = now.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+    document.getElementById('global-close-modal').classList.remove('hidden');
+}
+
+window.saveGlobalCloseTime = async function () {
+    const timeVal = document.getElementById('global-close-time-input').value;
+    const dateStr = new Date().toISOString().split('T')[0];
+    await _saveFacilityTime(dateStr, timeVal, 'global-close-modal');
+}
+
+window.saveMissingCloseTime = async function () {
+    const timeVal = document.getElementById('missing-close-time-input').value;
+    const dateStr = document.getElementById('missing-date-input').value;
+    if(!timeVal) {
+        import('../components/modals.js').then(m => m.showToast('נא להזין שעה', 'red'));
+        return;
+    }
+    await _saveFacilityTime(dateStr, timeVal, 'missing-close-modal');
+}
+
+async function _saveFacilityTime(dateStr, timeVal, modalId) {
+    if (!timeVal) return;
     if (window.firestoreFunctions && window.db) {
         const { doc, setDoc } = window.firestoreFunctions;
         try {
-            await setDoc(doc(window.db, "simulator_status", `${simName}_${dateStr}`), {
-                simName: simName,
+            await setDoc(doc(window.db, "facility_status", dateStr), {
                 date: dateStr,
                 closeTime: timeVal,
                 timestamp: Date.now()
             });
-            import('../components/modals.js').then(m => m.showToast('שעת סגירה נשמרה', 'green'));
-            document.getElementById('generic-modal').classList.add('hidden');
+            window.facilityCloseTimes[dateStr] = timeVal; // עדכון מקומי
+            import('../components/modals.js').then(m => m.showToast('שעת סגירת מתקן נשמרה', 'green'));
+            document.getElementById(modalId).classList.add('hidden');
+            renderSimulatorDashboard(); // רענון נתונים
         } catch (e) {
             console.error(e);
             import('../components/modals.js').then(m => m.showToast('שגיאה בשמירה', 'red'));
         }
     }
 }
+
 window.renderSimulatorDashboard = renderSimulatorDashboard;
