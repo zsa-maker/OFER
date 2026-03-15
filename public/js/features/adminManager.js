@@ -735,7 +735,7 @@ export async function performExport() {
     const endDateVal = document.getElementById('export-end-date').value;
 
     if (!startDateVal || !endDateVal) {
-        showToast("נא לבחור תאריכי התחלה וסיום", "yellow");
+        import('../components/modals.js').then(m => m.showToast("נא לבחור תאריכי התחלה וסיום", "yellow"));
         return;
     }
 
@@ -743,7 +743,7 @@ export async function performExport() {
     const end = new Date(endDateVal);
 
     if (end < start) {
-        showToast("תאריך סיום חייב להיות אחרי תאריך התחלה", "red");
+        import('../components/modals.js').then(m => m.showToast("תאריך סיום חייב להיות אחרי תאריך התחלה", "red"));
         return;
     }
 
@@ -766,11 +766,11 @@ export async function performExport() {
     const relevantFlights = savedFlights.filter(f => {
         let fDate = f.date;
         if (typeof fDate === 'string') fDate = new Date(fDate);
-        return fDate >= start && fDate <= end;
+        return fDate >= start && fDate <= end && f.executionStatus !== 'בוטלה';
     });
 
     if (relevantFlights.length === 0) {
-        showToast("לא נמצאו גיחות בטווח התאריכים שנבחר.", "yellow");
+        import('../components/modals.js').then(m => m.showToast("לא נמצאו גיחות (שלא בוטלו) בטווח התאריכים שנבחר.", "yellow"));
         return;
     }
 
@@ -781,8 +781,10 @@ export async function performExport() {
         if (f.date instanceof Date) dateStr = f.date.toISOString().split('T')[0];
 
         const sim = (f.data['סימולטור'] || 'אחר').toUpperCase().trim();
-        const startTime = f.data['שעת התחלה'] || '00:00';
-        const endTime = f.data['שעת סיום'] || '00:00';
+        const startTime = f.data['שעת התחלה'];
+        const endTime = f.data['שעת סיום'];
+
+        if (!startTime || !endTime) return; // מתעלמים מגיחות ללא שעות
 
         if (!groupedData[dateStr]) groupedData[dateStr] = {};
         if (!groupedData[dateStr][sim]) {
@@ -796,25 +798,27 @@ export async function performExport() {
         groupedData[dateStr][sim].endTimes.push(endTime);
     });
 
-    let simulatorStatuses = {};
+    // משיכת שעות סגירת המתקן הכלליות
+    let facilityStatuses = {};
     if (window.firestoreFunctions && window.db) {
         try {
             const { collection, getDocs, query, where } = window.firestoreFunctions;
-            const q = query(collection(window.db, "simulator_status"),
+            const q = query(collection(window.db, "facility_status"),
                 where("date", ">=", startDateVal),
                 where("date", "<=", endDateVal));
             const snap = await getDocs(q);
             snap.forEach(doc => {
                 const data = doc.data();
-                simulatorStatuses[`${data.simName}_${data.date}`] = data.closeTime;
+                facilityStatuses[data.date] = data.closeTime;
             });
         } catch (e) {
-            console.error("Failed to load simulator statuses", e);
+            console.error("Failed to load facility statuses", e);
         }
     }
 
     let csvContent = "\uFEFF";
-    csvContent += "תאריך,יום,מאמן,שעת מסירה,שעת סגירה,זמן הפעלה (שעות),עם תמיכה,מנהל יומי\n";
+    // כותרות מעודכנות לאקסל
+    csvContent += "תאריך,יום,מאמן,שעת גיחה ראשונה,שעת גיחה אחרונה,חלון הפעלה (שעות),סהכ שעות הפעלה מצטבר,עם תמיכה,מנהל יומי\n";
 
     const sortedDates = Object.keys(groupedData).sort();
 
@@ -825,6 +829,9 @@ export async function performExport() {
         let support = plan?.support ? 'V' : '';
         const hebrewDay = getHebrewDay(dateStr);
 
+        // שעת הסגירה הכללית של המתקן באותו היום
+        const closeTime = facilityStatuses[dateStr];
+
         simulators.forEach(sim => {
             const times = groupedData[dateStr][sim];
             times.startTimes.sort();
@@ -833,18 +840,34 @@ export async function performExport() {
             const firstStart = times.startTimes[0];
             const lastEnd = times.endTimes[times.endTimes.length - 1];
 
-            // חישוב זמן הפעלה
-            let operatingHours = '';
-            const closeTime = simulatorStatuses[`${sim}_${dateStr}`];
-            if (closeTime && firstStart) {
-                // חישוב זמן הפעלה: שעה וחצי לפני שעת מסירה עד שעת סגירה
-                const startObj = new Date(`2000-01-01T${firstStart}`);
-                startObj.setMinutes(startObj.getMinutes() - 90); // שעה וחצי לפני
-                const closeObj = new Date(`2000-01-01T${closeTime}`);
+            let operatingWindowDisplay = '';
+            let operatingHoursCount = '';
 
-                let diffMs = closeObj - startObj;
+            if (firstStart) {
+                // שעת התחלת הפעלה (15 דקות לפני הגיחה הראשונה)
+                const startObj = new Date(`2000-01-01T${firstStart}:00`);
+                startObj.setMinutes(startObj.getMinutes() - 15);
+                const opStartStr = startObj.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+
+                let endObj;
+                let opEndStr;
+
+                if (closeTime) {
+                    endObj = new Date(`2000-01-01T${closeTime}:00`);
+                    opEndStr = closeTime;
+                    // אם שעת הסגירה גלשה מעבר לחצות
+                    if(endObj < startObj) endObj.setDate(endObj.getDate() + 1); 
+                } else {
+                    // אם המשתמש דילג על השלמת שעת סגירה, לוקחים את סיום הגיחה האחרונה
+                    endObj = new Date(`2000-01-01T${lastEnd}:00`);
+                    opEndStr = lastEnd;
+                }
+
+                operatingWindowDisplay = `${opStartStr} - ${opEndStr}`;
+                
+                let diffMs = endObj - startObj;
                 if (diffMs > 0) {
-                    operatingHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+                    operatingHoursCount = (diffMs / (1000 * 60 * 60)).toFixed(2);
                 }
             }
 
@@ -852,20 +875,20 @@ export async function performExport() {
             const [y, m, d] = dateStr.split('-');
             const formattedDate = `${d}/${m}/${y}`;
 
-            csvContent += `${formattedDate},${hebrewDay},${sim},${firstStart},${lastEnd},${operatingHours},${support},${cleanManager}\n`;
+            csvContent += `${formattedDate},${hebrewDay},${sim},${firstStart},${lastEnd},${operatingWindowDisplay},${operatingHoursCount},${support},${cleanManager}\n`;
         });
     });
 
     const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `דוח_גיחות_${startDateVal}_${endDateVal}.csv`);
+    link.setAttribute("download", `דוח_הפעלה_עופר_${startDateVal}_${endDateVal}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
     document.getElementById('export-report-modal').classList.add('hidden');
-    showToast("הדוח נוצר בהצלחה!", "green");
+    import('../components/modals.js').then(m => m.showToast("הדוח נוצר בהצלחה!", "green"));
 }
 
 window.openExportModal = () => {

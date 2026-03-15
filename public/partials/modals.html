@@ -477,22 +477,17 @@
 
 <div id="missing-close-modal" class="modal-overlay hidden z-[100]">
     <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right border-4 border-ofer-orange" dir="rtl">
-        <h3 class="text-xl font-bold mb-2 text-ofer-dark-brown"><i
-                class="fas fa-exclamation-circle text-ofer-orange"></i> שים לב!</h3>
-        <p class="text-sm text-gray-700 mb-4">נראה שאתמול (<span id="missing-date-display" class="font-bold"></span>)
-            התקיימו גיחות אך לא נלחץ כפתור סגירת המתקן.</p>
-        <p class="text-xs text-gray-500 mb-4">אנא השלם את שעת סגירת המתקן מאתמול כדי שמדדי שעות ההפעלה יהיו מדויקים.</p>
+        <h3 class="text-xl font-bold mb-2 text-ofer-dark-brown"><i class="fas fa-exclamation-circle text-ofer-orange"></i> השלמת נתונים</h3>
+        <p class="text-sm text-gray-700 mb-4">ביום <span id="missing-date-display" class="font-bold"></span> התקיימו גיחות אך לא נלחץ כפתור סגירת המתקן.</p>
+        <p class="text-xs text-gray-500 mb-4">אנא השלם את שעת סגירת המתקן לאותו יום כדי שמדדי שעות ההפעלה יהיו מדויקים.</p>
         <div class="mb-6">
-            <label class="block text-sm font-bold mb-2">מתי המאמנים נסגרו אתמול?</label>
+            <label class="block text-sm font-bold mb-2">מתי המתקן נסגר באותו יום?</label>
             <input type="time" id="missing-close-time-input" class="w-full p-2 border rounded focus:ring-ofer-orange">
             <input type="hidden" id="missing-date-input">
         </div>
         <div class="flex justify-end gap-2">
-            <button onclick="document.getElementById('missing-close-modal').classList.add('hidden')"
-                class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-xs">דלג (יחושב לפי סיום גיחה
-                אחרונה)</button>
-            <button onclick="window.saveMissingCloseTime()"
-                class="px-4 py-2 bg-ofer-orange text-white rounded hover:bg-ofer-dark-brown">שמור נתונים</button>
+            <button onclick="document.getElementById('missing-close-modal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-sm font-bold">דלג לעת עתה</button>
+            <button onclick="window.saveMissingCloseTime()" class="px-4 py-2 bg-ofer-orange text-white rounded hover:bg-ofer-dark-brown font-bold">שמור נתונים</button>
         </div>
     </div>
 </div>

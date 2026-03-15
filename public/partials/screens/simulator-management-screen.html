@@ -4,18 +4,60 @@
             <h1 class="text-3xl font-bold text-gray-800">ניהול מאמנים</h1>
             <div class="text-sm text-gray-500">תמונת מצב וסטטיסטיקות</div>
         </div>
-        
-        <div class="flex gap-2 bg-white p-2 rounded-lg shadow-sm border">
-            <select id="sim-filter-period" class="text-sm border-gray-300 rounded-md focus:ring-ofer-orange">
-                <option value="">כל התקופות</option>
-            </select>
-            <select id="sim-filter-month" class="text-sm border-gray-300 rounded-md focus:ring-ofer-orange">
-                <option value="">כל החודשים</option>
-                <option value="0">ינואר</option><option value="1">פברואר</option><option value="2">מרץ</option>
-                <option value="3">אפריל</option><option value="4">מאי</option><option value="5">יוני</option>
-                <option value="6">יולי</option><option value="7">אוגוסט</option><option value="8">ספטמבר</option>
-                <option value="9">אוקטובר</option><option value="10">נובמבר</option><option value="11">דצמבר</option>
-            </select>
+
+        <div class="flex flex-wrap gap-4 items-end bg-white p-3 rounded-lg shadow-sm border">
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">סנן זמן לפי:</label>
+                <select id="sim-time-filter-type"
+                    onchange="window.toggleSimTimeFilters(this.value); window.renderSimulatorDashboard();"
+                    class="block w-full text-sm rounded-md border-gray-300 shadow-sm focus:ring-ofer-orange">
+                    <option value="all">כל הזמן</option>
+                    <option value="period">תקופה</option>
+                    <option value="month">חודש (בתוך תקופה)</option>
+                    <option value="week">שבוע (בתוך תקופה)</option>
+                    <option value="range">טווח תאריכים</option>
+                </select>
+            </div>
+            <div id="sim-filter-period-group" class="hidden">
+                <label class="block text-xs font-medium text-gray-700 mb-1">בחירת תקופה:</label>
+                <select id="sim-period-select" onchange="window.renderSimulatorDashboard()"
+                    class="block w-full text-sm border-gray-300 rounded-md shadow-sm"></select>
+            </div>
+            <div id="sim-filter-month-group" class="hidden">
+                <label class="block text-xs font-medium text-gray-700 mb-1">בחירת חודש:</label>
+                <select id="sim-month-select" onchange="window.renderSimulatorDashboard()"
+                    class="block w-full text-sm border-gray-300 rounded-md shadow-sm">
+                    <option value="0">ינואר</option>
+                    <option value="1">פברואר</option>
+                    <option value="2">מרץ</option>
+                    <option value="3">אפריל</option>
+                    <option value="4">מאי</option>
+                    <option value="5">יוני</option>
+                    <option value="6">יולי</option>
+                    <option value="7">אוגוסט</option>
+                    <option value="8">ספטמבר</option>
+                    <option value="9">אוקטובר</option>
+                    <option value="10">נובמבר</option>
+                    <option value="11">דצמבר</option>
+                </select>
+            </div>
+            <div id="sim-filter-week-group" class="hidden">
+                <label class="block text-xs font-medium text-gray-700 mb-1">בחירת שבוע:</label>
+                <select id="sim-week-select" onchange="window.renderSimulatorDashboard()"
+                    class="block w-full text-sm border-gray-300 rounded-md shadow-sm"></select>
+            </div>
+            <div id="sim-filter-range-group" class="hidden flex gap-2">
+                <div>
+                    <label class="block text-[10px] font-medium text-gray-500 mb-1">מתאריך:</label>
+                    <input type="date" id="sim-date-start" onchange="window.renderSimulatorDashboard()"
+                        class="block w-full text-xs rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-medium text-gray-500 mb-1">עד תאריך:</label>
+                    <input type="date" id="sim-date-end" onchange="window.renderSimulatorDashboard()"
+                        class="block w-full text-xs rounded-md border-gray-300 shadow-sm">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -23,7 +65,8 @@
     </div>
 
     <div class="flex justify-end border-t pt-4">
-        <button onclick="window.openGlobalCloseModal()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2">
+        <button onclick="window.openGlobalCloseModal()"
+            class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2">
             <i class="fas fa-power-off"></i> סגור את כל המאמנים להיום
         </button>
     </div>
