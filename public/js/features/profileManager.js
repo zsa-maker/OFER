@@ -123,7 +123,6 @@ window.profileManager.updateMatrix = function () {
     const selectedPeriodName = periodSelect.value;
     const periodConfig = plan.periodConfigs ? plan.periodConfigs[selectedPeriodName] : { min: 0, target: 0 };
 
-    // סינון הגיחות: עכשיו משתמש בפונקציה החכמה שבודקת מול הגדרות המנהל
     const allFlights = window.savedFlights || [];
     const filteredFlights = allFlights.filter(f => {
         const periodOfFlight = getFlightPeriodName(f.date, plan).trim();
@@ -131,10 +130,10 @@ window.profileManager.updateMatrix = function () {
         const isNotCancelled = f.executionStatus !== 'בוטלה';
         return isSamePeriod && isNotCancelled;
     });
+    
     const type = typeSelect.value;
     const insFlightType = document.querySelector('input[name="ins-flight-type"]:checked')?.value;
 
-    // הצגת/הסתרת בורר סוג הגיחה למדריכים
     if (insFlightTypeContainer) {
         type === 'instructors' ? insFlightTypeContainer.classList.remove('hidden') : insFlightTypeContainer.classList.add('hidden');
     }
@@ -142,7 +141,6 @@ window.profileManager.updateMatrix = function () {
     const subPopName = subPopSelect.value.trim().replace(/["']/g, '"');
     const populations = window.pilotPopulations;
 
-    // קביעת רשימת הגיחות הרלוונטיות לתצוגה לפי סוג האוכלוסייה
     let relevantFlights = [];
     if (type === 'instructors') {
         relevantFlights = insFlightType === 'instructor' ? (populations.flightMapping?.instructors || []) : (populations.flightMapping?.students || []);
@@ -152,33 +150,38 @@ window.profileManager.updateMatrix = function () {
         relevantFlights = populations.flightMapping?.students || [];
     }
 
-    // קביעת רשימת הטייסים הרלוונטיים לפי תת-אוכלוסייה
     let groups = [];
     if (type === 'instructors') groups = populations.instructorGroups || [];
     else if (type === 'conversion') groups = populations.conversionGroups || [];
     else groups = populations.courses || [];
 
+    // תוקן: שליפה חכמה של טייסים שתומכת גם ב-members וגם ב-students לכל סוגי האוכלוסיות
     let relevantPilots = [];
     if (subPopName === "ALL") {
-        groups.forEach(g => relevantPilots.push(...(type === 'instructors' ? (g.members || []) : (g.students || []))));
+        groups.forEach(g => relevantPilots.push(...(g.members || g.students || [])));
         relevantPilots = [...new Set(relevantPilots)];
     } else {
         const group = groups.find(g => g.name.trim().replace(/["']/g, '"') === subPopName);
-        if (group) relevantPilots = type === 'instructors' ? (group.members || []) : (group.students || []);
+        if (group) relevantPilots = group.members || group.students || [];
     }
 
-    // הגדרת תצוגת מכסות (רק למדריכים בגיחות הדרכה)
     const showQuotas = type === 'instructors' && insFlightType === 'instructor';
     const quotas = {
         min: parseInt(periodConfig.min) || 0,
         target: parseInt(periodConfig.target) || 0
     };
 
-    // בניית כותרת הטבלה (Thead)
+    // בניית כותרת הטבלה (Thead) - כל הכותרות הוסבו לאנכיות
+// בניית כותרת הטבלה (Thead) - כל הכותרות באותו גודל בדיוק
+// בניית כותרת הטבלה (Thead) - רוחב מינימלי אחיד, מתרחב רק אם הטקסט דורש זאת
     thead.innerHTML = `
     <tr class="bg-gray-100">
-        <th class="p-2 border font-bold text-right sticky right-0 z-10 bg-gray-100 min-w-[120px]">שם הטייס</th>
-        <th class="p-2 border font-bold text-right min-w-[100px]">אוכלוסייה</th>
+        <th class="border p-0 text-sm h-32 w-12 min-w-[48px] text-center align-bottom sticky right-0 z-10 bg-gray-100 whitespace-nowrap">
+            <div class="vertical-header inline-block font-bold">שם הטייס</div>
+        </th>
+        <th class="border p-0 text-sm h-32 w-12 min-w-[48px] text-center align-bottom whitespace-nowrap">
+            <div class="vertical-header inline-block font-bold">אוכלוסייה</div>
+        </th>
         <th class="border p-0 text-xs h-32 w-12 min-w-[48px] text-center align-bottom">
             <div class="vertical-header inline-block">בונוס</div>
         </th>
@@ -202,7 +205,6 @@ window.profileManager.updateMatrix = function () {
         const cleanPilot = pilot.trim();
         const subPop = groups.find(g => (g.students || g.members || []).some(m => m.trim() === cleanPilot))?.name || "-";
 
-        // חישוב כמות גיחות "בונוס" לתקופה הנבחרת
         const bonusCount = filteredFlights.filter(f => {
             const d = f.data || {};
             const names = [d['טייס ימין'], d['טייס שמאל'], d['מדריך'], d['מדריכה']].map(n => n?.toString().trim());
@@ -219,13 +221,11 @@ window.profileManager.updateMatrix = function () {
 
             totalForQuotas += count;
             const didFly = count > 0;
-            // הצגת המספר על הרקע הירוק רק אם בוצע יותר מסיבוב אחד
             return `<td class="border p-0 w-12 min-w-[48px] text-center align-middle ${didFly ? 'bg-green-500' : 'bg-red-500'}">
                         ${count > 1 ? `<span class="text-white font-bold text-sm">${count}</span>` : ''}
                     </td>`;
         }).join('');
 
-        // בניית תאי המכסות (במידה ורלוונטי)
         let quotasHtml = '';
         if (showQuotas) {
             quotasHtml = `
@@ -238,10 +238,11 @@ window.profileManager.updateMatrix = function () {
             `;
         }
 
+        // שימוש ב- whitespace-nowrap ללא חיתוך הטקסט, מה שיגרום לעמודה להתרחב רק בהתאם לטקסט ארוך
         return `<tr>
-            <td class="border p-2 font-bold sticky right-0 z-10 bg-white">${pilot}</td>
-            <td class="border p-2 text-gray-600 text-sm">${subPop}</td>
-            <td class="border p-2 text-center font-bold text-blue-600 text-sm bg-gray-50">${bonusCount}</td>
+            <td class="border p-2 font-bold sticky right-0 z-10 bg-white w-12 min-w-[48px] text-center whitespace-nowrap">${pilot}</td>
+            <td class="border p-2 text-gray-600 text-sm w-12 min-w-[48px] text-center whitespace-nowrap">${subPop}</td>
+            <td class="border p-2 text-center font-bold text-blue-600 text-sm bg-gray-50 w-12 min-w-[48px]">${bonusCount}</td>
             ${quotasHtml}${cells}
         </tr>`;
     }).join('');
