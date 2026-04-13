@@ -1178,11 +1178,16 @@ window.filterPersonnelModal = () => {
     filteredItems.forEach(name => {
         const div = document.createElement('div');
         div.className = "flex justify-between items-center bg-white p-3 mb-2 rounded shadow-sm border border-gray-100";
+        
+        // --- שורת התיקון: ניקוי תווים מיוחדים למניעת שבירת ה-JavaScript ---
+        const safeName = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+        // עדכון קריאות הפונקציות להשתמש ב-safeName
         div.innerHTML = `
             <span class="font-bold text-gray-800">${name}</span>
             <div class="flex gap-2">
-                <button onclick="window.initMergePersonnel('${name}')" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">מיזוג עם שם אחר</button>
-                <button onclick="window.removePerson('${currentModalType}', personnelLists['${currentModalType}'].indexOf('${name}')); window.filterPersonnelModal();" 
+                <button onclick="window.initMergePersonnel('${safeName}')" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">מיזוג עם שם אחר</button>
+                <button onclick="window.removePerson('${currentModalType}', personnelLists['${currentModalType}'].indexOf('${safeName}')); window.filterPersonnelModal();" 
                         class="text-red-500 hover:text-red-700">🗑️</button>
             </div>
         `;
