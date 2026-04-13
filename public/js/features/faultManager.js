@@ -13,6 +13,98 @@ let isFaultSelectionMode = false;
 let faultSelectedSet = new Set();
 
 /**
+ * פונקציה לפתיחת טופס הזנה ידנית לתקלה
+ */
+window.openManualFaultModal = function () {
+    const simSelect = document.getElementById('manual-fault-sim');
+    const techSelect = document.getElementById('manual-fault-instructor'); // זהו השדה של הדיווח
+    const sysSelect = document.getElementById('manual-sys-input');
+
+    if (simSelect && window.personnelLists?.simulators) {
+        simSelect.innerHTML = '<option value="" disabled selected>בחר מאמן...</option>' +
+            window.personnelLists.simulators.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+
+    // תיקון: שימוש ברשימת הטכנאים (technicians) במקום מדריכות
+    if (techSelect && window.personnelLists?.technicians) {
+        techSelect.innerHTML = '<option value="" disabled selected>בחר טכנאי מדווח...</option>' +
+            window.personnelLists.technicians.map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+
+    if (sysSelect && window.systemClassifications) {
+        let sysOptions = '<option value="">ללא סיווג</option>';
+        Object.keys(window.systemClassifications).sort().forEach(category => {
+            const subItems = window.systemClassifications[category] || [];
+            if (subItems.length > 0) {
+                subItems.forEach(sub => { sysOptions += `<option value="${category} - ${sub}">${category} - ${sub}</option>`; });
+            } else {
+                sysOptions += `<option value="${category}">${category}</option>`;
+            }
+        });
+        sysSelect.innerHTML = sysOptions;
+    }
+
+    const timeInput = document.getElementById('manual-fault-time');
+    if (timeInput) {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        timeInput.value = now.toISOString().slice(0, 16);
+    }
+
+    document.getElementById('manual-fault-modal')?.classList.remove('hidden');
+};
+
+window.saveManualFault = async function () {
+    const sim = document.getElementById('manual-fault-sim').value;
+    const instructor = document.getElementById('manual-fault-instructor').value; // יכול להיות ריק
+    const desc = document.getElementById('manual-fault-desc').value.trim();
+    const sysClass = document.getElementById('manual-sys-input').value;
+    const severity = document.getElementById('manual-fault-severity').value;
+    const isDowntime = document.getElementById('manual-fault-downtime').checked;
+    const timeStr = document.getElementById('manual-fault-time').value;
+
+    if (!sim || !desc || !timeStr) {
+        import('../components/modals.js').then(m => m.showToast("נא למלא תאריך, מאמן ותיאור", "yellow"));
+        return;
+    }
+
+    const faultData = {
+        simulator: sim,
+        reportingInstructor: instructor || "לא צוין",
+        description: desc,
+        systemClassification: sysClass,
+        severity: severity,
+        isDowntime: isDowntime,
+        timestamp: new Date(timeStr).getTime(),
+        isManualEntry: true
+    };
+
+    try {
+        const { collection, addDoc } = window.firestoreFunctions;
+
+        // שמירה במסד הנתונים וקבלת ה-ID החדש
+        const docRef = await addDoc(collection(window.db, "standalone_faults"), faultData);
+
+        // עדכון המערך המקומי כדי שהטבלה תתעדכן מיד
+        const newFaultWithId = { id: docRef.id, ...faultData };
+        if (!window.standaloneFaults) window.standaloneFaults = [];
+        window.standaloneFaults.push(newFaultWithId);
+
+        import('../components/modals.js').then(m => {
+            m.showToast("התקלה נוספה בהצלחה!", "green");
+            m.hideAllModals();
+        });
+
+        // עיבוד מחדש ורינדור של הטבלה
+        if (typeof window.processFaultsData === 'function') window.processFaultsData();
+        if (typeof window.renderFaultDatabaseTable === 'function') window.renderFaultDatabaseTable();
+
+    } catch (e) {
+        console.error("Manual fault save failed:", e);
+        import('../components/modals.js').then(m => m.showToast("שגיאה בשמירה", "red"));
+    }
+};
+/**
  * אתחול מאגר התקלות - הגדרת פילטרים וביצוע רינדור ראשוני
  */
 window.switchFaultTab = function (tab) {
@@ -205,10 +297,11 @@ export async function initFaultDatabase() {
             console.error("Failed to load planning settings for weeks filter", e);
         }
     }
-    // הוספה בתוך פונקציית האתחול של ה-Fault Manager
+
     document.getElementById('simulator-select')?.addEventListener('change', (e) => {
         window.populateFaultOptions(e.target.value);
     });
+
     const sim = document.getElementById('simulator-select');
     if (sim && !sim.dataset.listenerAttached) {
         sim.addEventListener('change', (e) => {
@@ -216,13 +309,16 @@ export async function initFaultDatabase() {
         });
         sim.dataset.listenerAttached = "true";
     }
+
     const sims = (window.personnelLists && window.personnelLists.simulators) ? window.personnelLists.simulators : [];
     simSelect.innerHTML = '<option value="ALL">כל המאמנים</option>' +
         sims.map(sim => `<option value="${sim}">${sim}</option>`).join('');
 
     populateFaultPeriodFilter();
     populateFaultWeekFilter();
-    renderFaultDatabaseTable();
+
+    // חובה להוסיף את השורה הזו כדי לשלוף את התקלות הידניות מהשרת!
+    await fetchStandaloneFaults();
 }
 
 /**
@@ -232,6 +328,7 @@ export function processFaultsData() {
     const currentResolutionStatus = window.faultResolutionStatus || {};
     const unifiedFaultsDatabase = window.unifiedFaultsDatabase || {};
     const savedFlights = window.savedFlights || [];
+    const standaloneFaults = window.standaloneFaults || []; // NEW
 
     Object.keys(unifiedFaultsDatabase).forEach(key => delete unifiedFaultsDatabase[key]);
 
@@ -262,6 +359,7 @@ export function processFaultsData() {
                     unifiedFaultsDatabase[joinedKey].sourceFlights.push(flight.id);
                 } else {
                     const openCycleKey = `${baseKey}|${reportTimestamp}`;
+                    const cycleStatus = currentResolutionStatus[openCycleKey] || { isResolved: false };
                     unifiedFaultsDatabase[openCycleKey] = {
                         key: openCycleKey,
                         baseKey: baseKey,
@@ -271,15 +369,32 @@ export function processFaultsData() {
                         reportingInstructor: flight.data['מדריכה'] || "לא ידוע",
                         firstReportTimestamp: reportTimestamp,
                         lastReportTimestamp: reportTimestamp,
-                        systemClassification: fault.systemClassification,
                         severity: fault.severity,
                         isDowntime: fault.isDowntime || false,
-                        status: currentResolutionStatus[openCycleKey] || { isResolved: false },
-                        sourceFlights: [flight.id] // אתחול מערך גיחות מקור
+                        systemClassification: cycleStatus.systemClassification ? cycleStatus.systemClassification : fault.systemClassification,
+                        status: cycleStatus,
+                        sourceFlights: [flight.id]
                     };
                 }
             });
         }
+    });
+
+    standaloneFaults.forEach(fault => {
+        const baseKey = `${fault.simulator}|${fault.description}`;
+        const key = fault.id || `MANUAL|${baseKey}|${fault.timestamp}`; // שימוש ב-ID אם קיים
+        const manualCycleStatus = currentResolutionStatus[key] || { isResolved: false };
+        
+        unifiedFaultsDatabase[key] = {
+            ...fault,
+            key: key,
+            baseKey: baseKey,
+            reportCount: 1,
+            firstReportTimestamp: fault.timestamp,
+            lastReportTimestamp: fault.timestamp,
+            systemClassification: manualCycleStatus.systemClassification || fault.systemClassification,
+            status: manualCycleStatus // כאן נמצא ה-faultCategory
+        };
     });
 
     const sims = (window.personnelLists && window.personnelLists.simulators) ? window.personnelLists.simulators : [];
@@ -353,55 +468,6 @@ export function setupCustomDropdown(triggerId, menuId, inputId, displayId, initi
     });
 }
 
-export function populateFaultOptions(simulatorId) {
-    const simulatorFaults = window.simulatorFaults || {};
-    const faultSelects = document.querySelectorAll('[id="fault-select"]');
-    const otherFaultGroups = document.querySelectorAll('[id="other-fault-group"]');
-    const faultEntryAreas = document.querySelectorAll('[id="fault-entry-area"]');
-    const addFaultBtns = document.querySelectorAll('[id="add-fault-btn"]');
-    const addFaultContainers = document.querySelectorAll('[id="add-fault-container"]');
-    const simSelectContainers = document.querySelectorAll('[id="simulator-select-container"]');
-    const simDisplays = document.querySelectorAll('[id="simulator-display"]');
-    const simNameSpans = document.querySelectorAll('[id="selected-simulator-name"]');
-
-    if (simulatorId) {
-        simSelectContainers.forEach(el => el.classList.add('hidden'));
-        simDisplays.forEach(el => el.classList.remove('hidden'));
-        simNameSpans.forEach(el => el.textContent = simulatorId);
-        faultEntryAreas.forEach(el => el.classList.remove('hidden'));
-        addFaultContainers.forEach(el => el.classList.remove('hidden'));
-        addFaultBtns.forEach(el => el.disabled = false);
-
-        const openFaults = simulatorFaults[simulatorId] || [];
-
-        faultSelects.forEach(select => {
-            select.innerHTML = '<option value="" disabled selected>בחר תקלה קיימת...</option>';
-            openFaults.forEach(fault => {
-                const opt = document.createElement('option');
-                opt.value = fault;
-                opt.textContent = fault;
-                select.appendChild(opt);
-            });
-            const otherOpt = document.createElement('option');
-            otherOpt.value = "OTHER";
-            otherOpt.textContent = "אחר / תקלה חדשה";
-            select.appendChild(otherOpt);
-            if (openFaults.length === 0) select.value = "OTHER";
-        });
-
-        otherFaultGroups.forEach(group => {
-            if (openFaults.length === 0) group.classList.remove('hidden');
-            else group.classList.add('hidden');
-        });
-
-    } else {
-        faultEntryAreas.forEach(el => el.classList.add('hidden'));
-        addFaultContainers.forEach(el => el.classList.add('hidden'));
-        simSelectContainers.forEach(el => el.classList.remove('hidden'));
-        simDisplays.forEach(el => el.classList.add('hidden'));
-    }
-}
-
 export function toggleOtherFaultInput(selectElement) {
     const otherFaultGroup = document.getElementById('other-fault-group');
     const otherFaultInput = document.getElementById('other-fault-text');
@@ -417,53 +483,92 @@ export function toggleOtherFaultInput(selectElement) {
 
 export function addFaultFromForm() {
     const simulatorId = document.getElementById('simulator-select')?.value;
-    const faultSelect = document.getElementById('fault-select');
-    const severity = document.getElementById('fault-severity').value;
-    const instructorName = document.getElementById('instructor-name-1').value;
+    const severityEl = document.getElementById('fault-severity');
+    const severity = severityEl ? severityEl.value : 'קל';
+    const instructorEl = document.getElementById('instructor-name-1');
+    const instructorName = instructorEl ? instructorEl.value : 'לא הוזן';
 
-    if (!faultSelect.value) {
-        import('../components/modals.js').then(m => m.showToast('יש לבחור תקלה קיימת או לבחור באחר / תקלה חדשה', 'red'));
-        return;
-    }
+    const faultDescriptionEl = document.getElementById('other-fault-text');
+    const faultDescription = faultDescriptionEl ? faultDescriptionEl.value.trim() : '';
 
-    let faultDescription = (faultSelect.value === 'OTHER') ? document.getElementById('other-fault-text').value.trim() : faultSelect.value;
-
-    if (faultSelect.value === 'OTHER' && !faultDescription) {
-        import('../components/modals.js').then(m => m.showToast('יש להזין פירוט עבור תקלה חדשה', 'red'));
+    if (!faultDescription) {
+        import('../components/modals.js').then(m => m.showToast('יש להזין פירוט עבור התקלה', 'red'));
         return;
     }
 
     const isDowntime = document.getElementById('fault-is-downtime')?.checked || false;
+    const sysClassEl = document.getElementById('fault-system-class');
+    const sysClass = sysClassEl ? sysClassEl.value : '';
 
     const newFault = {
         simulator: simulatorId,
         description: faultDescription,
-        systemClassification: document.getElementById('fault-system-class').value,
+        systemClassification: sysClass,
         severity: severity,
         reportingInstructor: instructorName,
         isDowntime: isDowntime,
         timestamp: Date.now()
     };
+
+    if (!window.currentForm) window.currentForm = {};
+    if (!window.currentForm.faults) window.currentForm.faults = [];
+
     window.currentForm.faults.push(newFault);
-    renderFaultsTable(window.currentForm.faults);
 
-    // איפוס השדות כדי שהוולידציה לא תזהה אותם כ"באמצע הזנה"
-    faultSelect.value = '';
-    const otherFaultInput = document.getElementById('other-fault-text');
-    if (otherFaultInput) otherFaultInput.value = '';
-    const otherFaultGroup = document.getElementById('other-fault-group');
-    if (otherFaultGroup) otherFaultGroup.classList.add('hidden');
+    if (typeof renderFaultsTable === 'function') {
+        renderFaultsTable(window.currentForm.faults);
+    }
 
-    const sysClass = document.getElementById('fault-system-class');
-    if (sysClass) sysClass.value = '';
+    // איפוס שדות
+    if (faultDescriptionEl) faultDescriptionEl.value = '';
+    if (sysClassEl) sysClassEl.value = '';
     const sysClassDisplay = document.getElementById('fault-system-class-display');
     if (sysClassDisplay) sysClassDisplay.textContent = 'בחר מערכת...';
 
     const isDowntimeCb = document.getElementById('fault-is-downtime');
     if (isDowntimeCb) isDowntimeCb.checked = false;
+    if (severityEl) severityEl.value = 'קל';
+}
 
-    const severitySelect = document.getElementById('fault-severity');
-    if (severitySelect) severitySelect.value = 'קל';
+export function populateFaultOptions(simulatorId) {
+    // הפונקציה כעת פשוט מציגה/מסתירה את אזור ההזנה בהתאם לבחירת מאמן
+    const faultEntryAreas = document.querySelectorAll('[id="fault-entry-area"]');
+    const addFaultBtns = document.querySelectorAll('[id="add-fault-btn"]');
+    const addFaultContainers = document.querySelectorAll('[id="add-fault-container"]');
+    const simSelectContainers = document.querySelectorAll('[id="simulator-select-container"]');
+    const simDisplays = document.querySelectorAll('[id="simulator-display"]');
+    const simNameSpans = document.querySelectorAll('[id="selected-simulator-name"]');
+
+    if (simulatorId) {
+        simSelectContainers.forEach(el => el.classList.add('hidden'));
+        simDisplays.forEach(el => el.classList.remove('hidden'));
+        simNameSpans.forEach(el => el.textContent = simulatorId);
+        faultEntryAreas.forEach(el => el.classList.remove('hidden'));
+        addFaultContainers.forEach(el => el.classList.remove('hidden'));
+        addFaultBtns.forEach(el => el.disabled = false);
+    } else {
+        faultEntryAreas.forEach(el => el.classList.add('hidden'));
+        addFaultContainers.forEach(el => el.classList.add('hidden'));
+        simSelectContainers.forEach(el => el.classList.remove('hidden'));
+        simDisplays.forEach(el => el.classList.add('hidden'));
+    }
+}
+
+export async function fetchStandaloneFaults() {
+    if (!window.db) return;
+    const { collection, getDocs } = window.firestoreFunctions;
+    try {
+        const querySnapshot = await getDocs(collection(window.db, "standalone_faults"));
+        window.standaloneFaults = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        // לאחר הטעינה, מעבדים את הנתונים מחדש ומציגים את הטבלה
+        processFaultsData();
+        renderFaultDatabaseTable();
+    } catch (e) {
+        console.error("Error fetching standalone faults:", e);
+    }
 }
 
 export function renderFaultsTable(faults) {
@@ -561,7 +666,8 @@ export function renderFaultDatabaseTable() {
     tableBody.innerHTML = filteredFaults.map(fault => {
         const isResolved = fault.status.isResolved;
         const isChecked = faultSelectedSet.has(fault.key);
-        const safeKey = fault.key ? fault.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
+        // מניעת שבירת Syntax ב-HTML באמצעות Escaping מחמיר
+        const safeKey = fault.key ? fault.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
 
         // עיצוב שונה לתקלה פתוחה שמשביתה את המאמן
         const isDowntime = fault.isDowntime && !isResolved;
@@ -580,8 +686,10 @@ export function renderFaultDatabaseTable() {
             <td class="px-6 py-4 text-sm">${fault.systemClassification || '-'}</td>
             <td class="px-6 py-4 text-sm text-gray-500">${new Date(fault.firstReportTimestamp).toLocaleDateString('he-IL')}</td>
             <td class="px-6 py-4 text-sm ${isResolved ? (fault.status.isClosedWithPermission ? 'text-yellow-600 font-bold' : 'text-green-600 font-bold') : 'text-red-600'}">
-                ${isResolved ? `${fault.status.isClosedWithPermission ? 'נסגר בהיתר' : 'טופלה'} <div class="text-[10px] text-gray-500 mt-1 font-normal">סיווג סגירה: ${fault.status.faultCategory || '-'}</div>` : 'פתוחה'}
-            </td>
+${isResolved ?
+                `${fault.status.isClosedWithPermission ? 'נסגר בהיתר' : 'טופלה'} 
+         <div class="text-[10px] text-gray-500 mt-1 font-normal">סיווג סגירה: ${fault.status.faultCategory || '-'}</div>`
+                : 'פתוחה'}            </td>
         </tr>`;
     }).join('');
 }
@@ -677,7 +785,7 @@ export async function saveFaultResolutionStatus(faultKey, onlyUpdateClassificati
             }
             showToast('התקלה נפתחה מחדש', 'blue');
             hideAllModals();
-            fetchFlights().then(() => renderFaultDatabaseTable());
+if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
             return;
         } catch (e) {
             showToast('שגיאה בפתיחה מחדש', 'red');
@@ -726,7 +834,7 @@ export async function saveFaultResolutionStatus(faultKey, onlyUpdateClassificati
 
         showToast(onlyUpdateClassification ? 'סיווג עודכן' : 'התקלה טופלה', 'green');
         hideAllModals();
-        fetchFlights().then(() => renderFaultDatabaseTable());
+if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
     } catch (e) {
         console.error('Save failed:', e);
         showToast('שגיאה בשמירת הנתונים', 'red');
@@ -798,6 +906,8 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
     if (isEditMode && faultData.status) {
         existingData = faultData.status;
     }
+
+    const safeKey = faultKey ? faultKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
 
     content.innerHTML = `
         <div class="space-y-4 text-right" dir="rtl">
@@ -911,7 +1021,7 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 </div>
             </div>` : ''}
 
-            <button onclick="window.processFaultClosure('${faultKey.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition-colors mt-4">
+            <button onclick="window.processFaultClosure('${safeKey}')" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-green-700 transition-colors mt-4">
                 ${isEditMode ? 'עדכן וסגור' : 'אישור וסגירה'}
             </button>
         </div>`;
@@ -952,7 +1062,7 @@ async function processFaultClosure(faultKey) {
 
     const isPermission = document.getElementById('res-permission').checked;
     const isFinalClosure = document.getElementById('res-final-closure')?.checked;
-    
+
     // אם המשתמש סימן שזה טופל סופית - התקלה כבר אינה מוגדרת פתוחה תחת היתר
     const finalIsClosedWithPermission = isFinalClosure ? false : isPermission;
 
@@ -963,7 +1073,7 @@ async function processFaultClosure(faultKey) {
     const isEditMode = document.getElementById('res-final-closure') !== null;
 
     if (!technician) { showToast("יש לבחור טכנאי", "red"); return; }
-    
+
     // בדיקת ולידציה של אופן הטיפול רק אם זו לא סגירה רגילה בהיתר
     if (!finalIsClosedWithPermission) {
         if (!verifiedRadio) { showToast("יש לסמן האם התקלה אומתה", "red"); return; }
@@ -1023,14 +1133,14 @@ function calculateOperatingHoursBetween(startTs, endTs, flights) {
         const fStart = f.data['שעת התחלה'];
         const fEnd = f.data['שעת סיום'];
         if (!flightDate || !fStart || !fEnd) return;
-        
+
         const fStartTs = new Date(`${flightDate}T${fStart}:00`).getTime();
         let fEndTs = new Date(`${flightDate}T${fEnd}:00`).getTime();
         if (fEndTs < fStartTs) fEndTs += 24 * 60 * 60 * 1000; // במקרה של גלישה מעבר לחצות
-        
+
         const overlapStart = Math.max(startTs, fStartTs);
         const overlapEnd = Math.min(endTs, fEndTs);
-        
+
         // אם הגיחה התקיימה בזמן שהתקלה הייתה פתוחה
         if (overlapEnd > overlapStart) {
             operatingMinutes += (overlapEnd - overlapStart) / 60000;
@@ -1094,17 +1204,30 @@ window.deleteSelectedFaults = async function () {
     const { doc, deleteDoc, updateDoc, getDoc } = window.firestoreFunctions;
     let deletedCount = 0;
 
-    showToast("מוחק תקלות...", "blue");
+    import('../components/modals.js').then(m => m.showToast("מוחק תקלות...", "blue"));
 
     try {
         for (const key of faultSelectedSet) {
             const faultEntry = window.unifiedFaultsDatabase[key];
             if (!faultEntry) continue;
 
-            // 1. מחיקת רזולוציה (אם קיימת)
-            await deleteDoc(doc(window.db, "fault_resolutions", key));
+            // 1. מחיקת רזולוציה (תיעוד הטיפול) אם קיימת
+            try {
+                await deleteDoc(doc(window.db, "fault_resolutions", key));
+            } catch (e) { 
+                console.log('No resolution found to delete'); 
+            }
 
-            // 2. מחיקת התקלה מגיחות המקור
+            // 2. מחיקת תקלה ידנית מ- standalone_faults (התוספת החדשה!)
+            if (faultEntry.id && faultEntry.isManualEntry) {
+                try {
+                    await deleteDoc(doc(window.db, "standalone_faults", faultEntry.id));
+                } catch (e) { 
+                    console.error('Error deleting standalone fault', e); 
+                }
+            }
+
+            // 3. מחיקת התקלה מגיחות המקור (תקלות שדווחו דרך טופס גיחה)
             if (faultEntry.sourceFlights && faultEntry.sourceFlights.length > 0) {
                 for (const flightId of faultEntry.sourceFlights) {
                     try {
@@ -1112,7 +1235,6 @@ window.deleteSelectedFaults = async function () {
                         const flightSnap = await getDoc(flightRef);
                         if (flightSnap.exists()) {
                             const flightData = flightSnap.data();
-                            // סינון התקלות התואמות (לפי תיאור וסימולטור)
                             const originalFaults = flightData.faults || [];
                             const updatedFaults = originalFaults.filter(f =>
                                 !(f.description === faultEntry.description && f.simulator === faultEntry.simulator)
@@ -1130,14 +1252,18 @@ window.deleteSelectedFaults = async function () {
             deletedCount++;
         }
 
-        showToast(`${deletedCount} תקלות נמחקו בהצלחה`, 'green');
+        import('../components/modals.js').then(m => m.showToast(`${deletedCount} תקלות נמחקו בהצלחה`, 'green'));
         faultSelectedSet.clear();
         isFaultSelectionMode = false;
-        window.toggleFaultAdminMode(); // איפוס UI
-        await fetchFlights(); // רענון מלא
+        window.toggleFaultAdminMode(); // איפוס מצב ה-UI
+        
+        // רענון טבלאות הנתונים כדי שהתקלה תיעלם מיד מהמסך
+        if (typeof window.fetchStandaloneFaults === 'function') await window.fetchStandaloneFaults();
+        if (typeof window.fetchFlights === 'function') await window.fetchFlights(); 
+        
     } catch (e) {
         console.error(e);
-        showToast('שגיאה בתהליך המחיקה', 'red');
+        import('../components/modals.js').then(m => m.showToast('שגיאה בתהליך המחיקה', 'red'));
     }
 };
 
@@ -1172,11 +1298,11 @@ window.onFaultFilterChange = function () {
 window.updateResolutionFieldsVisibility = () => {
     const isPermission = document.getElementById('res-permission')?.checked;
     const isFinal = document.getElementById('res-final-closure')?.checked;
-    
+
     const verifiedSection = document.getElementById('verified-section');
     const descSection = document.getElementById('verified-text-area');
     const permTextArea = document.getElementById('permission-text-area');
-    
+
     if (permTextArea) {
         permTextArea.classList.toggle('hidden', !isPermission);
     }
@@ -1190,6 +1316,8 @@ window.updateResolutionFieldsVisibility = () => {
         if (descSection) descSection.classList.remove('hidden');
     }
 };
+
+
 
 // חשיפת פונקציות גלובליות
 window.processFaultsData = processFaultsData;
@@ -1213,3 +1341,13 @@ window.togglePermissionText = (show) => {
 window.toggleAllFaults = window.toggleAllFaults;
 window.toggleFaultCheckbox = window.toggleFaultCheckbox;
 window.deleteSelectedFaults = window.deleteSelectedFaults;
+window.toggleFaultAdminMode = window.toggleFaultAdminMode;
+window.toggleFaultTimeFilters = window.toggleFaultTimeFilters;
+window.onFaultFilterChange = window.onFaultFilterChange;
+window.updateResolutionFieldsVisibility = window.updateResolutionFieldsVisibility;
+window.saveManualFault = window.saveManualFault;
+window.populateSystemFilter = populateSystemFilter;
+window.calculateOperatingHoursBetween = calculateOperatingHoursBetween;
+window.openResolutionForm = openResolutionForm;
+window.processFaultClosure = processFaultClosure;
+window.fetchStandaloneFaults = fetchStandaloneFaults;

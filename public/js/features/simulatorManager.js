@@ -267,7 +267,8 @@ function createSimulatorCardHTML(simName, index) {
     const metrics = calculateSimulatorMetrics(simName, faults, getFilteredFlights(simName));
     const openFaultsList = openFaults.length > 0
         ? openFaults.map(f => {
-            const safeKey = f.key ? f.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
+            // הגנה חזקה על תווים כדי למנוע קריסות Syntax Error במיוחד עם פסיקים, מרכאות ואנטרים 
+            const safeKey = f.key ? f.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
             const safeDesc = f.description ? f.description.replace(/"/g, '&quot;') : 'ללא תיאור';
             const displayDesc = f.description || 'ללא תיאור';
 
@@ -497,8 +498,9 @@ function calculateSimulatorMetrics(simName, faults, filteredFlights) {
     return metrics;
 }
 
+// עדכון חישוב זמן טיפול ממוצע - מסנן החוצה גיחות שנסגרו בהיתר כדי לקבל זמן טיפול ממוצע "אמיתי" ומדויק יותר
 function calculateAverageClosureTime(faults) {
-    const resolved = faults.filter(f => f.status?.isResolved && f.status?.timestamp && f.firstReportTimestamp);
+    const resolved = faults.filter(f => f.status?.isResolved && !f.status?.isClosedWithPermission && f.status?.timestamp && f.firstReportTimestamp);
     if (resolved.length === 0) return "0";
     const totalMs = resolved.reduce((acc, f) => acc + (f.status.timestamp - f.firstReportTimestamp), 0);
     return (totalMs / resolved.length / (1000 * 60 * 60)).toFixed(1);
@@ -650,7 +652,7 @@ window.openSimulatorDetailsModal = function (simName) {
     const renderFaultList = (faultList) => {
         if (faultList.length === 0) return '<li class="text-gray-500">אין תקלות פתוחות.</li>';
         return faultList.map(f => {
-            const safeKey = f.key ? f.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
+            const safeKey = f.key ? f.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
             return `
             <li class="pb-1 border-b border-gray-200 last:border-0 ${f.isDowntime ? 'text-red-600 font-bold' : ''} cursor-pointer hover:bg-gray-200 transition p-1 rounded" onclick="window.showFaultDetailsModal('${safeKey}')">
                 ${f.isDowntime ? '⚠️ ' : ''}<strong>${f.description || 'ללא תיאור'}</strong> 
@@ -712,7 +714,7 @@ window.openSimulatorDetailsModal = function (simName) {
                 <ul class="list-disc list-inside text-sm space-y-2">
                     ${sortedFaults.length > 0 ?
             sortedFaults.map(f => {
-                const safeKey = f.key ? f.key.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
+                const safeKey = f.key ? f.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
                 const isResolved = f.status?.isResolved;
                 const statusText = isResolved ? 'טופלה' : 'פתוחה';
                 const textColor = isResolved ? 'text-gray-500' : 'text-red-600 font-bold';

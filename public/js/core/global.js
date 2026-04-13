@@ -116,6 +116,22 @@ export async function fetchFlights() {
     }
 }
 
+// Add to your main fetch function
+export async function fetchAllData() {
+    const { collection, getDocs } = window.firestoreFunctions;
+
+    // 1. Fetch Flights (Existing)
+    const flightSnap = await getDocs(collection(window.db, "flights"));
+    window.savedFlights = flightSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // 2. NEW: Fetch Standalone Faults
+    const standaloneSnap = await getDocs(collection(window.db, "standalone_faults"));
+    window.standaloneFaults = standaloneSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // 3. Process the combined data
+    processFaultsData();
+}
+
 function refreshCurrentScreen() {
     if (currentScreen === 'mission-database-screen') missionDatabase.init(savedFlights);
     else if (currentScreen === 'fault-database-screen' && window.renderFaultDatabaseTable) window.renderFaultDatabaseTable();
@@ -224,8 +240,20 @@ export function renderFlightTable() {
     );
 
     // מיון כרונולוגי: מהישן (תאריך קטן) לחדש (תאריך גדול)
-    pendingFlights.sort((a, b) => (a.flightStartTimestamp || 0) - (b.flightStartTimestamp || 0));
+    pendingFlights.sort((a, b) => {
+        // 1. מיון לפי תאריך (ישן לחדש)
+        const dateA = new Date(a.date || (a.data && a.data['תאריך']) || 0).getTime();
+        const dateB = new Date(b.date || (b.data && b.data['תאריך']) || 0).getTime();
 
+        if (dateA !== dateB) {
+            return dateA - dateB;
+        }
+
+        // 2. אם התאריכים זהים, מיון לפי שעה
+        const timeA = (a.data && a.data['שעת התחלה']) || '23:59'; // שעות חסרות יופיעו בסוף היום
+        const timeB = (b.data && b.data['שעת התחלה']) || '23:59';
+        return timeA.localeCompare(timeB);
+    });
     if (pendingFlights.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-gray-500">אין גיחות הממתינות לדיווח.</td></tr>';
         return;
@@ -313,7 +341,7 @@ window.deletePendingSelected = async function () {
         showToast('הגיחות נמחקו', 'green');
         pendingSelectedSet.clear();
         isPendingSelectionMode = false;
-        window.togglePendingAdminMode(); 
+        window.togglePendingAdminMode();
         await fetchFlights();
     } catch (e) {
         console.error(e);

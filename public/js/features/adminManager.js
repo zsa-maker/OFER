@@ -254,7 +254,16 @@ function renderAllLists() {
 function renderList(type) {
     const listContainer = document.getElementById(`list-${type}`); if (!listContainer) return; listContainer.innerHTML = ''; const items = personnelLists[type] || [];
     if (items.length === 0) { listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים ברשימה.</li>`; return; }
-    items.forEach((item, index) => { const li = document.createElement('li'); li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200"; li.innerHTML = `<span class="font-medium text-gray-800 truncate flex-grow ml-2" title="${item}">${item}</span><div class="flex gap-1 shrink-0"><button onclick="window.editPerson('${type}', ${index})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button><button onclick="window.removePerson('${type}', ${index})" class="text-red-500 hover:text-red-700 p-1">🗑️</button></div>`; listContainer.appendChild(li); });
+    items.forEach((item, index) => {
+        const li = document.createElement('li');
+        li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
+
+        // יצירת מחרוזת בטוחה שלא תשבור את ה-HTML
+        const safeItem = item.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+        li.innerHTML = `<span class="font-medium text-gray-800 truncate flex-grow ml-2" title="${safeItem}">${item}</span><div class="flex gap-1 shrink-0"><button onclick="window.editPerson('${type}', ${index})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button><button onclick="window.removePerson('${type}', ${index})" class="text-red-500 hover:text-red-700 p-1">🗑️</button></div>`;
+        listContainer.appendChild(li);
+    });
 }
 
 export async function savePersonnelLists(silent = false) {
@@ -674,7 +683,7 @@ window.savePlanningData = async () => {
         const docRef = doc(window.db, "settings", "planning");
         const snap = await getDoc(docRef);
         const existingData = snap.exists() ? snap.data() : {};
-        
+
         const periodConfigs = existingData.periodConfigs || {};
         periodConfigs[periodName] = {
             naka: nakaVal,
@@ -695,10 +704,10 @@ window.savePlanningData = async () => {
 
         await setDoc(docRef, dataToSave);
         window.planningSettings = dataToSave; // עדכון גלובלי מיידי
-        
+
         // רענון התצוגה של הכותרות (Labels) כך שישקפו את שם התקופה המעודכן
         if (typeof updatePeriodInputsUI === 'function') updatePeriodInputsUI();
-        
+
         showToast(`נתוני תקופה ${periodName} נשמרו בהצלחה!`, "green");
     } catch (error) {
         console.error("Error saving plan:", error);
@@ -719,7 +728,7 @@ window.getPeriodName = (date) => {
     }
 
     const yearShort = year.toString().slice(-2);
-    const periodNum = month < 5 ? "1" : "2"; 
+    const periodNum = month < 5 ? "1" : "2";
     return `${periodNum}/${yearShort}`;
 };
 
@@ -847,7 +856,7 @@ export async function performExport() {
                 // שעת התחלת הפעלה (15 דקות לפני הגיחה הראשונה)
                 const startObj = new Date(`2000-01-01T${firstStart}:00`);
                 startObj.setMinutes(startObj.getMinutes() - 15);
-                const opStartStr = startObj.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'});
+                const opStartStr = startObj.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
 
                 let endObj;
                 let opEndStr;
@@ -856,7 +865,7 @@ export async function performExport() {
                     endObj = new Date(`2000-01-01T${closeTime}:00`);
                     opEndStr = closeTime;
                     // אם שעת הסגירה גלשה מעבר לחצות
-                    if(endObj < startObj) endObj.setDate(endObj.getDate() + 1); 
+                    if (endObj < startObj) endObj.setDate(endObj.getDate() + 1);
                 } else {
                     // אם המשתמש דילג על השלמת שעת סגירה, לוקחים את סיום הגיחה האחרונה
                     endObj = new Date(`2000-01-01T${lastEnd}:00`);
@@ -864,7 +873,7 @@ export async function performExport() {
                 }
 
                 operatingWindowDisplay = `${opStartStr} - ${opEndStr}`;
-                
+
                 let diffMs = endObj - startObj;
                 if (diffMs > 0) {
                     operatingHoursCount = (diffMs / (1000 * 60 * 60)).toFixed(2);
@@ -1285,8 +1294,8 @@ export function renderPopulations() {
         return `
         <div class="bg-white p-3 rounded shadow border-r-4 border-blue-400 mb-3">
             <div class="flex justify-between items-center mb-2">
-                <input type="text" value="${group.name}" onchange="window.updateGroupName('instructor', ${gIdx}, this.value)" 
-                       class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-blue-800">
+               <input type="text" value="${group.name.replace(/"/g, '&quot;')}" onchange="window.updateGroupName('instructor', ${gIdx}, this.value)" 
+       class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-blue-800">
                 <button onclick="window.removeGroup('instructor', ${gIdx})" class="text-red-500 text-xs">מחק</button>
             </div>
             <div class="mb-2">
@@ -1297,9 +1306,9 @@ export function renderPopulations() {
                 <div class="border rounded p-1 h-24 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar">
                     ${availableForGroup.map(p => `
                         <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-blue-50 p-1 cursor-pointer">
-                            <input type="checkbox" class="instr-group-cb-${gIdx}" value="${p}">
-                            <span>${p}</span>
-                        </label>
+    <input type="checkbox" class="instr-group-cb-${gIdx}" value="${p.replace(/"/g, '&quot;')}">
+    <span>${p}</span>
+</label>
                     `).join('') || '<div class="text-gray-400 text-[10px]">אין טייסים זמינים</div>'}
                 </div>
                 <button onclick="window.addSelectedToGroup('instructor', ${gIdx})" class="w-full bg-blue-500 text-white py-1 rounded text-xs">הוסף נבחרים</button>
@@ -1366,7 +1375,7 @@ export function renderPopulations() {
             return `
             <div class="bg-white p-3 rounded shadow border-r-4 border-purple-400 mb-3">
                 <div class="flex justify-between items-center mb-2">
-                    <input type="text" value="${group.name}" onchange="window.updateConversionGroupName(${gIdx}, this.value)" 
+                    <input type="text" value="${group.name.replace(/"/g, '&quot;')}" onchange="window.updateConversionGroupName(${gIdx}, this.value)" 
                            class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-purple-800">
                     <button onclick="window.removeConversionGroup(${gIdx})" class="text-red-500 text-xs">מחק</button>
                 </div>
@@ -1640,7 +1649,7 @@ window.renderFlightMappingUI = () => {
 
         optionsContainer.innerHTML = available.map(name => `
             <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-gray-100 p-1 cursor-pointer">
-                <input type="checkbox" class="mapping-cb-${cat}" value="${name}">
+<input type="checkbox" class="mapping-cb-${cat}" value="${name.replace(/"/g, '&quot;')}">
                 <span>${name}</span>
             </label>
         `).join('') || '<div class="text-gray-400 text-[10px] text-center p-2">אין גיחות זמינות</div>';
@@ -1761,11 +1770,15 @@ window.renderList = function (type) {
     filtered.forEach((item) => {
         const li = document.createElement('li');
         li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
+
+        // ניקוי מרכאות לפני הזרקה לפונקציות העריכה והמחיקה
+        const safeItem = item.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
         li.innerHTML = `
             <span class="font-medium text-gray-800 truncate flex-grow ml-2">${item}</span>
             <div class="flex gap-1 shrink-0">
-                <button onclick="window.editPerson('${type}', personnelLists['${type}'].indexOf('${item}'))" class="text-blue-500 p-1">✏️</button>
-                <button onclick="window.removePerson('${type}', personnelLists['${type}'].indexOf('${item}'))" class="text-red-500 p-1">🗑️</button>
+                <button onclick="window.editPerson('${type}', personnelLists['${type}'].indexOf('${safeItem}'))" class="text-blue-500 p-1">✏️</button>
+                <button onclick="window.removePerson('${type}', personnelLists['${type}'].indexOf('${safeItem}'))" class="text-red-500 p-1">🗑️</button>
             </div>`;
         listContainer.appendChild(li);
     });

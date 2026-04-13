@@ -50,6 +50,7 @@ export async function showFormStep2(flightStatus, flightData = null) {
 
     if (flightData) {
         Object.assign(currentForm, flightData);
+        currentForm.flightId = flightData.flightId || flightData.id;
         if (!currentForm.trainingType) currentForm.trainingType = defaultTrainingType;
         if (!currentForm.faults) currentForm.faults = [];
         if (!currentForm.goalsStatus) currentForm.goalsStatus = {};
@@ -536,24 +537,16 @@ export function validateForm(isCancellation = false) {
 
     const faultEntryArea = document.getElementById('fault-entry-area');
     if (faultEntryArea && !faultEntryArea.classList.contains('hidden')) {
-        const faultSelect = document.getElementById('fault-select');
         const otherFaultText = document.getElementById('other-fault-text');
 
         let isPartiallyFilled = false;
-        if (faultSelect && faultSelect.value) {
-            if (faultSelect.value === 'OTHER') {
-                if (otherFaultText && otherFaultText.value.trim() !== '') {
-                    isPartiallyFilled = true;
-                }
-            } else {
-                // נבחרה תקלה מהרשימה
-                isPartiallyFilled = true;
-            }
+        if (otherFaultText && otherFaultText.value.trim() !== '') {
+            isPartiallyFilled = true;
         }
 
         if (isPartiallyFilled) {
-            showToast('שמת לב? התחלת להזין תקלה אבל לא לחצת על "+ הוסף תקלה". אנא הוסף את התקלה (או אפס את בחירת התקלה) כדי להמשיך בשמירה.', 'red');
-            return false; // עוצר את השמירה עד הוספה או איפוס
+            import('../components/modals.js').then(m => m.showToast('שמת לב? התחלת להזין תקלה אבל לא לחצת על "+ הוסף תקלה". אנא הוסף את התקלה כדי להמשיך.', 'red'));
+            return false;
         }
     }
 
