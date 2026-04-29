@@ -38,7 +38,14 @@ async function fetchFacilityCloseTimes() {
         const { collection, getDocs } = window.firestoreFunctions;
         const snap = await getDocs(collection(window.db, "facility_status"));
         snap.forEach(doc => {
-            window.facilityCloseTimes[doc.id] = doc.data().closeTime;
+            const data = doc.data();
+            // תמיכה במבנה החדש ששומר שעת סגירה פרטנית לכל מאמן
+            window.facilityCloseTimes[doc.id] = data.simulators || {}; 
+            
+            // תאימות לאחור (אם יש שעת סגירה גלובלית ישנה במערכת)
+            if (data.closeTime && Object.keys(window.facilityCloseTimes[doc.id]).length === 0) {
+               window.facilityCloseTimes[doc.id] = { 'FFS': data.closeTime, 'VIPT': data.closeTime };
+            }
         });
     } catch (e) { console.error("Failed to fetch close times", e); }
 }
@@ -636,16 +643,17 @@ window.openSimulatorDetailsModal = function (simName) {
     }
 
     // חישוב ממוצע סגירת תקלה בהיתר (רק לפי שעות הפעלה - לפי הסינון)
-    const permissionFaults = filteredFaults.filter(f => f.status && f.status.isResolved && (f.status.isClosedWithPermission || f.status.wasClosedWithPermission));
+const permissionFaults = filteredFaults.filter(f => f.status && f.status.isResolved && (f.status.isClosedWithPermission || f.status.wasClosedWithPermission));
     let totalOperatingHours = 0;
     let validCount = 0;
 
     permissionFaults.forEach(f => {
         if (f.firstReportTimestamp && f.status.timestamp) {
-            totalOperatingHours += calculateOperatingHoursBetween(f.firstReportTimestamp, f.status.timestamp, flights);
+            // ---> הוספנו את ה-simName כפרמטר אחרון <---
+            totalOperatingHours += calculateOperatingHoursBetween(f.firstReportTimestamp, f.status.timestamp, flights, simName); 
             validCount++;
         }
-    });
+    })
     const avgOpCloseTime = validCount > 0 ? (totalOperatingHours / validCount).toFixed(1) : "0";
 
     // יצירת רשימה לחיצה לטאב "כל התקלות הפתוחות"
@@ -813,8 +821,20 @@ window.switchSimFaultTab = function (tab) {
 };
 
 // פונקציה שמחשבת את חלון ההפעלה של יום ספציפי: 15 דק' לפני גיחה ראשונה עד שעת הסגירה
-export function getDailyOperatingWindow(dateStr, flights) {
-    const dayFlights = flights.filter(f => f.date === dateStr && f.executionStatus !== 'בוטלה' && f.data['שעת התחלה']);
+export function getDailyOperatingWindow(dateStr, flights, simName) {
+    // 1. מציאת קטגוריית העל (FFS או VIPT)
+    let category = simName;
+    if (simName.toUpperCase().includes('FFS')) category = 'FFS';
+    if (simName.toUpperCase().includes('VIPT')) category = 'VIPT';
+
+    // 2. סינון גיחות - אנחנו בודקים את כל הגיחות של *אותה הקטגוריה* באותו יום
+    // כי הפתיחה והסגירה של FFS1 ו-FFS2 קורות באותו זמן
+    const dayFlights = flights.filter(f => {
+        if (f.date !== dateStr || f.executionStatus === 'בוטלה' || !f.data['שעת התחלה']) return false;
+        const flightSim = (f.data['סימולטור'] || '').toUpperCase();
+        return flightSim.includes(category); 
+    });
+
     if (dayFlights.length === 0) return null;
 
     let earliest = "23:59";
@@ -824,16 +844,19 @@ export function getDailyOperatingWindow(dateStr, flights) {
         if (f.data['שעת סיום'] > latest) latest = f.data['שעת סיום'];
     });
 
-    // התחלה: 15 דקות לפני גיחה ראשונה
+    // זמן פתיחה (15 דק' לפני גיחה ראשונה בקטגוריה)
     const startDt = new Date(`${dateStr}T${earliest}:00`);
     startDt.setMinutes(startDt.getMinutes() - 15);
 
-    // סיום: שעת סגירה מהדאטהבייס, ואם אין - שעת סיום של גיחה אחרונה
     let endDt;
-    const closeTimeStr = window.facilityCloseTimes[dateStr];
+    const dailyCloseData = window.facilityCloseTimes[dateStr] || {};
+    
+    // 3. משיכת שעת הסגירה לפי הקטגוריה הכללית ("FFS" או "VIPT")
+    const closeTimeStr = dailyCloseData[category]; 
+
     if (closeTimeStr) {
         endDt = new Date(`${dateStr}T${closeTimeStr}:00`);
-        if (endDt < startDt) endDt.setDate(endDt.getDate() + 1); // אם גלש מעבר לחצות
+        if (endDt < startDt) endDt.setDate(endDt.getDate() + 1); 
     } else {
         endDt = new Date(`${dateStr}T${latest}:00`);
     }
@@ -842,12 +865,13 @@ export function getDailyOperatingWindow(dateStr, flights) {
 }
 
 // חישוב שעות חופפות בין זמן התקלה לזמני ההפעלה האמיתיים
-function calculateOperatingHoursBetween(startTs, endTs, flights) {
+// עודכן לקבל ולהעביר simName
+function calculateOperatingHoursBetween(startTs, endTs, flights, simName) {
     const datesWithFlights = [...new Set(flights.map(f => f.date))];
     let operatingMs = 0;
 
     datesWithFlights.forEach(dateStr => {
-        const opWindow = getDailyOperatingWindow(dateStr, flights);
+        const opWindow = getDailyOperatingWindow(dateStr, flights, simName);
         if (!opWindow) return;
 
         const overlapStart = Math.max(startTs, opWindow.start);
@@ -903,5 +927,212 @@ async function _saveFacilityTime(dateStr, timeVal, modalId) {
         }
     }
 }
+
+window.openSpecificSimulatorCloseModal = function () {
+    const now = new Date();
+    document.getElementById('specific-sim-close-time').value = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    // מקבעים ל-2 קטגוריות בלבד
+    const select = document.getElementById('specific-sim-select');
+    select.innerHTML = `
+        <option value="FFS">FFS</option>
+        <option value="VIPT">VIPT</option>
+    `;
+    
+    document.getElementById('specific-sim-close-modal').classList.remove('hidden');
+}
+
+window.saveSpecificSimulatorCloseTime = async function () {
+    const timeVal = document.getElementById('specific-sim-close-time').value;
+    const simName = document.getElementById('specific-sim-select').value;
+    const dateStr = new Date().toISOString().split('T')[0];
+    
+    if (!timeVal) {
+        import('../components/modals.js').then(m => m.showToast('נא להזין שעה', 'red'));
+        return;
+    }
+
+    if (window.firestoreFunctions && window.db) {
+        const { doc, setDoc, getDoc } = window.firestoreFunctions;
+        try {
+            // משיכת מצב נוכחי מהדאטהבייס כדי לא לדרוס מאמנים אחרים
+            const docRef = doc(window.db, "facility_status", dateStr);
+            const docSnap = await getDoc(docRef);
+            
+            let simulatorsData = {};
+            if (docSnap.exists() && docSnap.data().simulators) {
+                simulatorsData = docSnap.data().simulators;
+            } else if (docSnap.exists() && docSnap.data().closeTime) {
+                // העתקת המבנה הישן
+                simulatorsData = { 'FFS': docSnap.data().closeTime, 'VIPT': docSnap.data().closeTime };
+            }
+            
+            simulatorsData[simName] = timeVal;
+
+            await setDoc(docRef, {
+                date: dateStr,
+                simulators: simulatorsData,
+                timestamp: Date.now()
+            }, { merge: true });
+
+            // עדכון מקומי
+            window.facilityCloseTimes[dateStr] = simulatorsData; 
+            
+            import('../components/modals.js').then(m => m.showToast(`שעת סגירה נשמרה למאמן ${simName}`, 'green'));
+            document.getElementById('specific-sim-close-modal').classList.add('hidden');
+            renderSimulatorDashboard(); // רענון הנתונים
+        } catch (e) {
+            console.error(e);
+            import('../components/modals.js').then(m => m.showToast('שגיאה בשמירה', 'red'));
+        }
+    }
+}
+
+// פונקציה לפתיחת לוח השנה השבועי
+window.openSimulatorHoursModal = function () {
+    const gridHeader = document.getElementById('calendar-grid-container');
+    const rowsContainer = document.getElementById('simulators-calendar-rows');
+    if (!gridHeader || !rowsContainer) return;
+
+    // 1. קביעת 2 הקטגוריות הראשיות בלבד
+    const simulators = ['FFS', 'VIPT']; 
+    const flights = window.savedFlights || [];
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    // 2. איסוף 5 ימי העבודה האחרונים (מדלג על שישי ושבת)
+    let headerHtml = '';
+    const days = [];
+    let daysBack = 0;
+    
+    while (days.length < 5) {
+        const d = new Date();
+        d.setDate(now.getDate() - daysBack);
+        daysBack++;
+        
+        // 5 = שישי, 6 = שבת -> דלג עליהם
+        if (d.getDay() === 5 || d.getDay() === 6) continue;
+        
+        days.unshift(d); // מוסיף להתחלה כדי שהסדר יהיה מימין לשמאל באופן כרונולוגי
+    }
+
+    // קביעת הגריד ל-5 עמודות (במקום 7)
+    gridHeader.className = 'grid grid-cols-5 gap-4 min-w-[600px] mb-4';
+
+    days.forEach((d) => {
+        const dayName = d.toLocaleDateString('he-IL', { weekday: 'short' });
+        const dateDisplay = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+        const isToday = d.toDateString() === now.toDateString();
+        
+        headerHtml += `
+            <div class="text-center p-2 bg-gray-100 rounded-t-lg border-x border-t">
+                <div class="font-bold text-gray-700">${isToday ? 'היום' : dayName}</div>
+                <div class="text-[10px] text-gray-500">${dateDisplay}</div>
+            </div>
+        `;
+    });
+    gridHeader.innerHTML = headerHtml;
+
+    // 3. יצירת שורות למאמנים (FFS ו-VIPT)
+    let rowsHtml = '';
+    simulators.forEach(simName => {
+        rowsHtml += `
+            <div class="border rounded-xl p-4 bg-white shadow-sm">
+                <div class="flex items-center gap-2 mb-3 border-b pb-2">
+                    <div class="w-3 h-3 rounded-full bg-ofer-orange"></div>
+                    <h4 class="font-black text-lg text-gray-800">${simName}</h4>
+                </div>
+                <div class="grid grid-cols-5 gap-4">
+        `;
+
+        days.forEach((dateObj) => {
+            const dateStr = dateObj.toISOString().split('T')[0];
+            const isToday = dateObj.toDateString() === now.toDateString();
+            
+            // זיהוי פעילות: האם יש גיחה ששם הסימולטור שלה מכיל FFS או VIPT
+            const hasActivity = flights.some(f => {
+                const flightSim = (f.data?.['סימולטור'] || '').toUpperCase();
+                return f.date === dateStr && flightSim.includes(simName) && f.executionStatus !== 'בוטלה';
+            });
+            
+            const dailyData = window.facilityCloseTimes[dateStr] || {};
+            const savedTime = dailyData[simName];
+
+            const cardClass = savedTime ? 'bg-green-50 border-green-200' : (hasActivity ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100');
+
+            rowsHtml += `
+                <div class="flex flex-col gap-2 p-2 rounded-lg border ${cardClass} transition-all hover:shadow-md">
+                    <div class="text-[10px] font-bold ${hasActivity ? 'text-blue-600' : 'text-gray-400'}">
+                        ${hasActivity ? '⚡ פעילות זוהתה' : 'אין גיחות'}
+                    </div>
+                    
+                    <input type="time" id="cal-time-${dateStr}-${simName}" 
+                        value="${savedTime || (isToday ? currentTime : '')}" 
+                        class="w-full text-center text-sm font-bold border rounded p-1 focus:ring-2 focus:ring-ofer-orange outline-none">
+                    
+                    <button onclick="window.saveSpecificSimTime('${dateStr}', '${simName}')" 
+                        class="w-full py-1 text-[10px] font-bold rounded uppercase tracking-tighter transition ${savedTime ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-ofer-orange hover:text-white'}">
+                        ${savedTime ? 'עדכון' : 'שמירה'}
+                    </button>
+                </div>
+            `;
+        });
+
+        rowsHtml += `</div></div>`;
+    });
+
+    rowsContainer.innerHTML = rowsHtml;
+    document.getElementById('simulators-hours-modal').classList.remove('hidden');
+};
+
+// פונקציית שמירה מעודכנת (ללא התראות חוסמות)
+window.saveSpecificSimTime = async function (dateStr, simName) {
+    const inputId = `cal-time-${dateStr}-${simName}`;
+    const timeVal = document.getElementById(inputId).value;
+
+    if (!timeVal) {
+        import('../components/modals.js').then(m => m.showToast('נא להזין שעה', 'yellow'));
+        return;
+    }
+
+    if (window.firestoreFunctions && window.db) {
+        const { doc, setDoc, getDoc } = window.firestoreFunctions;
+        try {
+            const docRef = doc(window.db, "facility_status", dateStr);
+            const docSnap = await getDoc(docRef);
+            
+            let simulatorsData = {};
+            if (docSnap.exists() && docSnap.data().simulators) {
+                simulatorsData = docSnap.data().simulators;
+            }
+            
+            simulatorsData[simName] = timeVal;
+
+            await setDoc(docRef, {
+                date: dateStr,
+                simulators: simulatorsData,
+                timestamp: Date.now()
+            }, { merge: true });
+
+            if (!window.facilityCloseTimes[dateStr]) window.facilityCloseTimes[dateStr] = {};
+            window.facilityCloseTimes[dateStr][simName] = timeVal;
+
+            import('../components/modals.js').then(m => m.showToast(`נשמר: ${simName} | ${timeVal}`, 'green'));
+            
+            // עדכון הממשק במקום
+            const btn = document.querySelector(`button[onclick*="'${dateStr}', '${simName}'"]`);
+            if (btn) {
+                btn.textContent = 'עדכון';
+                btn.className = 'w-full py-1 text-[10px] font-bold rounded bg-green-600 text-white';
+                btn.closest('.border').classList.replace('bg-blue-50', 'bg-green-50');
+            }
+
+            if (typeof renderSimulatorDashboard === 'function') renderSimulatorDashboard();
+        } catch (e) {
+            console.error(e);
+            import('../components/modals.js').then(m => m.showToast('שגיאה בשמירה', 'red'));
+        }
+    }
+};
 
 window.renderSimulatorDashboard = renderSimulatorDashboard;

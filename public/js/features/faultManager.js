@@ -177,7 +177,7 @@ export function renderFaultStatistics() {
     const planning = window.planningSettings || {};
 
     let filtered = allFaults.filter(f => {
-        const matchSim = simulatorFilter === 'ALL' || f.simulator === simulatorFilter;
+        const matchSim = simulatorFilter === 'ALL' || (f.simulator || '').toUpperCase().includes(simulatorFilter);
         if (!matchSim) return false;
 
         let matchTime = true;
@@ -311,8 +311,11 @@ export async function initFaultDatabase() {
     }
 
     const sims = (window.personnelLists && window.personnelLists.simulators) ? window.personnelLists.simulators : [];
-    simSelect.innerHTML = '<option value="ALL">כל המאמנים</option>' +
-        sims.map(sim => `<option value="${sim}">${sim}</option>`).join('');
+    simSelect.innerHTML = `
+        <option value="ALL" selected>כל המאמנים</option>
+        <option value="FFS">FFS (כללי)</option>
+        <option value="VIPT">VIPT (כללי)</option>
+    `;
 
     populateFaultPeriodFilter();
     populateFaultWeekFilter();
@@ -384,7 +387,7 @@ export function processFaultsData() {
         const baseKey = `${fault.simulator}|${fault.description}`;
         const key = fault.id || `MANUAL|${baseKey}|${fault.timestamp}`; // שימוש ב-ID אם קיים
         const manualCycleStatus = currentResolutionStatus[key] || { isResolved: false };
-        
+
         unifiedFaultsDatabase[key] = {
             ...fault,
             key: key,
@@ -603,8 +606,9 @@ export function renderFaultDatabaseTable() {
 
     let filteredFaults = Object.values(window.unifiedFaultsDatabase);
 
-    if (simulatorFilter !== 'ALL') filteredFaults = filteredFaults.filter(f => f.simulator === simulatorFilter);
-    if (statusFilter !== 'ALL') {
+    if (simulatorFilter !== 'ALL') {
+        filteredFaults = filteredFaults.filter(f => (f.simulator || '').toUpperCase().includes(simulatorFilter));
+    } if (statusFilter !== 'ALL') {
         filteredFaults = filteredFaults.filter(f => {
             if (statusFilter === 'OPEN') return !f.status.isResolved;
             if (statusFilter === 'RESOLVED') return f.status.isResolved && !f.status.isClosedWithPermission;
@@ -785,7 +789,7 @@ export async function saveFaultResolutionStatus(faultKey, onlyUpdateClassificati
             }
             showToast('התקלה נפתחה מחדש', 'blue');
             hideAllModals();
-if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
+            if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
             return;
         } catch (e) {
             showToast('שגיאה בפתיחה מחדש', 'red');
@@ -834,7 +838,7 @@ if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => 
 
         showToast(onlyUpdateClassification ? 'סיווג עודכן' : 'התקלה טופלה', 'green');
         hideAllModals();
-if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
+        if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
     } catch (e) {
         console.error('Save failed:', e);
         showToast('שגיאה בשמירת הנתונים', 'red');
@@ -1214,16 +1218,16 @@ window.deleteSelectedFaults = async function () {
             // 1. מחיקת רזולוציה (תיעוד הטיפול) אם קיימת
             try {
                 await deleteDoc(doc(window.db, "fault_resolutions", key));
-            } catch (e) { 
-                console.log('No resolution found to delete'); 
+            } catch (e) {
+                console.log('No resolution found to delete');
             }
 
             // 2. מחיקת תקלה ידנית מ- standalone_faults (התוספת החדשה!)
             if (faultEntry.id && faultEntry.isManualEntry) {
                 try {
                     await deleteDoc(doc(window.db, "standalone_faults", faultEntry.id));
-                } catch (e) { 
-                    console.error('Error deleting standalone fault', e); 
+                } catch (e) {
+                    console.error('Error deleting standalone fault', e);
                 }
             }
 
@@ -1256,11 +1260,11 @@ window.deleteSelectedFaults = async function () {
         faultSelectedSet.clear();
         isFaultSelectionMode = false;
         window.toggleFaultAdminMode(); // איפוס מצב ה-UI
-        
+
         // רענון טבלאות הנתונים כדי שהתקלה תיעלם מיד מהמסך
         if (typeof window.fetchStandaloneFaults === 'function') await window.fetchStandaloneFaults();
-        if (typeof window.fetchFlights === 'function') await window.fetchFlights(); 
-        
+        if (typeof window.fetchFlights === 'function') await window.fetchFlights();
+
     } catch (e) {
         console.error(e);
         import('../components/modals.js').then(m => m.showToast('שגיאה בתהליך המחיקה', 'red'));
