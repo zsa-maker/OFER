@@ -29,6 +29,11 @@ export function initializeAppEventListeners() {
             const screenId = event.target.getAttribute('data-screen-id');
             showScreen(screenId);
 
+            // הוספת האתחול האוטומטי למסך החדש
+            if (screenId === 'goals-metrics-screen') {
+                window.statsManager.initGoalsScreen();
+            }
+
             if (screenId === 'admin-screen') {
                 initAdminPage();
             }
@@ -94,7 +99,7 @@ export function initializeAppEventListeners() {
         // מאזין ללחיצות (כפתורים)
         formStep2.addEventListener('click', (e) => {
             const target = e.target;
-            
+
             // טיפול בכפתור מחיקת תקלה
             const deleteBtn = target.closest('.delete-fault-btn');
             if (deleteBtn) {
