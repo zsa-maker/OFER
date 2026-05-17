@@ -250,8 +250,8 @@ const missionDatabase = {
      */
     applyFilters: function () {
         const getVal = (id) => document.getElementById(id)?.value || '';
-
-        const finalData = this.allData.filter(item => {
+        const dataSource = (window.savedFlights && window.savedFlights.length > 0) ? window.savedFlights : this.allData;
+        const finalData = dataSource.filter(item => {
             // בדיקת התאמה לכל הפילטרים (AND)
             return this.checkMatch(item, 'period', getVal('db-filter-period')) &&
                 this.checkMatch(item, 'week', getVal('db-filter-week')) &&

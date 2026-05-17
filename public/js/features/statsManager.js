@@ -113,7 +113,6 @@ export async function renderStatsDashboard() {
             renderSimulatorsUsageChart(timeFilteredFlights);
         }
 
-        renderMetricsUtilizationChart(finalFlights);
         if (typeof renderGoalsChart === 'function') {
             renderGoalsChart(finalFlights);
         }
@@ -655,7 +654,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (!f.date) return;
         const dStr = getLocalDStr(f.date);
         const dObj = createLocalMidnight(dStr);
-        
+
         if (dateFilterPredicate(dObj)) {
             const status = getFlightStatus(f);
             const isSuccess = (status === 'full') || (status === 'partial' && f.data['נדרש ביצוע חוזר'] !== 'כן');
@@ -679,10 +678,10 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         sortedDates.forEach(dStr => {
             const dObj = createLocalMidnight(dStr);
             const weekIdx = getWeekOfPeriod(dObj, planningData) - 1;
-            
+
             // בטיחות: מוודא שהשבוע לא יחרוג מחוץ למערך ויאבד נתונים
             const safeWeekIdx = Math.min(Math.max(weekIdx, 0), 25);
-            
+
             if (weekIdx >= 0) {
                 seriesPlanned[safeWeekIdx] += dailyData[dStr].planned;
                 seriesCurrent[safeWeekIdx] += dailyData[dStr].current;
@@ -1056,20 +1055,30 @@ function initFiltersUI() {
             // איפוס הרשימה
             subPopSelect.innerHTML = '<option value="">כל התתי-אוכלוסיות</option>';
 
-            // ייבוא הנתונים העדכניים
-            const { pilotPopulations } = await import('./adminManager.js');
+            // 1. טעינה בטוחה של הנתונים מ-Firebase
+            let popData = window.pilotPopulations;
+            if (!popData && window.firestoreFunctions) {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
+                if (popSnap.exists()) {
+                    popData = popSnap.data();
+                    window.pilotPopulations = popData;
+                }
+            }
+            if (!popData) {
+                const { pilotPopulations } = await import('./adminManager.js');
+                popData = pilotPopulations;
+            }
 
             let list = [];
 
-            // --- לוגיקה לבחירת הרשימה הנכונה ---
+            // 2. בחירת הרשימה הנכונה
             if (type === 'instructors') {
-                list = pilotPopulations.instructorGroups || [];
+                list = popData.instructorGroups || [];
             } else if (type === 'conversion') {
-                // כאן התיקון: התייחסות לקבוצות הסבה
-                list = pilotPopulations.conversionGroups || [];
+                list = popData.conversionGroups || [];
             } else {
-                // ברירת מחדל: חניכים (students)
-                list = pilotPopulations.courses || [];
+                list = popData.courses || [];
             }
 
             // יצירת האפשרויות ב-Select
@@ -1091,80 +1100,74 @@ function initFiltersUI() {
             const tbody = document.getElementById('pop-table-body');
             if (!tbody) return;
 
-            const { pilotPopulations } = await import('./adminManager.js');
-            const mapping = pilotPopulations.flightMapping || { students: [], instructors: [], conversion: [] };
+            let popData = window.pilotPopulations;
+            if (!popData && window.firestoreFunctions) {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
+                if (popSnap.exists()) {
+                    popData = popSnap.data();
+                    window.pilotPopulations = popData;
+                }
+            }
+            if (!popData) {
+                const { pilotPopulations } = await import('./adminManager.js');
+                popData = pilotPopulations;
+            }
 
-            // 1. בחירת שמות הגיחות הרלוונטיים (לפי מה שהגדרת במסך ניהול)
+            const mapping = popData.flightMapping || { students: [], instructors: [], conversion: [] };
+
             let relevantFlightNames = [];
-            if (type === 'instructors') {
-                relevantFlightNames = mapping.instructors || [];
-            } else if (type === 'conversion') {
-                relevantFlightNames = mapping.conversion || []; // <--- הוספה
-            } else {
-                relevantFlightNames = mapping.students || [];
-            }
+            if (type === 'instructors') relevantFlightNames = mapping.instructors || [];
+            else if (type === 'conversion') relevantFlightNames = mapping.conversion || [];
+            else relevantFlightNames = mapping.students || [];
 
-            // 2. בחירת רשימת הטייסים הרלוונטית (לפי הקבוצה שנבחרה)
             let relevantPilots = [];
+            let groups = [];
+            if (type === 'instructors') groups = popData.instructorGroups || [];
+            else if (type === 'conversion') groups = popData.conversionGroups || [];
+            else groups = popData.courses || [];
+
             if (subPopName) {
-                let groups = [];
-                if (type === 'instructors') {
-                    groups = pilotPopulations.instructorGroups;
-                } else if (type === 'conversion') {
-                    groups = pilotPopulations.conversionGroups || []; // <--- הוספה
-                } else {
-                    groups = pilotPopulations.courses;
-                }
-
                 const group = groups.find(g => g.name === subPopName);
-
-                if (group) {
-                    // אם זה חניכים המערך נקרא students, אחרת members
-                    relevantPilots = (type === 'students') ? group.students : group.members;
-                }
+                if (group) relevantPilots = group.students || group.members || [];
+            } else {
+                groups.forEach(g => relevantPilots.push(...(g.students || g.members || [])));
+                relevantPilots = [...new Set(relevantPilots)];
             }
 
-            // 3. סינון הגיחות בפועל
+            const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
+
             const filtered = (window.savedFlights || []).filter(f => {
                 const fData = f.data || {};
                 const fName = fData['שם גיחה'];
-                // איסוף כל השמות שהופיעו בגיחה (ימין/שמאל)
+                
                 const pilotsInFlight = [
-                    fData['טייס ימין'],
-                    fData['טייס שמאל'],
-                    fData['pilot-right'],
-                    fData['pilot-left']
-                ].filter(p => p); // מסנן ערכים ריקים
+                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
+                ].map(p => p?.toString().trim()).filter(Boolean);
 
-                // תנאי א': האם שם הגיחה הוא מסוג הגיחות המבוקש?
-                const isCorrectFlight = relevantFlightNames.includes(fName);
-
-                // תנאי ב': האם אחד הטייסים בגיחה שייך לקבוצה שנבחרה?
-                // (אם לא נבחרה תת-קבוצה, כל הטייסים מתאימים)
-                const isCorrectPilot = subPopName === "" || pilotsInFlight.some(p => relevantPilots.includes(p));
+                const isCorrectFlight = relevantFlightNames.length === 0 || relevantFlightNames.includes(fName);
+                const isCorrectPilot = cleanRelevantPilots.length === 0 || pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
 
                 return isCorrectFlight && isCorrectPilot;
             });
 
-            // מיון לפי תאריך (חדש לישן)
             filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-            // יצירת ה-HTML
             if (filtered.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-gray-500 italic">אין נתונים התואמים לסיווג</td></tr>';
             } else {
                 tbody.innerHTML = filtered.map(f => `
-            <tr class="border-b hover:bg-gray-50 transition-colors">
-                <td class="p-3 text-sm text-center border-l border-gray-100">${f.data['טייס ימין'] || f.data['pilot-right'] || '---'}</td>
-                <td class="p-3 text-sm text-center border-l border-gray-100">${f.data['שם גיחה'] || '---'}</td>
-                <td class="p-3 text-sm text-center border-l border-gray-100">${new Date(f.date).toLocaleDateString('he-IL')}</td>
-                <td class="p-3 text-sm text-center font-bold">
-                    <span class="${f.executionStatus === 'בוצעה' ? 'text-green-600' : 'text-gray-600'}">
-                        ${f.executionStatus || 'בוצעה'}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
+                    <tr class="border-b hover:bg-gray-50 transition-colors">
+                        <td class="p-3 text-sm text-center border-l border-gray-100">${f.data['טייס ימין'] || f.data['pilot-right'] || '---'}</td>
+                        <td class="p-3 text-sm text-center border-l border-gray-100">${f.data['שם גיחה'] || '---'}</td>
+                        <td class="p-3 text-sm text-center border-l border-gray-100">${new Date(f.date).toLocaleDateString('he-IL')}</td>
+                        <td class="p-3 text-sm text-center font-bold">
+                            <span class="${f.executionStatus === 'בוצעה' ? 'text-green-600' : 'text-gray-600'}">
+                                ${f.executionStatus || 'בוצעה'}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
             }
         }
     });
@@ -1260,20 +1263,20 @@ window.statsManager.refreshMetricsChart = () => {
 
 
 // פונקציה זו טוענת את אפשרויות "סוג גיחה" לתוך הסלקטור ומציירת את הגרפים בפעם הראשונה
-window.statsManager.initGoalsScreen = function() {
+window.statsManager.initGoalsScreen = function () {
     const selectType = document.getElementById('goals-filter-flight-type');
     if (selectType) {
         const typesSet = new Set();
         (window.savedFlights || []).forEach(f => {
             if (f.data && f.data['סוג גיחה']) typesSet.add(f.data['סוג גיחה']);
         });
-        
+
         selectType.innerHTML = '<option value="">כל הסוגים</option>';
         Array.from(typesSet).sort().forEach(type => {
             selectType.innerHTML += `<option value="${type}">${type}</option>`;
         });
     }
-    
+
     // הפעלה ראשונית של הגרפים ברגע שנכנסים למסך
     window.statsManager.refreshGoalsAndMetrics();
 };
@@ -1288,26 +1291,40 @@ window.statsManager.updateGoalsSubPops = async () => {
     if (!subPopSelect) return;
 
     subPopSelect.innerHTML = '<option value="">כל הקבוצות</option>';
-    
+
     // אם נבחר "כלל האוכלוסיות", ננטרל את בחירת הקבוצה ונרענן
     if (!type) {
         subPopSelect.disabled = true;
         window.statsManager.refreshGoalsAndMetrics();
         return;
     }
-    
+
     subPopSelect.disabled = false;
 
-    // ייבוא נתוני הניהול
-    const { pilotPopulations } = await import('./adminManager.js');
-    let list = [];
+    // משיכת נתונים מהשרת במידה וטרם נטענו בזיכרון המקומי
+    let popData = window.pilotPopulations;
+    if (!popData && window.firestoreFunctions) {
+        const { doc, getDoc } = window.firestoreFunctions;
+        const popSnap = await getDoc(doc(window.db, "settings", "populations"));
+        if (popSnap.exists()) {
+            popData = popSnap.data();
+            window.pilotPopulations = popData; // שמירה בזיכרון הגלובלי
+        }
+    }
+    // גיבוי אחרון
+    if (!popData) {
+        const { pilotPopulations } = await import('./adminManager.js');
+        popData = pilotPopulations;
+    }
 
+    let list = [];
     if (type === 'instructors') {
-        list = pilotPopulations.instructorGroups || [];
+        list = popData.instructorGroups || [];
     } else if (type === 'conversion') {
-        list = pilotPopulations.conversionGroups || [];
-    } else if (type === 'students') {
-        list = pilotPopulations.courses || [];
+        list = popData.conversionGroups || [];
+    } else {
+        // שינוי: במקום לבדוק 'students', ה-else יתפוס הכל (גם 'course' וגם 'courses')
+        list = popData.courses || [];
     }
 
     list.forEach(item => {
@@ -1321,63 +1338,94 @@ window.statsManager.updateGoalsSubPops = async () => {
 };
 
 // 2. סינון הגיחות ורינדור הגרפים
-window.statsManager.refreshGoalsAndMetrics = async function() {
-    const popType = document.getElementById('goals-pop-type')?.value;
-    const subPopName = document.getElementById('goals-sub-pop')?.value;
+// 2. סינון הגיחות ורינדור הגרפים - מבוסס על לוגיקת עמוד הפרופילים (profileManager.js)
+window.statsManager.refreshGoalsAndMetrics = async function () { 
+    const type = document.getElementById('goals-pop-type')?.value; 
+    // הוספת ניקוי מרכאות בדומה ל-profileManager.js
+    const subPopName = document.getElementById('goals-sub-pop')?.value.trim().replace(/["']/g, '"') || "";
     const selectedFlightType = document.getElementById('goals-filter-flight-type')?.value;
 
-    const { pilotPopulations } = await import('./adminManager.js');
+    // 1. טעינת נתוני אוכלוסיות (מוודא שיש מיפוי גיחות)
+    let popData = window.pilotPopulations;
+    if (!popData) {
+        const { pilotPopulations } = await import('./adminManager.js');
+        popData = pilotPopulations;
+    }
 
-    // סינון ראשוני: רק גיחות שדווחו
-    let filtered = (window.savedFlights || []).filter(f => f.executionStatus !== 'לא דווח');
+    // 2. סינון ראשוני של גיחות שבוצעו ולא בוטלו
+    let filtered = (window.savedFlights || []).filter(f =>
+        f.executionStatus !== 'טרם דווחה' && f.executionStatus !== 'בוטלה'
+    );
 
-    // סינון לפי סוג גיחה
+    // 3. סינון לפי סוג גיחה
     if (selectedFlightType) {
         filtered = filtered.filter(f => f.data?.['סוג גיחה'] === selectedFlightType);
     }
 
-    // סינון לפי אוכלוסייה (רק אם לא נבחר "כלל האוכלוסיות")
-    if (popType && pilotPopulations) {
-        let relevantPilots = [];
-        
-        // אם נבחרה קבוצה ספציפית
-        if (subPopName) {
-            let groups = (popType === 'instructors') ? pilotPopulations.instructorGroups : 
-                         (popType === 'conversion') ? pilotPopulations.conversionGroups : 
-                         pilotPopulations.courses;
-            
-            const group = groups.find(g => g.name === subPopName);
-            if (group) {
-                relevantPilots = (popType === 'students') ? group.students : group.members;
-            }
-        } else {
-            // אם נבחר סוג אוכלוסייה (למשל "חניכים") אבל "כל הקבוצות"
-            if (popType === 'students') {
-                pilotPopulations.courses.forEach(c => relevantPilots.push(...c.students));
-            } else if (popType === 'instructors') {
-                pilotPopulations.instructorGroups.forEach(g => relevantPilots.push(...g.members));
-            } else if (popType === 'conversion') {
-                pilotPopulations.conversionGroups.forEach(g => relevantPilots.push(...g.members));
-            }
-        }
+    // 4. לוגיקת סינון לפי אוכלוסייה - מותאם למנגנון ב-profileManager.js
+    if (type && popData) {
+        const mapping = popData.flightMapping || { students: [], instructors: [], conversion: [] };
 
-        if (relevantPilots.length > 0) {
-            const cleanedAllowed = new Set(relevantPilots.map(p => cleanName(p)));
-            filtered = filtered.filter(f => {
-                const pRight = cleanName(f.data?.['טייס ימין'] || f.data?.['pilot-right']);
-                const pLeft = cleanName(f.data?.['טייס שמאל'] || f.data?.['pilot-left']);
-                return cleanedAllowed.has(pRight) || cleanedAllowed.has(pLeft);
+        let relevantFlightNames = [];
+        if (type === 'instructors') relevantFlightNames = mapping.instructors || [];
+        else if (type === 'conversion') relevantFlightNames = mapping.conversion || []; 
+        else relevantFlightNames = mapping.students || [];
+
+        // איסוף הטייסים האקטיבי - בדיוק כמו בפרופילים
+       let relevantPilots = [];
+            let groups = [];
+            if (type === 'instructors') {
+                groups = popData.instructorGroups || [];
+            } else if (type === 'conversion') {
+                groups = popData.conversionGroups || [];
+            } else {
+                groups = popData.courses || [];
+            }
+
+            if (subPopName) {
+                const group = groups.find(g => g.name === subPopName);
+                if (group) {
+                    relevantPilots = group.students || group.members || [];
+                }
+            } else {
+                // התיקון: במצב של "הכל", נאסוף את כל הטייסים ששייכים לסוג האוכלוסייה שבחרת!
+                groups.forEach(g => relevantPilots.push(...(g.students || g.members || [])));
+                relevantPilots = [...new Set(relevantPilots)];
+            }
+
+            const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
+
+            // 4. סינון הגיחות בפועל
+            const filtered = (window.savedFlights || []).filter(f => {
+                const fData = f.data || {};
+                const fName = fData['שם גיחה'];
+                
+                // התיקון: שולפים רק את מי שישב בכיסא הטייס
+                const pilotsInFlight = [
+                    fData['טייס ימין'],
+                    fData['טייס שמאל'],
+                    fData['pilot-right'],
+                    fData['pilot-left']
+                ].map(p => p?.toString().trim()).filter(Boolean);
+
+                const isCorrectFlight = relevantFlightNames.length === 0 || relevantFlightNames.includes(fName);
+                
+                // מוודא שהטייס שהטיס את הגיחה אכן שייך לקבוצה הרלוונטית
+                const isCorrectPilot = cleanRelevantPilots.length === 0 || pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
+
+                return isCorrectFlight && isCorrectPilot;
             });
-        }
     }
 
+    // 5. עדכון הגרפים עם הנתונים המסוננים
     window.currentFilteredFlights = filtered;
     if (typeof renderGoalsChart === 'function') renderGoalsChart(filtered);
     if (typeof renderMetricsUtilizationChart === 'function') renderMetricsUtilizationChart(filtered);
 };
 
 // 3. עדכון פונקציית האתחול
-window.statsManager.initGoalsScreen = async function() {
+// 3. עדכון פונקציית האתחול
+window.statsManager.initGoalsScreen = async function () {
     // טעינת סוגי גיחות לסלקטור
     const selectType = document.getElementById('goals-filter-flight-type');
     if (selectType) {
@@ -1389,7 +1437,30 @@ window.statsManager.initGoalsScreen = async function() {
         Array.from(typesSet).sort().forEach(t => {
             selectType.innerHTML += `<option value="${t}">${t}</option>`;
         });
+
+        // מאזין לשינוי סוג גיחה
+        if (!selectType.dataset.listenerAttached) {
+            selectType.addEventListener('change', window.statsManager.refreshGoalsAndMetrics);
+            selectType.dataset.listenerAttached = "true";
+        }
     }
+
+    // --- התיקון: הוספת מאזינים לשינוי אוכלוסייה ---
+    const popTypeSelect = document.getElementById('goals-pop-type');
+    const subPopSelect = document.getElementById('goals-sub-pop');
+
+    if (popTypeSelect && !popTypeSelect.dataset.listenerAttached) {
+        popTypeSelect.addEventListener('change', () => {
+            window.statsManager.updateGoalsSubPops();
+        });
+        popTypeSelect.dataset.listenerAttached = "true";
+    }
+
+    if (subPopSelect && !subPopSelect.dataset.listenerAttached) {
+        subPopSelect.addEventListener('change', window.statsManager.refreshGoalsAndMetrics);
+        subPopSelect.dataset.listenerAttached = "true";
+    }
+    // ------------------------------------------------
 
     // אתחול רשימת הקבוצות והרצה ראשונית
     await window.statsManager.updateGoalsSubPops();

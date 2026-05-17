@@ -37,6 +37,11 @@ export function initializeAppEventListeners() {
             if (screenId === 'admin-screen') {
                 initAdminPage();
             }
+            if (screenId === 'goals-metrics-screen') {
+                if (window.goalsManager) {
+                    window.goalsManager.initGoalsScreen();
+                }
+            }
         });
     });
 

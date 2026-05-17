@@ -8,7 +8,7 @@
 
             <div class="filter-group">
                 <label class="block text-sm font-medium text-gray-700 mb-1">אוכלוסייה:</label>
-                <select id="goals-pop-type" onchange="window.statsManager.updateGoalsSubPops()"
+                <select id="goals-pop-type" onchange="window.goalsManager && window.goalsManager.updateGoalsSubPops()"
                     class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange">
                     <option value="">כלל האוכלוסיות</option>
                     <option value="students">חניכים</option>
@@ -19,7 +19,7 @@
 
             <div class="filter-group">
                 <label class="block text-sm font-medium text-gray-700 mb-1">קבוצה/קורס:</label>
-                <select id="goals-sub-pop" onchange="window.statsManager.refreshGoalsAndMetrics()" disabled
+                <select id="goals-sub-pop" onchange="window.goalsManager && window.goalsManager.refreshGoalsAndMetrics()" disabled
                     class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange disabled:bg-gray-100">
                     <option value="">כל הקבוצות</option>
                 </select>
@@ -27,7 +27,7 @@
 
             <div class="filter-group">
                 <label class="block text-sm font-medium text-gray-700 mb-1">סוג גיחה:</label>
-                <select id="goals-filter-flight-type" onchange="window.statsManager.refreshGoalsAndMetrics()"
+                <select id="goals-filter-flight-type" onchange="window.goalsManager && window.goalsManager.refreshGoalsAndMetrics()"
                     class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange">
                     <option value="">כל הסוגים</option>
                 </select>
@@ -40,7 +40,7 @@
                 <div class="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 class="text-lg font-bold text-gray-700">עמידה ביעדים</h3>
                     <select id="stats-goal-flight-selector" class="text-sm border rounded p-1"
-                        onchange="window.statsManager.refreshGoalsChart()">
+                        onchange="window.goalsManager && window.goalsManager.refreshGoalsChart()">
                         <option value="">כל הגיחות</option>
                     </select>
                 </div>
@@ -53,7 +53,7 @@
                 <div class="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 class="text-lg font-bold text-gray-700">מיצוי מדדי ביצוע</h3>
                     <select id="stats-metric-selector" class="text-sm border rounded p-1"
-                        onchange="window.statsManager.refreshMetricsChart()">
+                        onchange="window.goalsManager && window.goalsManager.refreshMetricsChart()">
                         <option value="">בחר מדד...</option>
                     </select>
                 </div>
