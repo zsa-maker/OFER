@@ -127,7 +127,8 @@
                 appendScreen('partials/screens/admin-screen.html'),
                 appendScreen('partials/screens/profile-screen.html'),
                 appendScreen('partials/screens/simulator-management-screen.html'),
-                appendScreen('partials/screens/goals-metrics-screen.html')
+                appendScreen('partials/screens/goals-metrics-screen.html'),
+                appendScreen('partials/screens/tips-remarks-screen.html')
             ]);
 
             // 3. חשיפת ה-Sidebar (אם הוא הוגדר כ-hidden בקובץ המקור)
@@ -182,7 +183,9 @@
                 './js/features/flightImport.js',
                 './js/features/statsManager.js',
                 './js/features/adminManager.js',
-                './js/features/profileManager.js'
+                './js/features/profileManager.js',
+                './js/features/tipsRemarksManager.js'
+
             ];
 
             jsFiles.forEach(src => {

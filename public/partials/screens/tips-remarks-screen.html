@@ -1,0 +1,88 @@
+<div id="tips-remarks-screen" class="screen hidden text-right" dir="rtl">
+    <h1 class="text-3xl font-bold text-gray-800 mb-6">מאגר טיפים והערות גיחות</h1>
+
+    <div class="flex border-b border-gray-200 mb-6 bg-white rounded-t-lg shadow-sm">
+        <button id="btn-tab-remarks" onclick="window.switchTipsRemarksTab('remarks')"
+            class="py-3 px-6 font-bold border-b-4 border-ofer-primary-500 text-ofer-primary-500 transition-all duration-150">
+            <i class="fas fa-comment-alt ml-2"></i>הערות גיחה
+        </button>
+        <button id="btn-tab-tips" onclick="window.switchTipsRemarksTab('tips')"
+            class="py-3 px-6 font-bold border-b-4 border-transparent text-gray-500 hover:text-gray-700 transition-all duration-150">
+            <i class="fas fa-lightbulb ml-2"></i>טיפים מקצועיים
+        </button>
+    </div>
+
+    <div id="content-tab-remarks" class="space-y-4">
+        <div class="bg-white rounded-lg shadow-md p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">סוג הערה</label>
+                <select id="filter-remark-type" onchange="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm">
+                    <option value="">הכל</option>
+                    <option value="סילבוס">סילבוס</option>
+                    <option value="מעטפת">מעטפת</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">שם גיחה</label>
+                <input type="text" id="filter-remark-flight" oninput="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm placeholder-gray-400" placeholder="חפש לפי גיחה...">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">מעיר</label>
+                <input type="text" id="filter-remark-author" oninput="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm placeholder-gray-400" placeholder="שם המעיר...">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">חיפוש חופשי בתוכן</label>
+                <input type="text" id="filter-remark-text" oninput="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm placeholder-gray-400" placeholder="חפש בפירוט ההערה...">
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200 text-right">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">תאריך</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">שם גיחה</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">סוג הערה</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">גורם</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">מעיר</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">פירוט ההערה</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body-remarks" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="content-tab-tips" class="space-y-4 hidden">
+        <div class="bg-white rounded-lg shadow-md p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">קטגוריית טיפ</label>
+                <select id="filter-tip-category" onchange="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm">
+                    <option value="">הכל</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">שם גיחה</label>
+                <input type="text" id="filter-tip-flight" oninput="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm placeholder-gray-400" placeholder="חפש לפי גיחה...">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">חיפוש חופשי בתוכן</label>
+                <input type="text" id="filter-tip-text" oninput="window.tipsRemarksManager.renderTables()" class="w-full border p-2 rounded bg-gray-50 text-sm placeholder-gray-400" placeholder="חפש בפירוט הטיפ...">
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200 text-right">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">תאריך</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">שם גיחה</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">קטגוריית טיפ</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-700">פירוט הטיפ</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body-tips" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+            </table>
+        </div>
+    </div>
+</div>

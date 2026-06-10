@@ -25,7 +25,13 @@ const FIELD_MAPPING = {
     'flight-type-select': 'סוג גיחה',
     'lessons-right': 'לקחי מתאמן - ימין',
     'lessons-left': 'לקחי מתאמן - שמאל',
-    'general-remarks-input': 'הערות כלליות'
+    'general-remarks-input': 'הערות כלליות',
+    'tip-category-select': 'קטגוריית טיפ',
+    'tip-details-input': 'פירוט טיפ',
+    'remark-type-select': 'סוג הערה',
+    'remark-factor-input': 'גורם הערה',
+    'remark-author-input': 'מעיר הערה',
+    'remark-details-input': 'פירוט הערה'
 };
 
 /**
@@ -490,20 +496,21 @@ function populateDatalists() {
     fill('pilot-right', personnelLists.pilots);
     fill('pilot-left', personnelLists.pilots);
     fill('flight-type-select', personnelLists.flightTypes);
+    fill('tip-category-select', personnelLists.tipCategories || ['תפעול גיחה', 'זנב', 'אחר']);
+
 
     // --- הוספת מילוי לרשימת סיבות הביטול ---
     fill('cancellation-reason-select', personnelLists.cancellationReasons || []);
 }
 
 export function saveCurrentStepData() {
-    const inputs = document.querySelectorAll('#general-data-section [data-field], #flight-name, #flight-date, #start-time, #end-time, #general-remarks-input');
+    const inputs = document.querySelectorAll('#general-data-section [data-field], #flight-name, #flight-date, #start-time, #end-time, #general-remarks-input, #tip-category-select, #tip-details-input, #remark-type-select, #remark-factor-input, #remark-author-input, #remark-details-input');
     inputs.forEach(input => {
         if (input.id === 'flight-type-select') return;
 
-        // וידוא שהערות כלליות נשמרות רק ביום אימון
         const typeSelect = document.getElementById('flight-type-select');
         if (input.id === 'general-remarks-input' && typeSelect && typeSelect.value !== 'יום אימון') {
-            return; // אל תשמור את ההערות אם זה לא יום אימון
+            return;
         }
 
         const key = FIELD_MAPPING[input.id] || input.dataset.field || input.id;
@@ -520,6 +527,7 @@ export function saveCurrentStepData() {
     collectGoalsData();
     collectMetricsData();
 }
+
 export function validateForm(isCancellation = false) {
     saveCurrentStepData();
     let requiredIds = ['flight-name', 'flight-type-select', 'flight-date', 'start-time', 'end-time'];
@@ -681,6 +689,19 @@ function collectMetricsData() {
     if (!currentForm.data) currentForm.data = {};
     currentForm.data['מדדי ביצוע'] = selectedMetrics;
 }
+
+window.handleRemarkTypeChange = function(value) {
+    const factorWrapper = document.getElementById('remark-factor-wrapper');
+    if (!factorWrapper) return;
+    
+    if (value === 'מעטפת') {
+        factorWrapper.classList.remove('hidden');
+    } else {
+        factorWrapper.classList.add('hidden');
+        const factorInput = document.getElementById('remark-factor-input');
+        if (factorInput) factorInput.value = ''; // איפוס השדה
+    }
+};
 
 // חשיפה ל-Window
 window.showFormStep2 = showFormStep2;

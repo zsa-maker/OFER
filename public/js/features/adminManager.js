@@ -318,12 +318,67 @@ export async function editPerson(type, index) {
     const newName = prompt("ערוך ערך:", oldName);
 
     if (newName && newName.trim() && newName !== oldName) {
-        personnelLists[type][index] = newName.trim();
+        const finalNewName = newName.trim();
+        
+        // 1. עדכון השם ברשימה המקומית ושמירה
+        personnelLists[type][index] = finalNewName;
         personnelLists[type].sort();
         renderList(type);
-
         await savePersonnelLists(true);
-        showToast("השם עודכן ונשמר.", "green");
+
+        // 2. סריקה ועדכון השם בכל הגיחות הקיימות במסד הנתונים
+        if (window.firestoreFunctions && window.db && window.savedFlights) {
+            import('../components/modals.js').then(m => m.showToast("מעדכן גיחות קיימות... נא להמתין", "blue"));
+            
+            try {
+                const { doc, updateDoc } = window.firestoreFunctions;
+                let count = 0;
+
+                const fieldMap = {
+                    'instructorsFemale': ['מדריכה', 'instructor-name-1', 'מדריכה נוספת'],
+                    'pilots': ['טייס ימין', 'טייס שמאל', 'pilot-right', 'pilot-left'],
+                    'observers': ['מתצפת', 'observer'],
+                    'simulators': ['סימולטור'],
+                    'flightTypes': ['סוג גיחה'],
+                    'flightNames': ['שם גיחה'],
+                    'technicians': ['טכנאי']
+                };
+
+                const fieldsToUpdate = fieldMap[type] || [];
+
+                for (let flight of window.savedFlights) {
+                    let changed = false;
+                    fieldsToUpdate.forEach(field => {
+                        if (flight.data[field] === oldName) {
+                            flight.data[field] = finalNewName;
+                            changed = true;
+                        }
+                    });
+
+                    if (changed) {
+                        await updateDoc(doc(window.db, "flights", flight.id), { data: flight.data });
+                        count++;
+                    }
+                }
+
+                if (count > 0) {
+                    import('../components/modals.js').then(m => m.showToast(`השם עודכן בהצלחה ו-${count} גיחות עודכנו!`, "green"));
+                } else {
+                    import('../components/modals.js').then(m => m.showToast("השם עודכן ונשמר ברשימה.", "green"));
+                }
+                
+                // רענון התצוגה בחלון הניהול המתקדם (אם הוא פתוח כרגע)
+                if (typeof window.filterPersonnelModal === 'function' && !document.getElementById('personnel-manage-modal').classList.contains('hidden')) {
+                    window.filterPersonnelModal();
+                }
+
+            } catch (error) {
+                console.error("Error updating flights on edit:", error);
+                import('../components/modals.js').then(m => m.showToast("שגיאה בעדכון הגיחות. השם עודכן רק ברשימה.", "red"));
+            }
+        } else {
+            import('../components/modals.js').then(m => m.showToast("השם עודכן ונשמר.", "green"));
+        }
     }
 }
 
@@ -1002,12 +1057,12 @@ function populateGoalConfigDropdowns() {
 
     if (typeSelect && personnelLists.flightTypes) {
         typeSelect.innerHTML = '<option value="">בחר סוג...</option>' +
-            personnelLists.flightTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+            personnelLists.flightTypes.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('');
     }
 
     if (nameSelect && personnelLists.flightNames) {
         nameSelect.innerHTML = '<option value="">בחר שם...</option>' +
-            personnelLists.flightNames.map(n => `<option value="${n}">${n}</option>`).join('');
+            personnelLists.flightNames.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
     }
 }
 
@@ -1179,16 +1234,17 @@ window.filterPersonnelModal = () => {
         const div = document.createElement('div');
         div.className = "flex justify-between items-center bg-white p-3 mb-2 rounded shadow-sm border border-gray-100";
         
-        // --- שורת התיקון: ניקוי תווים מיוחדים למניעת שבירת ה-JavaScript ---
         const safeName = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-        // עדכון קריאות הפונקציות להשתמש ב-safeName
         div.innerHTML = `
             <span class="font-bold text-gray-800">${name}</span>
             <div class="flex gap-2">
-                <button onclick="window.initMergePersonnel('${safeName}')" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">מיזוג עם שם אחר</button>
+                <button onclick="window.editPerson('${currentModalType}', personnelLists['${currentModalType}'].indexOf('${safeName}')); setTimeout(() => window.filterPersonnelModal(), 500);" 
+                        class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 font-bold">ערוך שם</button>
+                <button onclick="window.initMergePersonnel('${safeName}')" 
+                        class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">מיזוג לשם אחר</button>
                 <button onclick="window.removePerson('${currentModalType}', personnelLists['${currentModalType}'].indexOf('${safeName}')); window.filterPersonnelModal();" 
-                        class="text-red-500 hover:text-red-700">🗑️</button>
+                        class="text-red-500 hover:text-red-700 text-lg">🗑️</button>
             </div>
         `;
         container.appendChild(div);
@@ -1213,60 +1269,107 @@ window.addFromPersonnelModal = async () => {
 };
 
 window.initMergePersonnel = async (oldName) => {
-    const newName = prompt(`לאיזה שם ברשימה תרצה למזג את "${oldName}"?\nכל הגיחות של ${oldName} יעברו לשם החדש, ו-${oldName} יימחק מהרשימה.`);
+    // משיכת כל השמות הזמינים למעט השם הנוכחי
+    const availableNames = personnelLists[currentModalType].filter(n => n !== oldName);
 
-    if (!newName || newName === oldName) return;
-
-    if (!personnelLists[currentModalType].includes(newName)) {
-        showToast("שם היעד אינו קיים ברשימה. הוסף אותו קודם.", "red");
+    if(availableNames.length === 0) {
+        import('../components/modals.js').then(m => m.showToast("אין שמות נוספים ברשימה למזג אליהם.", "yellow"));
         return;
     }
 
-    if (!confirm(`האם אתה בטוח? פעולה זו תעדכן את כל הגיחות במסד הנתונים. אי אפשר לבטל!`)) return;
+    // יצירת חלון קופץ צף (מודאל מותאם אישית דרך JS כדי לא לשנות קובצי HTML)
+    const overlay = document.createElement('div');
+    overlay.className = "fixed inset-0 bg-gray-900 bg-opacity-60 overflow-y-auto h-full w-full z-[60] flex justify-center items-center";
+    overlay.id = "custom-merge-modal";
 
-    showToast("מבצע מיזוג... נא להמתין", "blue");
+    const optionsHtml = availableNames.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
 
-    try {
-        const { doc, updateDoc } = window.firestoreFunctions;
-        let count = 0;
+    overlay.innerHTML = `
+        <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right" dir="rtl">
+            <h3 class="text-xl font-bold mb-2 text-ofer-dark-brown border-b pb-2">מיזוג נתונים</h3>
+            <p class="text-sm text-gray-600 mb-4">לאיזה שם ברשימה תרצה למזג את <span class="font-bold text-red-600">"${oldName}"</span>?</p>
+            <p class="text-xs text-gray-500 mb-4">* כל הגיחות של השם הנוכחי יעברו לשם שייבחר, והשם הנוכחי יימחק מהרשימה.</p>
 
-        // מיפוי שדות לפי סוג הרשימה
-        const fieldMap = {
-            'instructorsFemale': ['מדריכה', 'instructor-name-1'],
-            // 'instructorsMale': ['מדריך', 'instructor-main'],
-            'pilots': ['טייס ימין', 'טייס שמאל', 'pilot-right', 'pilot-left'],
-            'observers': ['מתצפת', 'observer']
-        };
+            <div class="mb-4">
+                <label class="block text-sm font-bold mb-2">בחר שם יעד (מתוך הרשימה הקיימת):</label>
+                <select id="merge-target-select" class="w-full p-2 border rounded border-gray-300 focus:ring-ofer-orange bg-gray-50">
+                    <option value="" disabled selected>-- בחר שם --</option>
+                    ${optionsHtml}
+                </select>
+            </div>
 
-        const fieldsToUpdate = fieldMap[currentModalType] || [];
+            <div class="flex justify-end gap-3 mt-6">
+                <button id="cancel-merge-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-bold">ביטול</button>
+                <button id="confirm-merge-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold shadow">אשר מיזוג</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
 
-        // עדכון כל הגיחות בזיכרון וב-DB
-        for (let flight of window.savedFlights) {
-            let changed = false;
-            fieldsToUpdate.forEach(field => {
-                if (flight.data[field] === oldName) {
-                    flight.data[field] = newName;
-                    changed = true;
-                }
-            });
+    // הגדרת אירועי לחיצה למודאל החדש
+    document.getElementById('cancel-merge-btn').onclick = () => {
+        document.body.removeChild(overlay);
+    };
 
-            if (changed) {
-                await updateDoc(doc(window.db, "flights", flight.id), { data: flight.data });
-                count++;
-            }
+    document.getElementById('confirm-merge-btn').onclick = async () => {
+        const newNameSelect = document.getElementById('merge-target-select');
+        const newName = newNameSelect.value;
+
+        if (!newName) {
+            import('../components/modals.js').then(m => m.showToast("יש לבחור שם מהרשימה.", "yellow"));
+            return;
         }
 
-        // מחיקת השם הישן מהרשימה
-        personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== oldName);
-        await savePersonnelLists(true);
+        if (!confirm('האם אתה בטוח? פעולה זו תעדכן את כל הגיחות במסד הנתונים ואינה הפיכה!')) return;
 
-        showToast(`מיזוג הושלם! ${count} גיחות עודכנו.`, "green");
-        window.filterPersonnelModal();
-        renderList(currentModalType);
-    } catch (error) {
-        console.error("Merge error:", error);
-        showToast("שגיאה בתהליך המיזוג", "red");
-    }
+        document.body.removeChild(overlay);
+        import('../components/modals.js').then(m => m.showToast("מבצע מיזוג... נא להמתין", "blue"));
+
+        try {
+            const { doc, updateDoc } = window.firestoreFunctions;
+            let count = 0;
+
+            // הרחבת המיפוי כדי לוודא שזה עובד לכל סוגי הרשימות
+            const fieldMap = {
+                'instructorsFemale': ['מדריכה', 'instructor-name-1', 'מדריכה נוספת'],
+                'pilots': ['טייס ימין', 'טייס שמאל', 'pilot-right', 'pilot-left'],
+                'observers': ['מתצפת', 'observer'],
+                'simulators': ['סימולטור'],
+                'flightTypes': ['סוג גיחה'],
+                'flightNames': ['שם גיחה'],
+                'technicians': ['טכנאי']
+            };
+
+            const fieldsToUpdate = fieldMap[currentModalType] || [];
+
+            // מעבר על כל הגיחות ועדכון במסד הנתונים
+            for (let flight of window.savedFlights) {
+                let changed = false;
+                fieldsToUpdate.forEach(field => {
+                    if (flight.data[field] === oldName) {
+                        flight.data[field] = newName;
+                        changed = true;
+                    }
+                });
+
+                if (changed) {
+                    await updateDoc(doc(window.db, "flights", flight.id), { data: flight.data });
+                    count++;
+                }
+            }
+
+            // מחיקת השם הישן מהרשימה המקומית
+            personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== oldName);
+            await savePersonnelLists(true);
+
+            import('../components/modals.js').then(m => m.showToast(`מיזוג הושלם! ${count} גיחות עודכנו ל-${newName}.`, "green"));
+            window.filterPersonnelModal();
+            window.renderList(currentModalType);
+        } catch (error) {
+            console.error("Merge error:", error);
+            import('../components/modals.js').then(m => m.showToast("שגיאה בתהליך המיזוג", "red"));
+        }
+    };
 };
 
 // רינדור המסך
@@ -1349,7 +1452,7 @@ export function renderPopulations() {
                 <div class="border rounded p-1 h-24 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar">
                     ${availableForCourse.map(p => `
                         <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-orange-50 p-1 cursor-pointer">
-                            <input type="checkbox" class="course-cb-${cIdx}" value="${p}">
+                            <input type="checkbox" class="course-cb-${cIdx}" value="${p.replace(/"/g, '&quot;')}">
                             <span>${p}</span>
                         </label>
                     `).join('') || '<div class="text-gray-400 text-[10px]">אין טייסים זמינים</div>'}
@@ -1390,7 +1493,7 @@ export function renderPopulations() {
                     <div class="border rounded p-1 h-24 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar">
                         ${availableForGroup.map(p => `
                             <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-purple-50 p-1 cursor-pointer">
-                                <input type="checkbox" class="conv-group-cb-${gIdx}" value="${p}">
+<input type="checkbox" class="conv-group-cb-${gIdx}" value="${p.replace(/"/g, '&quot;')}">
                                 <span>${p}</span>
                             </label>
                         `).join('') || '<div class="text-gray-400 text-[10px]">אין טייסים זמינים</div>'}
@@ -1821,8 +1924,8 @@ function populateMetricDropdowns() {
     const types = personnelLists.flightTypes || [];
     const names = personnelLists.flightNames || [];
 
-    typeSelect.innerHTML = '<option value="">בחר סוג...</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
-    nameSelect.innerHTML = '<option value="">בחר שם...</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    typeSelect.innerHTML = '<option value="">בחר סוג...</option>' + types.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('');
+    nameSelect.innerHTML = '<option value="">בחר שם...</option>' + names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
 }
 
 window.addNewMetricGroup = (metricName = '', subItems = []) => {
