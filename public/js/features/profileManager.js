@@ -2,6 +2,7 @@
 
 import { personnelLists, loadGoalsAndSystems, loadPersonnelLists } from './adminManager.js';
 import { fetchFlights } from '../core/global.js';
+import { showToast } from '../components/modals.js';
 
 let profileChart = null;
 let currentPilotFlights = [];
@@ -130,7 +131,7 @@ window.profileManager.updateMatrix = function () {
         const isNotCancelled = f.executionStatus !== 'בוטלה';
         return isSamePeriod && isNotCancelled;
     });
-    
+
     const type = typeSelect.value;
     const insFlightType = document.querySelector('input[name="ins-flight-type"]:checked')?.value;
 
@@ -172,8 +173,8 @@ window.profileManager.updateMatrix = function () {
     };
 
     // בניית כותרת הטבלה (Thead) - כל הכותרות הוסבו לאנכיות
-// בניית כותרת הטבלה (Thead) - כל הכותרות באותו גודל בדיוק
-// בניית כותרת הטבלה (Thead) - רוחב מינימלי אחיד, מתרחב רק אם הטקסט דורש זאת
+    // בניית כותרת הטבלה (Thead) - כל הכותרות באותו גודל בדיוק
+    // בניית כותרת הטבלה (Thead) - רוחב מינימלי אחיד, מתרחב רק אם הטקסט דורש זאת
     thead.innerHTML = `
     <tr class="bg-gray-100">
         <th class="border p-0 text-sm h-32 w-12 min-w-[48px] text-center align-bottom sticky right-0 z-10 bg-gray-100 whitespace-nowrap">
@@ -547,6 +548,406 @@ function populateFlightTypeSelects(flights) {
     });
 }
 
+// --- לוגיקת דוח מדריכים ---
 
+window.profileManager.openInstructorReportModal = function() {
+    const modal = document.getElementById('instructor-report-modal');
+    const periodSelect = document.getElementById('instructor-report-period');
+    const mainPeriodSelect = document.getElementById('matrix-period');
+    
+    if (!modal || !periodSelect) return;
+
+    periodSelect.innerHTML = mainPeriodSelect.innerHTML;
+    periodSelect.value = mainPeriodSelect.value;
+    modal.classList.remove('hidden');
+};
+
+window.profileManager.generateInstructorsReport = async function() {
+    const periodSelect = document.getElementById('instructor-report-period');
+    const selectedPeriodName = periodSelect.value;
+    const btn = document.getElementById('btn-generate-instructors-report');
+    
+    if (!selectedPeriodName) {
+        showToast('אנא בחר תקופה', 'red');
+        return;
+    }
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> מכין קבצים...';
+
+        const populations = window.pilotPopulations || {};
+        const instructorGroups = populations.instructorGroups || [];
+        
+        let allInstructors = new Set();
+        instructorGroups.forEach(group => {
+            (group.members || group.students || []).forEach(member => allInstructors.add(member.trim()));
+        });
+        const instructorsList = Array.from(allInstructors);
+
+        if (instructorsList.length === 0) {
+            showToast('לא נמצאו מדריכים מוגדרים במערכת.', 'red');
+            return;
+        }
+
+        const plan = window.planningSettings || {};
+        const allFlights = window.savedFlights || [];
+        
+        // סינון: כל הגיחות למעט אלו שבוטלו (כולל גיחות חלקיות וטרם דווחו)
+        const periodFlights = allFlights.filter(f => {
+            const periodOfFlight = getFlightPeriodName(f.date, plan).trim(); 
+            const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
+            const isCancelled = f.executionStatus === 'בוטלה' || !!(f.data && f.data['סיבת ביטול']);
+            
+            return isSamePeriod && !isCancelled;
+        });
+
+        const reportsData = instructorsList.map(instructorName => {
+            return collectDataForInstructor(instructorName, periodFlights, selectedPeriodName);
+        });
+
+        const hasCreatedFiles = await createAndDownloadWordDocuments(reportsData, selectedPeriodName);
+
+        if (hasCreatedFiles) {
+            showToast('הקבצים נוצרו והורדו בהצלחה.', 'green');
+            document.getElementById('instructor-report-modal').classList.add('hidden');
+        }
+
+    } catch (error) {
+        console.error("שגיאה ביצירת דוחות:", error);
+        showToast('שגיאה ביצירת הדוחות.', 'red');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download"></i> הורד קבצים';
+    }
+};
+
+function collectDataForInstructor(instructorName, flights, periodName) {
+    let report = {
+        name: instructorName,
+        period: periodName,
+        instructorFlights: { hours: 0, details: [] }, 
+        studentFlights: { hours: 0, details: [] },    
+        totalHours: 0,
+        personalFlights: { hours: 0 },                
+        personalFitness: [],
+        instructorGoals: { met: 0, notMet: 0 }
+    };
+
+    const mapping = window.pilotPopulations?.flightMapping || { students: [], instructors: [], conversion: [] };
+    
+    // ניקוי רווחים מכל הרשימות המוגדרות בעמוד הניהול
+    const mappedInstructors = (mapping.instructors || []).map(n => n.trim());
+    const mappedStudents = (mapping.students || []).map(n => n.trim());
+
+    flights.forEach(f => {
+        const d = f.data || {};
+        const isRightPilot = d['טייס ימין']?.trim() === instructorName || d['pilot-right']?.trim() === instructorName;
+        const isLeftPilot = d['טייס שמאל']?.trim() === instructorName || d['pilot-left']?.trim() === instructorName;
+        const isInstructor = d['מדריך']?.trim() === instructorName || d['מדריכה']?.trim() === instructorName || d['instructor-main']?.trim() === instructorName;
+        
+        if (!isRightPilot && !isLeftPilot && !isInstructor) return;
+
+        const durationMinutes = parseInt(d['שעות טיסה (דקות)']) || 0;
+        const durationHoursDec = durationMinutes / 60;
+        const flightName = d['שם גיחה']?.trim() || 'ללא שם';
+        const dateStr = f.date ? new Date(f.date).toLocaleDateString('he-IL') : 'תאריך חסר';
+        
+        const isPersonalFlight = mappedInstructors.includes(flightName);
+        const isStudentFlight = mappedStudents.includes(flightName);
+
+        // איסוף לקח של הטייס
+        let lessonText = '';
+        if (isRightPilot) lessonText = d['לקחי מתאמן - ימין'] || d['lesson-right'];
+        else if (isLeftPilot) lessonText = d['לקחי מתאמן - שמאל'] || d['lesson-left'];
+
+        if (isPersonalFlight) { 
+            report.instructorFlights.hours += durationHoursDec;
+            report.personalFlights.hours += durationHoursDec;
+            
+            // הכנסת הלקח פנימה
+            let finalLessonDisplay = lessonText && lessonText.trim() && !['אין', '-', '---'].includes(lessonText.trim())
+                ? lessonText.trim()
+                : '-';
+
+            report.personalFitness.push({
+                date: dateStr,
+                flightName: flightName,
+                lesson: finalLessonDisplay
+            });
+
+            // איסוף יעדים
+            if (f.goalsStatus) {
+                Object.values(f.goalsStatus).forEach(status => {
+                    const s = (status || '').trim();
+                    if (s === 'עמד.ה' || s === 'עמד' || s === 'בוצע') {
+                        report.instructorGoals.met++;
+                    } else if (s === 'לא עמד.ה' || s === 'לא עמד' || s === 'לא בוצע') {
+                        report.instructorGoals.notMet++;
+                    }
+                });
+            }
+
+        } else if (isStudentFlight) { 
+            report.studentFlights.hours += durationHoursDec;
+            report.studentFlights.details.push({
+                date: dateStr,
+                flightName: flightName
+            });
+        }
+
+        report.totalHours += durationHoursDec;
+    });
+
+    return report;
+}
+
+async function getBase64ImageFromUrl(imageUrl) {
+    try {
+        const res = await fetch(imageUrl);
+        const blob = await res.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.warn("Could not load image", imageUrl);
+        return "";
+    }
+}
+
+function generatePieChartBase64(met, notMet) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    
+    // מילוי רקע לבן כדי שלא יהיה שקוף ב-Word
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const total = met + notMet;
+    const centerX = 150, centerY = 130, radius = 100;
+
+    if (total === 0) {
+        ctx.fillStyle = "#e2e8f0";
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = "#64748b";
+        ctx.font = "bold 16px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("אין יעדים מדווחים", centerX, centerY);
+        return canvas.toDataURL('image/png');
+    }
+
+    const metAngle = (met / total) * 2 * Math.PI;
+    
+    // עמד - ירוק
+    ctx.fillStyle = "#10B981"; 
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + metAngle);
+    ctx.lineTo(centerX, centerY);
+    ctx.fill();
+    
+    // לא עמד - אדום
+    ctx.fillStyle = "#EF4444"; 
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, radius, -Math.PI / 2 + metAngle, 1.5 * Math.PI);
+    ctx.lineTo(centerX, centerY);
+    ctx.fill();
+    
+    // מקרא
+    ctx.font = "bold 16px Arial";
+    
+    ctx.fillStyle = "#10B981";
+    ctx.fillRect(200, 260, 18, 18);
+    ctx.fillStyle = "#333";
+    ctx.textAlign = "right";
+    ctx.fillText(`עמד (${met})`, 190, 275);
+    
+    ctx.fillStyle = "#EF4444";
+    ctx.fillRect(70, 260, 18, 18);
+    ctx.fillStyle = "#333";
+    ctx.fillText(`לא עמד (${notMet})`, 60, 275);
+
+    return canvas.toDataURL('image/png');
+}
+
+/**
+ * יצירת קבצי הדוחות - כולל החזרת סעיף הלקחים!
+ */
+async function createAndDownloadWordDocuments(reportsData, periodName) {
+    if (typeof JSZip === 'undefined') {
+        showToast('ספריית יצירת ZIP חסרה במערכת.', 'red');
+        return false;
+    }
+
+    const logo1Base64 = await getBase64ImageFromUrl(window.location.origin + '/ofer-logo.png');
+    const logo2Base64 = await getBase64ImageFromUrl(window.location.origin + '/iaf-logo.png');
+
+    const zip = new JSZip();
+    const cleanPeriodName = periodName.replace(/\//g, '-');
+    const folderName = `סיכום מדריכים תקופה ${cleanPeriodName}`;
+    const folder = zip.folder(folderName);
+
+    // שמירת הלוגואים כקבצים בתיקייה
+    if (logo1Base64) folder.file("logo1.png", logo1Base64.split(',')[1], {base64: true});
+    if (logo2Base64) folder.file("logo2.png", logo2Base64.split(',')[1], {base64: true});
+
+    let hasFiles = false;
+
+    reportsData.forEach(report => {
+        if (report.totalHours === 0) return; 
+        hasFiles = true;
+
+        const safeName = report.name.replace(/[\\/:*?"<>|]/g, '_');
+        
+        // יצירת הגרף ושמירתו כקובץ PNG בתיקייה
+        const pieChartImgBase64 = generatePieChartBase64(report.instructorGoals.met, report.instructorGoals.notMet);
+        const pieFileName = `pie_chart_${safeName}.png`;
+        folder.file(pieFileName, pieChartImgBase64.split(',')[1], {base64: true});
+
+        const htmlContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+            <meta charset="utf-8">
+            <title>סיכום מדריך - ${report.name}</title>
+            <style>
+                body { font-family: 'Arial', sans-serif; direction: rtl; text-align: right; }
+                h1 { text-align: center; font-size: 22pt; margin-bottom: 5px; color: #000; font-weight: bold; }
+                h2 { text-align: center; font-size: 14pt; margin-top: 0; margin-bottom: 30px; color: #444; font-weight: normal; }
+                
+                .hours-wrapper { width: 100%; border: none; text-align: center; margin-bottom: 40px; border-collapse: collapse;}
+                .hours-box { border: 2px solid #000; padding: 25px 10px; width: 30%; }
+                .hours-val { font-size: 20pt; font-weight: bold; color: #000; display: block; margin-bottom: 10px; }
+                .hours-lbl { font-size: 14pt; color: #444; display: block; font-weight: bold; }
+                .spacer-col { width: 5%; border: none; }
+
+                .section-title { font-weight: bold; font-size: 16pt; margin-bottom: 15px; color: #000; border-bottom: 1px solid #000; padding-bottom: 5px; }
+                
+                .fitness-wrapper { width: 100%; border: none; border-collapse: collapse; margin-bottom: 30px; }
+                .fitness-box { border: 2px solid #000; padding: 15px; vertical-align: top; }
+                .box-title { font-weight: bold; font-size: 14pt; text-align: center; margin-bottom: 15px; background-color: #f3f4f6; padding: 5px; border: 1px solid #ccc; }
+                
+                .inner-table { width: 100%; border-collapse: collapse; }
+                .inner-table th, .inner-table td { border: 1px solid #ccc; padding: 8px; text-align: right; font-size: 11pt; }
+                .inner-table th { background-color: #e2e8f0; font-weight: bold; }
+
+                .students-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                .students-table th, .students-table td { border: 1px solid #000; padding: 8px; text-align: right; }
+                .students-table th { background-color: #f3f4f6; }
+            </style>
+        </head>
+        <body>
+            <table style="width: 100%; border: none; margin-bottom: 20px;">
+                <tr>
+                    <td style="text-align: right; border: none;">${logo1Base64 ? `<img src="logo1.png" width="80" height="80">` : ''}</td>
+                    <td style="text-align: left; border: none;">${logo2Base64 ? `<img src="logo2.png" width="80" height="80">` : ''}</td>
+                </tr>
+            </table>
+
+            <h1>${report.name}</h1>
+            <h2>סוף תקופה ${report.period}</h2>
+            
+            <table class="hours-wrapper">
+                <tr>
+                    <td class="hours-box">
+                        <span class="hours-val">${report.studentFlights.hours.toFixed(1)} ש'</span>
+                        <span class="hours-lbl">טיסות הדרכה</span>
+                    </td>
+                    <td class="spacer-col"></td>
+                    <td class="hours-box">
+                        <span class="hours-val">${report.totalHours.toFixed(1)} ש'</span>
+                        <span class="hours-lbl">טיסות סה"כ</span>
+                    </td>
+                    <td class="spacer-col"></td>
+                    <td class="hours-box">
+                        <span class="hours-val">${report.personalFlights.hours.toFixed(1)} ש'</span>
+                        <span class="hours-lbl">טיסות אישיות</span>
+                    </td>
+                </tr>
+            </table>
+
+            <div class="section-title">כשירות אישית (גיחות מדריך)</div>
+            
+            <table class="fitness-wrapper">
+                <tr>
+                    <td class="fitness-box" style="width: 55%;">
+                        <div class="box-title">פירוט גיחות ולקחים</div>
+                        <table class="inner-table">
+                            <tr>
+                                <th style="width: 35%;">תאריך וגיחה</th>
+                                <th style="width: 65%;">לקחים</th>
+                            </tr>
+                            ${report.personalFitness.length > 0 ? 
+                                report.personalFitness.map(f => `
+                                <tr>
+                                    <td><strong>${f.date}</strong><br>${f.flightName}</td>
+                                    <td>${f.lesson.replace(/\n/g, '<br>')}</td>
+                                </tr>`).join('') 
+                                : '<tr><td colspan="2" style="text-align: center;">לא בוצעו גיחות אישיות</td></tr>'}
+                        </table>
+                    </td>
+                    <td class="spacer-col" style="width: 5%;"></td>
+                    
+                    <td class="fitness-box" style="text-align: center; width: 40%;">
+                        <div class="box-title">עמידה ביעדים</div>
+                        <img src="${pieFileName}" width="220" height="220" alt="גרף עמידה ביעדים">
+                    </td>
+                </tr>
+            </table>
+
+            <div class="section-title">פירוט גיחות מדריכים (חניכים)</div>
+            <table class="students-table">
+                <tr>
+                    <th style="width: 30%;">תאריך</th>
+                    <th style="width: 70%;">שם גיחה</th>
+                </tr>
+                ${report.studentFlights.details.length > 0 ? 
+                    report.studentFlights.details.map(f => `<tr><td>${f.date}</td><td>${f.flightName}</td></tr>`).join('') 
+                    : '<tr><td colspan="2" style="text-align: center;">לא בוצעו גיחות הדרכה</td></tr>'}
+            </table>
+        </body>
+        </html>
+        `;
+
+        const contentWithBOM = '\ufeff' + htmlContent;
+        folder.file(`סיכום_${safeName}.doc`, contentWithBOM);
+    });
+
+    if (!hasFiles) {
+        showToast('לא נמצאו טיסות למדריכים בתקופה הנבחרת.', 'yellow');
+        return false;
+    }
+
+    try {
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        downloadBlob(zipBlob, `${folderName}.zip`);
+        return true;
+    } catch (error) {
+        console.error("Error generating ZIP file:", error);
+        throw new Error("שגיאה באריזת הנתונים לקובץ ZIP.");
+    }
+}
+
+function downloadBlob(blob, fileName) {
+    console.log(`מנסה להוריד קובץ: ${fileName}, גודל: ${blob.size} bytes`);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    
+    setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);  
+    }, 3000); 
+}
 
 window.showFlightDetails = (id) => { if (window.showFlightDetailsModal) window.showFlightDetailsModal(id); };
