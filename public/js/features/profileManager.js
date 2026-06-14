@@ -562,6 +562,28 @@ window.profileManager.openInstructorReportModal = function() {
     modal.classList.remove('hidden');
 };
 
+
+// ==========================================
+// הגדרות תמונות ולוגואים לדו"ח סיכום מדריכים
+// ==========================================
+// ודא ששני הקבצים הללו נמצאים בתיקיית public במחשב שלך
+const REPORT_CONFIG = {
+    logoRight: './ofer-logo.png', // נתיב ללוגו ימין (טייסת)
+    logoLeft: './iaf-logo.png'    // נתיב ללוגו שמאל (חיל האוויר)
+};
+
+window.profileManager.openInstructorReportModal = function () {
+    const modal = document.getElementById('instructor-report-modal');
+    const periodSelect = document.getElementById('instructor-report-period');
+    const mainPeriodSelect = document.getElementById('matrix-period');
+
+    if (!modal || !periodSelect) return;
+
+    periodSelect.innerHTML = mainPeriodSelect.innerHTML;
+    periodSelect.value = mainPeriodSelect.value;
+    modal.classList.remove('hidden');
+};
+
 window.profileManager.generateInstructorsReport = async function() {
     const periodSelect = document.getElementById('instructor-report-period');
     const selectedPeriodName = periodSelect.value;
@@ -593,12 +615,10 @@ window.profileManager.generateInstructorsReport = async function() {
         const plan = window.planningSettings || {};
         const allFlights = window.savedFlights || [];
         
-        // סינון: כל הגיחות למעט אלו שבוטלו (כולל גיחות חלקיות וטרם דווחו)
         const periodFlights = allFlights.filter(f => {
             const periodOfFlight = getFlightPeriodName(f.date, plan).trim(); 
             const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
             const isCancelled = f.executionStatus === 'בוטלה' || !!(f.data && f.data['סיבת ביטול']);
-            
             return isSamePeriod && !isCancelled;
         });
 
@@ -606,19 +626,19 @@ window.profileManager.generateInstructorsReport = async function() {
             return collectDataForInstructor(instructorName, periodFlights, selectedPeriodName);
         });
 
-        const hasCreatedFiles = await createAndDownloadWordDocuments(reportsData, selectedPeriodName);
+        const hasCreated = await createAndDownloadPDFReport(reportsData, selectedPeriodName);
 
-        if (hasCreatedFiles) {
-            showToast('הקבצים נוצרו והורדו בהצלחה.', 'green');
+        if (hasCreated) {
+            showToast('תיקיית ה-ZIP עם דוחות ה-PDF הורדה בהצלחה.', 'green');
             document.getElementById('instructor-report-modal').classList.add('hidden');
         }
 
     } catch (error) {
         console.error("שגיאה ביצירת דוחות:", error);
-        showToast('שגיאה ביצירת הדוחות.', 'red');
+        showToast('שגיאה בהפקת הקבצים.', 'red');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-download"></i> הורד קבצים';
+        btn.innerHTML = '<i class="fas fa-download"></i> הורד דו"חות';
     }
 };
 
@@ -635,8 +655,6 @@ function collectDataForInstructor(instructorName, flights, periodName) {
     };
 
     const mapping = window.pilotPopulations?.flightMapping || { students: [], instructors: [], conversion: [] };
-    
-    // ניקוי רווחים מכל הרשימות המוגדרות בעמוד הניהול
     const mappedInstructors = (mapping.instructors || []).map(n => n.trim());
     const mappedStudents = (mapping.students || []).map(n => n.trim());
 
@@ -656,7 +674,6 @@ function collectDataForInstructor(instructorName, flights, periodName) {
         const isPersonalFlight = mappedInstructors.includes(flightName);
         const isStudentFlight = mappedStudents.includes(flightName);
 
-        // איסוף לקח של הטייס
         let lessonText = '';
         if (isRightPilot) lessonText = d['לקחי מתאמן - ימין'] || d['lesson-right'];
         else if (isLeftPilot) lessonText = d['לקחי מתאמן - שמאל'] || d['lesson-left'];
@@ -665,7 +682,6 @@ function collectDataForInstructor(instructorName, flights, periodName) {
             report.instructorFlights.hours += durationHoursDec;
             report.personalFlights.hours += durationHoursDec;
             
-            // הכנסת הלקח פנימה
             let finalLessonDisplay = lessonText && lessonText.trim() && !['אין', '-', '---'].includes(lessonText.trim())
                 ? lessonText.trim()
                 : '-';
@@ -676,7 +692,6 @@ function collectDataForInstructor(instructorName, flights, periodName) {
                 lesson: finalLessonDisplay
             });
 
-            // איסוף יעדים
             if (f.goalsStatus) {
                 Object.values(f.goalsStatus).forEach(status => {
                     const s = (status || '').trim();
@@ -712,23 +727,23 @@ async function getBase64ImageFromUrl(imageUrl) {
             reader.readAsDataURL(blob);
         });
     } catch (e) {
-        console.warn("Could not load image", imageUrl);
+        console.warn("לא הצליח לטעון תמונה:", imageUrl);
         return "";
     }
 }
 
+// שימוש ב- \u00A0 לרווח קשיח (כדי שיוצג בוודאות בגרף הפאי)
 function generatePieChartBase64(met, notMet) {
     const canvas = document.createElement('canvas');
-    canvas.width = 300;
-    canvas.height = 300;
+    canvas.width = 400;
+    canvas.height = 400;
     const ctx = canvas.getContext('2d');
     
-    // מילוי רקע לבן כדי שלא יהיה שקוף ב-Word
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const total = met + notMet;
-    const centerX = 150, centerY = 130, radius = 100;
+    const centerX = 200, centerY = 180, radius = 130;
 
     if (total === 0) {
         ctx.fillStyle = "#e2e8f0";
@@ -736,15 +751,14 @@ function generatePieChartBase64(met, notMet) {
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.fill();
         ctx.fillStyle = "#64748b";
-        ctx.font = "bold 16px Arial";
+        ctx.font = "bold 20px Arial";
         ctx.textAlign = "center";
-        ctx.fillText("אין יעדים מדווחים", centerX, centerY);
+        ctx.fillText("אין יעדים מדווחים".replace(/ /g, '\u00A0'), centerX, centerY);
         return canvas.toDataURL('image/png');
     }
 
     const metAngle = (met / total) * 2 * Math.PI;
     
-    // עמד - ירוק
     ctx.fillStyle = "#10B981"; 
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
@@ -752,7 +766,6 @@ function generatePieChartBase64(met, notMet) {
     ctx.lineTo(centerX, centerY);
     ctx.fill();
     
-    // לא עמד - אדום
     ctx.fillStyle = "#EF4444"; 
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
@@ -760,168 +773,156 @@ function generatePieChartBase64(met, notMet) {
     ctx.lineTo(centerX, centerY);
     ctx.fill();
     
-    // מקרא
-    ctx.font = "bold 16px Arial";
+    ctx.font = "bold 20px Arial";
+    ctx.textAlign = "right";
     
     ctx.fillStyle = "#10B981";
-    ctx.fillRect(200, 260, 18, 18);
+    ctx.fillRect(280, 350, 22, 22);
     ctx.fillStyle = "#333";
-    ctx.textAlign = "right";
-    ctx.fillText(`עמד (${met})`, 190, 275);
+    ctx.fillText(`עמד (${met})`.replace(/ /g, '\u00A0'), 265, 368);
     
     ctx.fillStyle = "#EF4444";
-    ctx.fillRect(70, 260, 18, 18);
+    ctx.fillRect(120, 350, 22, 22);
     ctx.fillStyle = "#333";
-    ctx.fillText(`לא עמד (${notMet})`, 60, 275);
+    ctx.fillText(`לא עמד (${notMet})`.replace(/ /g, '\u00A0'), 105, 368);
 
     return canvas.toDataURL('image/png');
 }
 
 /**
- * יצירת קבצי הדוחות - כולל החזרת סעיף הלקחים!
+ * יצירת תיקיית ZIP ודוחות PDF מתוך String מנותק, ברוחב מושלם וללא איבוד רווחים
  */
-async function createAndDownloadWordDocuments(reportsData, periodName) {
-    if (typeof JSZip === 'undefined') {
-        showToast('ספריית יצירת ZIP חסרה במערכת.', 'red');
+async function createAndDownloadPDFReport(reportsData, periodName) {
+    if (typeof html2pdf === 'undefined' || typeof JSZip === 'undefined') {
+        showToast('ספריות חסרות (html2pdf או JSZip).', 'red');
         return false;
     }
 
-    const logo1Base64 = await getBase64ImageFromUrl(window.location.origin + '/ofer-logo.png');
-    const logo2Base64 = await getBase64ImageFromUrl(window.location.origin + '/iaf-logo.png');
+    const activeReports = reportsData.filter(r => r.totalHours > 0);
+    if (activeReports.length === 0) {
+        showToast('לא נמצאו טיסות למדריכים בתקופה הנבחרת.', 'yellow');
+        return false;
+    }
+
+    const logoRightBase64 = await getBase64ImageFromUrl(REPORT_CONFIG.logoRight);
+    const logoLeftBase64 = await getBase64ImageFromUrl(REPORT_CONFIG.logoLeft);
 
     const zip = new JSZip();
     const cleanPeriodName = periodName.replace(/\//g, '-');
     const folderName = `סיכום מדריכים תקופה ${cleanPeriodName}`;
     const folder = zip.folder(folderName);
 
-    // שמירת הלוגואים כקבצים בתיקייה
-    if (logo1Base64) folder.file("logo1.png", logo1Base64.split(',')[1], {base64: true});
-    if (logo2Base64) folder.file("logo2.png", logo2Base64.split(',')[1], {base64: true});
-
-    let hasFiles = false;
-
-    reportsData.forEach(report => {
-        if (report.totalHours === 0) return; 
-        hasFiles = true;
-
+    for (let i = 0; i < activeReports.length; i++) {
+        const report = activeReports[i];
         const safeName = report.name.replace(/[\\/:*?"<>|]/g, '_');
-        
-        // יצירת הגרף ושמירתו כקובץ PNG בתיקייה
-        const pieChartImgBase64 = generatePieChartBase64(report.instructorGoals.met, report.instructorGoals.notMet);
-        const pieFileName = `pie_chart_${safeName}.png`;
-        folder.file(pieFileName, pieChartImgBase64.split(',')[1], {base64: true});
+        const pieChartImg = generatePieChartBase64(report.instructorGoals.met, report.instructorGoals.notMet);
 
-        const htmlContent = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-            <meta charset="utf-8">
-            <title>סיכום מדריך - ${report.name}</title>
-            <style>
-                body { font-family: 'Arial', sans-serif; direction: rtl; text-align: right; }
-                h1 { text-align: center; font-size: 22pt; margin-bottom: 5px; color: #000; font-weight: bold; }
-                h2 { text-align: center; font-size: 14pt; margin-top: 0; margin-bottom: 30px; color: #444; font-weight: normal; }
+        // שימוש ב-&nbsp; בכל מקום אפשרי כדי ששום רווח לא יילך לאיבוד!
+        const safeNameHtml = report.name.replace(/ /g, '&nbsp;');
+        const safePeriodHtml = report.period.replace(/ /g, '&nbsp;');
+
+        // הרוחב הוקטן מ-780px ל-710px - מבטיח שהדף לא ייחתך משמאל!
+        const htmlString = `
+            <div style="width: 710px; margin: 0 auto; direction: rtl; text-align: right; font-family: Arial, sans-serif; color: #000000; background-color: #ffffff; padding: 20px; box-sizing: border-box;">
                 
-                .hours-wrapper { width: 100%; border: none; text-align: center; margin-bottom: 40px; border-collapse: collapse;}
-                .hours-box { border: 2px solid #000; padding: 25px 10px; width: 30%; }
-                .hours-val { font-size: 20pt; font-weight: bold; color: #000; display: block; margin-bottom: 10px; }
-                .hours-lbl { font-size: 14pt; color: #444; display: block; font-weight: bold; }
-                .spacer-col { width: 5%; border: none; }
+                <table style="width: 100%; border: none; margin-bottom: 30px; border-collapse: collapse;">
+                    <tr>
+                        <td style="width: 33%; text-align: right; vertical-align: top;">
+                            ${logoRightBase64 ? `<img src="${logoRightBase64}" style="height: 75px; max-width: 150px; object-fit: contain;">` : ''}
+                        </td>
+                        <td style="width: 34%;"></td>
+                        <td style="width: 33%; text-align: left; vertical-align: top;">
+                            ${logoLeftBase64 ? `<img src="${logoLeftBase64}" style="height: 75px; max-width: 150px; object-fit: contain;">` : ''}
+                        </td>
+                    </tr>
+                </table>
 
-                .section-title { font-weight: bold; font-size: 16pt; margin-bottom: 15px; color: #000; border-bottom: 1px solid #000; padding-bottom: 5px; }
+                <div style="text-align: center; margin-bottom: 40px;">
+                    <div style="font-size: 32px; font-weight: bold; margin-bottom: 10px;">${safeNameHtml}</div>
+                    <div style="font-size: 20px; color: #555;">סוף&nbsp;תקופה&nbsp;${safePeriodHtml}</div>
+                </div>
                 
-                .fitness-wrapper { width: 100%; border: none; border-collapse: collapse; margin-bottom: 30px; }
-                .fitness-box { border: 2px solid #000; padding: 15px; vertical-align: top; }
-                .box-title { font-weight: bold; font-size: 14pt; text-align: center; margin-bottom: 15px; background-color: #f3f4f6; padding: 5px; border: 1px solid #ccc; }
+                <table style="width: 100%; border: none; border-collapse: collapse; margin-bottom: 45px; text-align: center;">
+                    <tr>
+                        <td style="border: 2px solid #000; padding: 25px 10px; width: 30%;">
+                            <div style="font-size: 28px; font-weight: bold; margin-bottom: 8px;">${report.studentFlights.hours.toFixed(1)}&nbsp;ש'</div>
+                            <div style="font-size: 16px; font-weight: bold;">טיסות&nbsp;הדרכה</div>
+                        </td>
+                        <td style="width: 5%; border: none;"></td>
+                        <td style="border: 2px solid #000; padding: 25px 10px; width: 30%;">
+                            <div style="font-size: 28px; font-weight: bold; margin-bottom: 8px;">${report.totalHours.toFixed(1)}&nbsp;ש'</div>
+                            <div style="font-size: 16px; font-weight: bold;">טיסות&nbsp;סה"כ</div>
+                        </td>
+                        <td style="width: 5%; border: none;"></td>
+                        <td style="border: 2px solid #000; padding: 25px 10px; width: 30%;">
+                            <div style="font-size: 28px; font-weight: bold; margin-bottom: 8px;">${report.personalFlights.hours.toFixed(1)}&nbsp;ש'</div>
+                            <div style="font-size: 16px; font-weight: bold;">טיסות&nbsp;אישיות</div>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="font-weight: bold; font-size: 20px; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 8px;">כשירות&nbsp;אישית&nbsp;(גיחות&nbsp;מדריך)</div>
                 
-                .inner-table { width: 100%; border-collapse: collapse; }
-                .inner-table th, .inner-table td { border: 1px solid #ccc; padding: 8px; text-align: right; font-size: 11pt; }
-                .inner-table th { background-color: #e2e8f0; font-weight: bold; }
-
-                .students-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                .students-table th, .students-table td { border: 1px solid #000; padding: 8px; text-align: right; }
-                .students-table th { background-color: #f3f4f6; }
-            </style>
-        </head>
-        <body>
-            <table style="width: 100%; border: none; margin-bottom: 20px;">
-                <tr>
-                    <td style="text-align: right; border: none;">${logo1Base64 ? `<img src="logo1.png" width="80" height="80">` : ''}</td>
-                    <td style="text-align: left; border: none;">${logo2Base64 ? `<img src="logo2.png" width="80" height="80">` : ''}</td>
-                </tr>
-            </table>
-
-            <h1>${report.name}</h1>
-            <h2>סוף תקופה ${report.period}</h2>
-            
-            <table class="hours-wrapper">
-                <tr>
-                    <td class="hours-box">
-                        <span class="hours-val">${report.studentFlights.hours.toFixed(1)} ש'</span>
-                        <span class="hours-lbl">טיסות הדרכה</span>
-                    </td>
-                    <td class="spacer-col"></td>
-                    <td class="hours-box">
-                        <span class="hours-val">${report.totalHours.toFixed(1)} ש'</span>
-                        <span class="hours-lbl">טיסות סה"כ</span>
-                    </td>
-                    <td class="spacer-col"></td>
-                    <td class="hours-box">
-                        <span class="hours-val">${report.personalFlights.hours.toFixed(1)} ש'</span>
-                        <span class="hours-lbl">טיסות אישיות</span>
-                    </td>
-                </tr>
-            </table>
-
-            <div class="section-title">כשירות אישית (גיחות מדריך)</div>
-            
-            <table class="fitness-wrapper">
-                <tr>
-                    <td class="fitness-box" style="width: 55%;">
-                        <div class="box-title">פירוט גיחות ולקחים</div>
-                        <table class="inner-table">
-                            <tr>
-                                <th style="width: 35%;">תאריך וגיחה</th>
-                                <th style="width: 65%;">לקחים</th>
-                            </tr>
-                            ${report.personalFitness.length > 0 ? 
-                                report.personalFitness.map(f => `
+                <table style="width: 100%; border: none; border-collapse: collapse; margin-bottom: 40px; table-layout: fixed;">
+                    <tr>
+                        <td style="border: 2px solid #000; padding: 20px; vertical-align: top; width: 55%;">
+                            <div style="font-weight: bold; font-size: 16px; text-align: center; margin-bottom: 15px; background-color: #f3f4f6; padding: 8px; border: 1px solid #ccc;">פירוט&nbsp;גיחות&nbsp;ולקחים</div>
+                            <table style="width: 100%; border-collapse: collapse;">
                                 <tr>
-                                    <td><strong>${f.date}</strong><br>${f.flightName}</td>
-                                    <td>${f.lesson.replace(/\n/g, '<br>')}</td>
-                                </tr>`).join('') 
-                                : '<tr><td colspan="2" style="text-align: center;">לא בוצעו גיחות אישיות</td></tr>'}
-                        </table>
-                    </td>
-                    <td class="spacer-col" style="width: 5%;"></td>
-                    
-                    <td class="fitness-box" style="text-align: center; width: 40%;">
-                        <div class="box-title">עמידה ביעדים</div>
-                        <img src="${pieFileName}" width="220" height="220" alt="גרף עמידה ביעדים">
-                    </td>
-                </tr>
-            </table>
+                                    <th style="border: 1px solid #777; padding: 10px; text-align: right; font-size: 15px; background-color: #e5e7eb; width: 35%;">תאריך&nbsp;וגיחה</th>
+                                    <th style="border: 1px solid #777; padding: 10px; text-align: right; font-size: 15px; background-color: #e5e7eb; width: 65%;">לקחים</th>
+                                </tr>
+                                ${report.personalFitness.length > 0 ? 
+                                    report.personalFitness.map(f => `
+                                    <tr>
+                                        <td style="border: 1px solid #777; padding: 12px; text-align: right; font-size: 15px; vertical-align: top;"><strong>${f.date}</strong><br><span style="color: #444; font-size: 14px;">${f.flightName.replace(/ /g, '&nbsp; ')}</span></td>
+                                        <td style="border: 1px solid #777; padding: 12px; text-align: right; font-size: 15px; vertical-align: top; line-height: 1.5;">${f.lesson.replace(/\n/g, '<br>').replace(/ /g, '&nbsp; ')}</td>
+                                    </tr>`).join('') 
+                                    : '<tr><td colspan="2" style="border: 1px solid #777; padding: 20px; text-align: center; font-size: 15px;">לא&nbsp;בוצעו&nbsp;גיחות&nbsp;אישיות</td></tr>'}
+                            </table>
+                        </td>
+                        <td style="width: 4%; border: none;"></td>
+                        <td style="border: 2px solid #000; padding: 20px; vertical-align: top; text-align: center; width: 41%;">
+                            <div style="font-weight: bold; font-size: 16px; text-align: center; margin-bottom: 15px; background-color: #f3f4f6; padding: 8px; border: 1px solid #ccc;">עמידה&nbsp;ביעדים</div>
+                            <div style="margin-top: 20px;">
+                                <img src="${pieChartImg}" style="width: 180px; height: 180px; display: inline-block;" alt="גרף עמידה ביעדים">
+                            </div>
+                        </td>
+                    </tr>
+                </table>
 
-            <div class="section-title">פירוט גיחות מדריכים (חניכים)</div>
-            <table class="students-table">
-                <tr>
-                    <th style="width: 30%;">תאריך</th>
-                    <th style="width: 70%;">שם גיחה</th>
-                </tr>
-                ${report.studentFlights.details.length > 0 ? 
-                    report.studentFlights.details.map(f => `<tr><td>${f.date}</td><td>${f.flightName}</td></tr>`).join('') 
-                    : '<tr><td colspan="2" style="text-align: center;">לא בוצעו גיחות הדרכה</td></tr>'}
-            </table>
-        </body>
-        </html>
+                <div style="font-weight: bold; font-size: 20px; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 8px;">פירוט&nbsp;גיחות&nbsp;מדריכים&nbsp;(חניכים)</div>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                    <tr>
+                        <th style="border: 1px solid #777; padding: 12px; text-align: right; font-size: 15px; background-color: #f3f4f6; width: 30%;">תאריך</th>
+                        <th style="border: 1px solid #777; padding: 12px; text-align: right; font-size: 15px; background-color: #f3f4f6; width: 70%;">שם&nbsp;גיחה</th>
+                    </tr>
+                    ${report.studentFlights.details.length > 0 ? 
+                        report.studentFlights.details.map(f => `
+                        <tr>
+                            <td style="border: 1px solid #777; padding: 12px; text-align: right; font-size: 15px;">${f.date}</td>
+                            <td style="border: 1px solid #777; padding: 12px; text-align: right; font-size: 15px;">${f.flightName.replace(/ /g, '&nbsp; ')}</td>
+                        </tr>`).join('') 
+                        : '<tr><td colspan="2" style="border: 1px solid #777; padding: 20px; text-align: center; font-size: 15px;">לא&nbsp;בוצעו&nbsp;גיחות&nbsp;הדרכה</td></tr>'}
+                </table>
+            </div>
         `;
 
-        const contentWithBOM = '\ufeff' + htmlContent;
-        folder.file(`סיכום_${safeName}.doc`, contentWithBOM);
-    });
+        const pdfOptions = {
+            margin: 10,
+            filename: `סיכום_${safeName}.pdf`,
+            image: { type: 'jpeg', quality: 1.0 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
 
-    if (!hasFiles) {
-        showToast('לא נמצאו טיסות למדריכים בתקופה הנבחרת.', 'yellow');
-        return false;
+        try {
+            // הספרייה עכשיו עובדת רק מול ה-HTML String - לא יכול להחזיר דף לבן!
+            const pdfBlob = await html2pdf().set(pdfOptions).from(htmlString).output('blob');
+            folder.file(`סיכום_${safeName}.pdf`, pdfBlob);
+        } catch (err) {
+            console.error("שגיאה ביצירת PDF עבור", report.name, err);
+        }
     }
 
     try {
@@ -929,13 +930,12 @@ async function createAndDownloadWordDocuments(reportsData, periodName) {
         downloadBlob(zipBlob, `${folderName}.zip`);
         return true;
     } catch (error) {
-        console.error("Error generating ZIP file:", error);
+        console.error("Error generating final ZIP file:", error);
         throw new Error("שגיאה באריזת הנתונים לקובץ ZIP.");
     }
 }
 
 function downloadBlob(blob, fileName) {
-    console.log(`מנסה להוריד קובץ: ${fileName}, גודל: ${blob.size} bytes`);
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.style.display = 'none';
@@ -950,4 +950,4 @@ function downloadBlob(blob, fileName) {
     }, 3000); 
 }
 
-window.showFlightDetails = (id) => { if (window.showFlightDetailsModal) window.showFlightDetailsModal(id); };
+window.showFlightDetails = window.showFlightDetails || ((id) => { if (window.showFlightDetailsModal) window.showFlightDetailsModal(id); });
