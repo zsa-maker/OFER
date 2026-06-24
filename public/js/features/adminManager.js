@@ -356,21 +356,19 @@ export async function addPerson(type) {
 
     if (!personnelLists[type]) personnelLists[type] = [];
     
-    // בדיקת כפילויות חכמה שמתעלמת מגרשיים ומרכאות
     if (isDuplicate(personnelLists[type], name)) return showToast("הערך כבר קיים ברשימה.", "red");
 
     personnelLists[type].push(name);
-    personnelLists[type].sort();
+    // המיון (.sort()) הוסר בכוונה כדי לשמור על הסדר של ה-Drag&Drop!
 
     input.value = '';
-    renderList(type);
+    window.renderList(type);
 
     await savePersonnelLists(true);
 
-    // פונקציית ביטול ההוספה
     const undoAdd = async () => {
         personnelLists[type] = personnelLists[type].filter(n => n !== name);
-        renderList(type);
+        window.renderList(type);
         await savePersonnelLists(true);
         import('../components/modals.js').then(m => m.showToast(`ההוספה בוטלה, השם "${name}" הוסר.`, "blue"));
     };
@@ -383,20 +381,18 @@ window.addFromPersonnelModal = async () => {
     const name = input.value.trim();
     if (!name) return;
 
-    // שימוש בפונקציה החכמה לבדיקת כפילות
     if (!isDuplicate(personnelLists[currentModalType], name)) {
         personnelLists[currentModalType].push(name);
-        personnelLists[currentModalType].sort();
+        // המיון האוטומטי הוסר מכאן
         input.value = '';
         await savePersonnelLists(true);
         window.filterPersonnelModal();
-        renderList(currentModalType); // עדכון הרשימה המקורית מאחורה
+        window.renderList(currentModalType); 
 
-        // פונקציית ביטול ההוספה מתוך המודאל
         const undoAddModal = async () => {
             personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== name);
             window.filterPersonnelModal();
-            renderList(currentModalType);
+            window.renderList(currentModalType);
             await savePersonnelLists(true);
             import('../components/modals.js').then(m => m.showToast(`ההוספה בוטלה, השם "${name}" הוסר.`, "blue"));
         };
@@ -406,6 +402,7 @@ window.addFromPersonnelModal = async () => {
         showToast("השם כבר קיים ברשימה", "yellow");
     }
 };
+
 export async function removePerson(type, index) {
     const nameToRemove = personnelLists[type][index];
     if (confirm(`למחוק את "${nameToRemove}"?`)) {
@@ -436,25 +433,21 @@ export async function editPerson(type, index) {
     const newName = prompt("ערוך ערך:", oldName);
 
     if (newName && newName.trim() && newName !== oldName) {
-        const finalNewName = newName.trim();
-
-        // יצירת רשימה זמנית שלא כוללת את הפריט הנוכחי
+        const finalNewName = newName.trim(); 
         const listWithoutCurrent = personnelLists[type].filter((_, i) => i !== index);
 
-        // הוספת בדיקת ולידציה חכמה למניעת כפילות
         if (isDuplicate(listWithoutCurrent, finalNewName)) {
             import('../components/modals.js').then(m => m.showToast("השם כבר קיים ברשימה.", "red"));
             return;
         }
         
-        // 1. עדכון השם ברשימה המקומית ושמירה
         personnelLists[type][index] = finalNewName;
-        personnelLists[type].sort();
-        renderList(type);
+        // המיון (.sort()) הוסר כדי לא לפגוע בסדר הגרירה!
+        window.renderList(type);
         await savePersonnelLists(true);
         
         // 2. סריקה ועדכון השם בכל הגיחות הקיימות במסד הנתונים
-        if (window.firestoreFunctions && window.db && window.savedFlights) {
+       if (window.firestoreFunctions && window.db && window.savedFlights) {
             import('../components/modals.js').then(m => m.showToast("מעדכן גיחות קיימות... נא להמתין", "blue"));
 
             try {
@@ -1529,15 +1522,110 @@ function getAllAssignedPilots() {
     return assigned;
 }
 
+// ==========================================
+// פונקציות גרירה וסידור ייעודיות לניהול אוכלוסיות
+// ==========================================
+window.draggedPopItem = null;
+
+window.onDragStartPop = function(e) {
+    const li = e.currentTarget;
+    window.draggedPopItem = {
+        type: li.dataset.type,
+        gidx: parseInt(li.dataset.gidx),
+        midx: parseInt(li.dataset.midx)
+    };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", li.dataset.midx);
+    
+    setTimeout(() => li.classList.add('opacity-40', 'bg-gray-200', 'border-gray-400'), 0);
+};
+
+window.onDragOverPop = function(e) {
+    e.preventDefault();
+    const li = e.currentTarget;
+    
+    // מאפשרים גרירה רק בתוך אותה הקבוצה
+    if (!window.draggedPopItem || window.draggedPopItem.type !== li.dataset.type || window.draggedPopItem.gidx !== parseInt(li.dataset.gidx)) return;
+
+    e.dataTransfer.dropEffect = "move";
+    li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
+
+    const dragIdx = window.draggedPopItem.midx;
+    const dropIdx = parseInt(li.dataset.midx);
+
+    if (dragIdx !== dropIdx) {
+        const rect = li.getBoundingClientRect();
+        const relY = e.clientY - rect.top;
+        if (relY < rect.height / 2) {
+            li.classList.add('border-t-2', 'border-blue-500');
+        } else {
+            li.classList.add('border-b-2', 'border-blue-500');
+        }
+    }
+};
+
+window.onDragLeavePop = function(e) {
+    const li = e.currentTarget;
+    li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
+};
+
+window.onDropPop = async function(e) {
+    e.preventDefault();
+    const li = e.currentTarget;
+    li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
+
+    if (!window.draggedPopItem) return;
+
+    const dragType = window.draggedPopItem.type;
+    const dragGidx = window.draggedPopItem.gidx;
+    const dragMidx = window.draggedPopItem.midx;
+
+    const dropType = li.dataset.type;
+    const dropGidx = parseInt(li.dataset.gidx);
+    const dropMidx = parseInt(li.dataset.midx);
+
+    // מניעת גרירה בין קבוצות שונות
+    if (dragType !== dropType || dragGidx !== dropGidx || dragMidx === dropMidx) {
+        window.draggedPopItem = null;
+        return;
+    }
+
+    // חישוב המיקום החדש
+    let finalDropIdx = dropMidx;
+    const rect = li.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    if (relY >= rect.height / 2) finalDropIdx++;
+    if (dragMidx < finalDropIdx) finalDropIdx--;
+
+    // איתור המערך הרלוונטי ושליפת הפריט שנגרר
+    let targetArray;
+    if (dragType === 'instructor') targetArray = pilotPopulations.instructorGroups[dragGidx].members;
+    else if (dragType === 'course') targetArray = pilotPopulations.courses[dragGidx].students;
+    else if (dragType === 'conversion') targetArray = pilotPopulations.conversionGroups[dragGidx].members;
+
+    const [movedItem] = targetArray.splice(dragMidx, 1);
+    targetArray.splice(finalDropIdx, 0, movedItem);
+
+    window.draggedPopItem = null;
+
+    // רינדור ושמירה
+    window.renderPopulations();
+    await window.savePopulations(true);
+};
+
+window.onDragEndPop = function(e) {
+    e.currentTarget.classList.remove('opacity-40', 'bg-gray-200', 'border-gray-400');
+    document.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-b-2', 'border-blue-500'));
+    window.draggedPopItem = null;
+};
+
 export function renderPopulations() {
     const instructorContainer = document.getElementById('instructor-groups-container');
     const coursesContainer = document.getElementById('courses-container');
 
     if (!instructorContainer || !coursesContainer) return;
 
-    // שמירת ה-ID של האלמנט שבפוקוס כרגע כדי למנוע איבוד פוקוס בזמן הקלדה
     const activeElementId = document.activeElement ? document.activeElement.id : null;
-
     const allPilots = personnelLists.pilots || [];
     const assignedPilots = getAllAssignedPilots();
 
@@ -1554,26 +1642,31 @@ export function renderPopulations() {
        class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-blue-800">
                 <button onclick="window.removeGroup('instructor', ${gIdx})" class="text-red-500 text-xs">מחק</button>
             </div>
-            <div class="mb-2">
+            <div class="mb-2 relative">
                <input type="text" id="${searchId}" oninput="window.renderPopulations()" 
                 value="${searchVal}" placeholder="חפש להוספה..." class="w-full border rounded p-1 text-xs pr-6">
                 ${searchVal ? `<button onclick="document.getElementById('${searchId}').value=''; window.renderPopulations()" 
                 class="absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>` : ''}
-                <div class="border rounded p-1 h-24 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar">
+                <div class="border rounded p-1 h-24 overflow-y-auto mb-1 mt-1 bg-gray-50 custom-scrollbar">
                     ${availableForGroup.map(p => `
                         <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-blue-50 p-1 cursor-pointer">
-    <input type="checkbox" class="instr-group-cb-${gIdx}" value="${p.replace(/"/g, '&quot;')}">
-    <span>${p}</span>
-</label>
+                            <input type="checkbox" class="instr-group-cb-${gIdx}" value="${p.replace(/"/g, '&quot;')}">
+                            <span>${p}</span>
+                        </label>
                     `).join('') || '<div class="text-gray-400 text-[10px]">אין טייסים זמינים</div>'}
                 </div>
                 <button onclick="window.addSelectedToGroup('instructor', ${gIdx})" class="w-full bg-blue-500 text-white py-1 rounded text-xs">הוסף נבחרים</button>
             </div>
             <ul class="space-y-1 mt-2">
                 ${group.members.map((m, mIdx) => `
-                    <li class="flex justify-between items-center text-xs bg-blue-50 p-1 rounded">
-                        <span>${m}</span>
-                        <button onclick="window.removeFromGroup('instructor', ${gIdx}, ${mIdx})" class="text-red-400">×</button>
+                    <li draggable="true" data-type="instructor" data-gidx="${gIdx}" data-midx="${mIdx}"
+                        ondragstart="window.onDragStartPop(event)" ondragover="window.onDragOverPop(event)" ondragleave="window.onDragLeavePop(event)" ondrop="window.onDropPop(event)" ondragend="window.onDragEndPop(event)"
+                        class="flex justify-between items-center text-xs bg-blue-50 p-1 rounded cursor-grab transition-all duration-150 border border-transparent hover:border-gray-300">
+                        <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                            <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
+                            <span class="font-medium text-gray-800 truncate">${m}</span>
+                        </div>
+                        <button onclick="window.removeFromGroup('instructor', ${gIdx}, ${mIdx})" class="text-red-400 hover:text-red-600 font-bold px-1 z-10">×</button>
                     </li>
                 `).join('')}
             </ul>
@@ -1610,20 +1703,24 @@ export function renderPopulations() {
             </div>
            <ul class="space-y-1 mt-2">
                 ${course.students.map((s, sIdx) => {
-            // בדיקה האם הופסקה פעילותו
             const isInactive = course.inactiveStudents && course.inactiveStudents.includes(s);
             const textClass = isInactive ? "text-gray-400 line-through" : "text-gray-800";
             const bgClass = isInactive ? "bg-gray-100" : "bg-orange-50";
 
             return `
-                    <li class="flex justify-between items-center text-xs ${bgClass} p-1 rounded">
-                        <span class="${textClass} font-medium">${s}</span>
-                        <div class="flex gap-2 items-center">
+                    <li draggable="true" data-type="course" data-gidx="${cIdx}" data-midx="${sIdx}"
+                        ondragstart="window.onDragStartPop(event)" ondragover="window.onDragOverPop(event)" ondragleave="window.onDragLeavePop(event)" ondrop="window.onDropPop(event)" ondragend="window.onDragEndPop(event)"
+                        class="flex justify-between items-center text-xs ${bgClass} p-1 rounded cursor-grab transition-all duration-150 border border-transparent hover:border-gray-300">
+                        <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                            <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
+                            <span class="${textClass} font-medium truncate">${s}</span>
+                        </div>
+                        <div class="flex gap-2 items-center z-10">
                             <button onclick="window.toggleStudentStatus(${cIdx}, '${s.replace(/'/g, "\\'")}')" 
                                 class="text-[10px] ${isInactive ? 'text-green-600 font-bold' : 'text-gray-500 hover:text-gray-700'}">
                                 ${isInactive ? 'החזר' : 'הפסק פעילות'}
                             </button>
-                            <button onclick="window.removeFromGroup('course', ${cIdx}, ${sIdx})" class="text-red-400 hover:text-red-600 font-bold text-sm">×</button>
+                            <button onclick="window.removeFromGroup('course', ${cIdx}, ${sIdx})" class="text-red-400 hover:text-red-600 font-bold text-sm px-1">×</button>
                         </div>
                     </li>
                     `;
@@ -1632,11 +1729,9 @@ export function renderPopulations() {
         </div>`;
     }).join('');
 
+    // 3. רינדור קבוצות הסבה
     const conversionContainer = document.getElementById('conversion-groups-container');
     if (conversionContainer) {
-        const allPilots = personnelLists.pilots || [];
-        const assignedPilots = getAllAssignedPilots();
-
         conversionContainer.innerHTML = pilotPopulations.conversionGroups.map((group, gIdx) => {
             const searchId = `search-conv-group-${gIdx}`;
             const searchVal = document.getElementById(searchId)?.value.toLowerCase() || "";
@@ -1649,13 +1744,15 @@ export function renderPopulations() {
                            class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-purple-800">
                     <button onclick="window.removeConversionGroup(${gIdx})" class="text-red-500 text-xs">מחק</button>
                 </div>
-                <div class="mb-2">
+                <div class="mb-2 relative">
                     <input type="text" id="${searchId}" oninput="window.renderPopulations()" 
-                           value="${searchVal}" placeholder="חפש להוספה..." class="w-full border rounded p-1 text-xs">
-                    <div class="border rounded p-1 h-24 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar">
+                           value="${searchVal}" placeholder="חפש להוספה..." class="w-full border rounded p-1 text-xs pr-6">
+                    ${searchVal ? `<button onclick="document.getElementById('${searchId}').value=''; window.renderPopulations()" 
+                           class="absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>` : ''}
+                    <div class="border rounded p-1 h-24 overflow-y-auto mb-1 mt-1 bg-gray-50 custom-scrollbar">
                         ${availableForGroup.map(p => `
                             <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-purple-50 p-1 cursor-pointer">
-<input type="checkbox" class="conv-group-cb-${gIdx}" value="${p.replace(/"/g, '&quot;')}">
+                                <input type="checkbox" class="conv-group-cb-${gIdx}" value="${p.replace(/"/g, '&quot;')}">
                                 <span>${p}</span>
                             </label>
                         `).join('') || '<div class="text-gray-400 text-[10px]">אין טייסים זמינים</div>'}
@@ -1664,9 +1761,14 @@ export function renderPopulations() {
                 </div>
                 <ul class="space-y-1 mt-2">
                     ${group.members.map((m, mIdx) => `
-                        <li class="flex justify-between items-center text-xs bg-purple-50 p-1 rounded">
-                            <span>${m}</span>
-                            <button onclick="window.removeFromGroup('conversion', ${gIdx}, ${mIdx})" class="text-red-400">×</button>
+                        <li draggable="true" data-type="conversion" data-gidx="${gIdx}" data-midx="${mIdx}"
+                            ondragstart="window.onDragStartPop(event)" ondragover="window.onDragOverPop(event)" ondragleave="window.onDragLeavePop(event)" ondrop="window.onDropPop(event)" ondragend="window.onDragEndPop(event)"
+                            class="flex justify-between items-center text-xs bg-purple-50 p-1 rounded cursor-grab transition-all duration-150 border border-transparent hover:border-gray-300">
+                            <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                                <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
+                                <span class="font-medium text-gray-800 truncate">${m}</span>
+                            </div>
+                            <button onclick="window.removeFromGroup('conversion', ${gIdx}, ${mIdx})" class="text-red-400 hover:text-red-600 px-1 font-bold z-10">×</button>
                         </li>
                     `).join('')}
                 </ul>
@@ -1674,12 +1776,10 @@ export function renderPopulations() {
         }).join('');
     }
 
-    // החזרת הפוקוס לאלמנט הנכון לאחר הרינדור מחדש
     if (activeElementId) {
         const el = document.getElementById(activeElementId);
         if (el) {
             el.focus();
-            // הזזת הסמן לסוף הטקסט במידה וזה input
             if (el.setSelectionRange) {
                 const len = el.value.length;
                 el.setSelectionRange(len, len);
@@ -1687,7 +1787,6 @@ export function renderPopulations() {
         }
     }
 
-    // קריאה למיפוי הגיחות (חלק מהטאב)
     window.renderFlightMappingUI();
 }
 
@@ -1909,12 +2008,91 @@ window.filterFlightMappingList = () => {
     window.renderFlightMappingList();
 };
 
-// פונקציית עזר לחיפוש וסינון גיחות - מבטיחה שגיחה שנבחרה תיעלם מהרשימה
+// ==========================================
+// פונקציות גרירה וסידור לסיווג שמות גיחות (Flight Mapping)
+// ==========================================
+window.draggedMappingItem = null;
+
+window.onDragStartMapping = function(e, cat, index) {
+    window.draggedMappingItem = { cat, index };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", index);
+    
+    setTimeout(() => e.target.classList.add('opacity-40', 'bg-purple-100', 'border-purple-300'), 0);
+};
+
+window.onDragOverMapping = function(e, cat) {
+    e.preventDefault();
+    const li = e.currentTarget;
+    
+    // מניעת גרירה בין קטגוריות שונות (למשל מגיחות חניכים לגיחות מדריכים)
+    if (!window.draggedMappingItem || window.draggedMappingItem.cat !== cat) return;
+
+    e.dataTransfer.dropEffect = "move";
+    li.classList.remove('border-t-2', 'border-b-2', 'border-purple-500');
+
+    const dragIndex = window.draggedMappingItem.index;
+    const dropIndex = parseInt(li.dataset.idx);
+
+    if (dragIndex !== dropIndex) {
+        const rect = li.getBoundingClientRect();
+        const relY = e.clientY - rect.top;
+        if (relY < rect.height / 2) {
+            li.classList.add('border-t-2', 'border-purple-500');
+        } else {
+            li.classList.add('border-b-2', 'border-purple-500');
+        }
+    }
+};
+
+window.onDragLeaveMapping = function(e) {
+    e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-purple-500');
+};
+
+window.onDropMapping = async function(e, cat, dropIndex) {
+    e.preventDefault();
+    const li = e.currentTarget;
+    li.classList.remove('border-t-2', 'border-b-2', 'border-purple-500');
+
+    if (!window.draggedMappingItem || window.draggedMappingItem.cat !== cat) return;
+
+    const dragIndex = window.draggedMappingItem.index;
+    if (dragIndex === dropIndex) return;
+
+    let finalDropIdx = dropIndex;
+    const rect = li.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    if (relY >= rect.height / 2) finalDropIdx++;
+    if (dragIndex < finalDropIdx) finalDropIdx--;
+
+    const targetArray = pilotPopulations.flightMapping[cat];
+    const [movedItem] = targetArray.splice(dragIndex, 1);
+    targetArray.splice(finalDropIdx, 0, movedItem);
+
+    window.draggedMappingItem = null;
+
+    window.renderFlightMappingUI();
+    await window.savePopulations(true);
+};
+
+window.onDragEndMapping = function(e) {
+    e.currentTarget.classList.remove('opacity-40', 'bg-purple-100', 'border-purple-300');
+    document.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-b-2', 'border-purple-500'));
+    window.draggedMappingItem = null;
+};
+
+ // פונקציית עזר לחיפוש וסינון גיחות - מבטיחה שגיחה שנבחרה תיעלם מהרשימה
 window.renderFlightMappingUI = () => {
     const categories = ['students', 'instructors', 'conversion'];
     const allFlightNames = personnelLists.flightNames || [];
-    const mapping = pilotPopulations.flightMapping || { students: [], instructors: [] };
-    const allMapped = [...(mapping.students || []), ...(mapping.instructors || [])];
+    const mapping = pilotPopulations.flightMapping || { students: [], instructors: [], conversion: [] };
+    
+    // תיקון: הבטחת הכללת קטגוריית ההסבה בחישוב הגיחות שכבר סווגו
+    const allMapped = [
+        ...(mapping.students || []), 
+        ...(mapping.instructors || []), 
+        ...(mapping.conversion || [])
+    ];
 
     categories.forEach(cat => {
         const searchInput = document.getElementById(`search-flight-mapping-${cat}`);
@@ -1931,16 +2109,27 @@ window.renderFlightMappingUI = () => {
 
         optionsContainer.innerHTML = available.map(name => `
             <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-gray-100 p-1 cursor-pointer">
-<input type="checkbox" class="mapping-cb-${cat}" value="${name.replace(/"/g, '&quot;')}">
+                <input type="checkbox" class="mapping-cb-${cat}" value="${name.replace(/"/g, '&quot;')}">
                 <span>${name}</span>
             </label>
         `).join('') || '<div class="text-gray-400 text-[10px] text-center p-2">אין גיחות זמינות</div>';
 
         const currentSelected = mapping[cat] || [];
         selectedList.innerHTML = currentSelected.map((name, idx) => `
-            <li class="flex justify-between items-center text-xs bg-purple-50 p-2 rounded border mb-1">
-                <span>${name}</span>
-                <button onclick="window.removeFlightFromMapping('${cat}', ${idx})" class="text-red-500 font-bold px-2">×</button>
+            <li draggable="true" data-idx="${idx}"
+                ondragstart="window.onDragStartMapping(event, '${cat}', ${idx})"
+                ondragover="window.onDragOverMapping(event, '${cat}')"
+                ondragleave="window.onDragLeaveMapping(event)"
+                ondrop="window.onDropMapping(event, '${cat}', ${idx})"
+                ondragend="window.onDragEndMapping(event)"
+                class="flex justify-between items-center text-xs bg-purple-50 p-1 rounded border mb-1 cursor-grab transition-all duration-150 border-transparent hover:border-purple-300">
+                
+                <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                    <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
+                    <span class="font-medium text-gray-800 truncate">${name}</span>
+                </div>
+                
+                <button onclick="window.removeFlightFromMapping('${cat}', ${idx})" class="text-red-400 hover:text-red-600 font-bold px-2 z-10">×</button>
             </li>
         `).join('');
     });
@@ -2148,7 +2337,96 @@ window.togglePilotAccordion = (id) => {
     }
 };
 
-// פונקציית הרינדור המרכזית (שולחת לאקורדיון כשהסוג הוא טייסים)
+// ==========================================
+// פונקציות תמיכה בגרירה ושינוי סדר (Drag & Drop)
+// ==========================================
+window.draggedItemInfo = null;
+
+window.onDragStartItem = function(e, type, originalIndex) {
+    window.draggedItemInfo = { type, index: originalIndex };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", originalIndex); 
+    
+    // עיצוב אלמנט נגרר כדי שיבלוט
+    setTimeout(() => {
+        e.target.classList.add('opacity-40', 'bg-blue-50', 'border-blue-300');
+    }, 0);
+};
+
+window.onDragOverItem = function(e) {
+    e.preventDefault(); // חובה לאפשר Drop
+    e.dataTransfer.dropEffect = "move";
+    
+    const li = e.target.closest('li');
+    if (li && window.draggedItemInfo) {
+        const dragIndex = window.draggedItemInfo.index;
+        const dropIndex = parseInt(li.getAttribute('data-index'));
+        
+        li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
+        
+        if (dragIndex !== dropIndex) {
+            const rect = li.getBoundingClientRect();
+            const relY = e.clientY - rect.top;
+            // חיווי חזותי - פס כחול למעלה או למטה בהתאם למיקום העכבר
+            if (relY < rect.height / 2) {
+                li.classList.add('border-t-2', 'border-blue-500');
+            } else {
+                li.classList.add('border-b-2', 'border-blue-500');
+            }
+        }
+    }
+};
+
+window.onDragLeaveItem = function(e) {
+    const li = e.target.closest('li');
+    if (li) li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
+};
+
+window.onDropItem = async function(e, type, dropIndex) {
+    e.preventDefault();
+    const li = e.target.closest('li');
+    if (li) li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
+
+    if (!window.draggedItemInfo || window.draggedItemInfo.type !== type) return;
+
+    const dragIndex = window.draggedItemInfo.index;
+    if (dragIndex === dropIndex) return;
+
+    // חישוב מיקום מדויק לזריקת האלמנט
+    let finalDropIndex = dropIndex;
+    if (li) {
+        const rect = li.getBoundingClientRect();
+        const relY = e.clientY - rect.top;
+        if (relY >= rect.height / 2) {
+            finalDropIndex++; // זריקה מתחת לאלמנט
+        }
+    }
+
+    if (dragIndex < finalDropIndex) {
+        finalDropIndex--; // תיקון אינדקס אם גוררים למטה
+    }
+
+    // שינוי המיקום במערך הרשמי
+    const list = personnelLists[type];
+    const [movedItem] = list.splice(dragIndex, 1);
+    list.splice(finalDropIndex, 0, movedItem);
+
+    window.draggedItemInfo = null;
+    
+    // רינדור מחדש ושמירה מיידית ב-Firestore
+    window.renderList(type);
+    await window.savePersonnelLists(true);
+};
+
+window.onDragEndItem = function(e) {
+    e.target.classList.remove('opacity-40', 'bg-blue-50', 'border-blue-300');
+    document.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-b-2', 'border-blue-500'));
+    window.draggedItemInfo = null;
+};
+
+// ==========================================
+// פונקציית הרינדור המעודכנת
+// ==========================================
 window.renderList = async function (type) {
     if (type === 'pilots') {
         await renderPilotsWithAccordion();
@@ -2160,8 +2438,6 @@ window.renderList = async function (type) {
     if (!listContainer) return;
 
     const rawSearchTerm = searchInput ? searchInput.value.toLowerCase() : "";
-    
-    // ניקוי המרכאות בזמן חיפוש
     const cleanString = (str) => typeof str === 'string' ? str.replace(/['"״׳]/g, '').trim() : '';
     const searchTerm = cleanString(rawSearchTerm);
 
@@ -2170,6 +2446,25 @@ window.renderList = async function (type) {
 
     listContainer.innerHTML = '';
     
+    // הזרקת כפתור מיון אלפבתי אם עדיין לא קיים (מאפשר למיין כפתור מתי שרוצים)
+    if (!document.getElementById(`sort-btn-${type}`)) {
+        const headerDiv = listContainer.parentElement; 
+        if (headerDiv) {
+            const sortBtn = document.createElement('button');
+            sortBtn.id = `sort-btn-${type}`;
+            sortBtn.className = "w-full text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 p-1 mb-2 rounded border border-gray-200 transition font-medium flex justify-center items-center gap-1";
+            sortBtn.innerHTML = '<span>מיין לפי א-ב</span> <span class="text-[10px]">⬇️</span>';
+            sortBtn.onclick = async () => {
+                if (confirm("האם למיין את הרשימה מחדש לפי סדר אלפבתי? סדר ידני קודם יידרס.")) {
+                    personnelLists[type].sort();
+                    window.renderList(type);
+                    await window.savePersonnelLists(true);
+                }
+            };
+            listContainer.parentNode.insertBefore(sortBtn, listContainer);
+        }
+    }
+    
     if (filtered.length === 0) { 
         listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים.</li>`; 
         return; 
@@ -2177,17 +2472,31 @@ window.renderList = async function (type) {
 
     filtered.forEach((item) => {
         const li = document.createElement('li');
-        li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
+        const originalIndex = items.indexOf(item); 
         
-        // שימוש באינדקס בטוח למניעת שבירת HTML עם גרשיים
-        const originalIndex = items.indexOf(item);
+        // הוספת תמיכה בגרירה ל-CSS ולאלמנט
+        li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200 cursor-grab transition-all duration-150";
+        li.setAttribute('draggable', 'true');
+        li.setAttribute('data-index', originalIndex);
+        
+        // צימוד אירועי גרירה
+        li.ondragstart = (e) => window.onDragStartItem(e, type, originalIndex);
+        li.ondragover = (e) => window.onDragOverItem(e);
+        li.ondragleave = (e) => window.onDragLeaveItem(e);
+        li.ondrop = (e) => window.onDropItem(e, type, originalIndex);
+        li.ondragend = (e) => window.onDragEndItem(e);
+
         const safeTitle = item.replace(/"/g, '&quot;'); 
 
+        // pointer-events-none בתוכן הפנימי מונע קפיצות ו"רעידות" בזמן גרירה מעל הטקסט
         li.innerHTML = `
-            <span class="font-medium text-gray-800 truncate flex-grow ml-2" title="${safeTitle}">${item}</span>
-            <div class="flex gap-1 shrink-0">
-                <button onclick="window.editPerson('${type}', ${originalIndex})" class="text-blue-500 p-1">✏️</button>
-                <button onclick="window.removePerson('${type}', ${originalIndex})" class="text-red-500 p-1">🗑️</button>
+            <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                <span class="text-gray-400 mr-2 ml-2 text-lg">≡</span>
+                <span class="font-medium text-gray-800 truncate" title="${safeTitle}">${item}</span>
+            </div>
+            <div class="flex gap-1 shrink-0 z-10">
+                <button onclick="window.editPerson('${type}', ${originalIndex})" class="text-blue-500 hover:bg-blue-100 rounded p-1">✏️</button>
+                <button onclick="window.removePerson('${type}', ${originalIndex})" class="text-red-500 hover:bg-red-100 rounded p-1">🗑️</button>
             </div>`;
         listContainer.appendChild(li);
     });
