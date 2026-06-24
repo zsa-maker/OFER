@@ -8,27 +8,79 @@ import { showScreen } from '../core/global.js';
 
 // --- פונקציות הודעות וסגירה (EXPORTS) ---
 
-export function showToast(message, type) {
-    const toast = document.getElementById('toast-notification');
-    if (!toast) return;
+// יש לחפש את הפונקציה הקיימת showToast בקובץ modals.js ולעדכן אותה כך:
+// public/js/components/modals.js
 
-    toast.textContent = message;
-    toast.classList.remove('bg-green-500', 'bg-red-500', 'hidden', 'bg-yellow-500');
-
-    let colorClass;
-    if (type === 'green') {
-        colorClass = 'bg-green-500';
-    } else if (type === 'red') {
-        colorClass = 'bg-red-500';
-    } else {
-        colorClass = 'bg-yellow-500';
+export function showToast(message, color = 'blue', duration = 3000, undoCallback = null) {
+    // 1. הסרת Toast קודם כדי למנוע הצפה על המסך
+    const existingToast = document.getElementById('global-toast');
+    if (existingToast) {
+        existingToast.remove();
     }
 
-    toast.classList.add(colorClass);
-    toast.classList.remove('hidden');
+    // 2. יצירת אלמנט ה-Toast
+    const toast = document.createElement('div');
+    toast.id = 'global-toast';
+    
+    // 3. מיפוי צבעים מלא ותקין ל-Tailwind
+    const colorMap = {
+        'blue': 'bg-blue-600',
+        'green': 'bg-green-600',
+        'red': 'bg-red-600',
+        'yellow': 'bg-yellow-500 text-gray-900', // צבע צהוב דורש טקסט כהה לקריאות
+        'orange': 'bg-orange-600'
+    };
+    
+    const bgClass = colorMap[color] || 'bg-blue-600'; // כחול כברירת מחדל
+    const textColor = color === 'yellow' ? 'text-gray-900' : 'text-white';
+
+    // 4. הגדרת העיצוב (Tailwind Classes)
+    toast.className = `fixed bottom-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-xl ${textColor} font-bold z-[9999] flex items-center gap-4 transition-opacity duration-300 ${bgClass}`;
+    
+    // 5. הוספת הטקסט
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = message;
+    toast.appendChild(messageSpan);
+
+    // 6. הוספת כפתור "בטל" במידה והועברה פונקציית ביטול
+    if (undoCallback) {
+        duration = 8000; // הארכת זמן ההצגה כדי לאפשר למשתמש להגיב
+        
+        const undoBtn = document.createElement('button');
+        undoBtn.innerHTML = 'בטל ↩';
+        // עיצוב כפתור הביטול שייראה ברור ושונה מהטקסט הרגיל
+        undoBtn.className = 'bg-white bg-opacity-20 hover:bg-opacity-40 px-3 py-1 rounded transition border border-white border-opacity-50 cursor-pointer text-sm whitespace-nowrap ml-2';
+        
+        undoBtn.onclick = () => {
+            undoCallback(); // הפעלת פעולת השחזור
+            // העלמה חלקה של ה-Toast מיד לאחר הלחיצה
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                if (document.body.contains(toast)) toast.remove();
+            }, 300);
+        };
+        
+        toast.appendChild(undoBtn);
+    }
+
+    // 7. הוספה למסמך (DOM)
+    document.body.appendChild(toast);
+
+    // 8. אנימציית הופעה (Fade-in)
+    toast.style.opacity = '0';
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+    });
+
+    // 9. הסרה אוטומטית לאחר הזמן שהוגדר (Fade-out)
     setTimeout(() => {
-        toast.classList.add('hidden');
-    }, 3000);
+        if (document.body.contains(toast)) {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                if (document.body.contains(toast)) toast.remove();
+            }, 300);
+        }
+    }, duration);
 }
 
 export function hideAllModals() {
@@ -118,7 +170,7 @@ export async function showFlightDetailsModal(flightId) {
     }
 
     // בדיקה אם הגיחה בוצעה חלקית
-    const isPartial = flight.data['סוג ביצוע'] === 'חלקי';
+    const isPartial = flight.data['סוג ביצוע'] === 'מופרעת' || flight.data['סוג גיחה'] === 'גיחה מופרעת';
     if (isPartial) {
         const repeatRequired = flight.data['נדרש ביצוע חוזר'] === 'כן';
         const repeatText = flight.data['נדרש ביצוע חוזר'] || 'לא צוין';
@@ -126,7 +178,7 @@ export async function showFlightDetailsModal(flightId) {
         statusHtml += `
             <div class="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-sm">
                 <h3 class="text-lg font-bold text-orange-800 mb-2 flex items-center">
-                    <span class="text-2xl mr-2">⚠️</span> ביצוע חלקי
+                    <span class="text-2xl mr-2">⚠️</span> ביצוע מופרע
                 </h3>
                 <div class="grid grid-cols-1 gap-3 text-sm">
                     <div class="flex items-center">

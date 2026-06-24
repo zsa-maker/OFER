@@ -21,7 +21,7 @@ export const simulatorFaults = {};
 let isPendingSelectionMode = false;
 let pendingSelectedSet = new Set();
 
-export const flightTypes = ['גיחה רגילה', 'ביצוע חלקי', 'ביטול גיחה'];
+export const flightTypes = ['גיחה רגילה', 'גיחה מופרעת', 'ביטול גיחה'];
 
 // משתנים גלובליים דינמיים
 export let savedFlights = [];

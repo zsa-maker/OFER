@@ -12,6 +12,61 @@ let chartInstances = {
 let currentFilteredFlights = [];
 let showAsPercent = false;
 
+// === פונקציית עזר גלובלית לטעינת אוכלוסיות באופן בטוח (הוספה חסרה) ===
+async function getPopDataForPeriod(selectedPeriod) {
+    let popData = window.pilotPopulations;
+    let periodToFetch = selectedPeriod;
+
+    // חישוב עצמאי ובטוח של התקופה הנוכחית אם לא נבחרה תקופה ספציפית
+    if (!periodToFetch || periodToFetch === "ALL") {
+        const d = new Date();
+        let year = d.getFullYear();
+        const month = d.getMonth();
+        if (month === 11) {
+            year++;
+            periodToFetch = `1/${year.toString().slice(-2)}`;
+        } else {
+            periodToFetch = `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
+        }
+    }
+
+    // ניסיון משיכה מהשרת לפי התקופה הספציפית
+    if (periodToFetch && window.firestoreFunctions && window.db) {
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const safePeriodName = periodToFetch.replace(/\//g, '-');
+            const periodPopRef = doc(window.db, "populations_by_period", safePeriodName);
+            const periodPopSnap = await getDoc(periodPopRef);
+            if (periodPopSnap.exists()) {
+                popData = periodPopSnap.data();
+                return popData;
+            }
+        } catch (e) {
+            console.error("Firebase error loading period populations:", e);
+        }
+    }
+
+    // גיבוי למאגר הכללי הישן
+    if (!popData) {
+        if (window.firestoreFunctions && window.db) {
+            try {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
+                if (popSnap.exists()) popData = popSnap.data();
+            } catch(e) {}
+        }
+        if (!popData) {
+            try {
+                const { pilotPopulations } = await import('./adminManager.js');
+                popData = pilotPopulations;
+            } catch(e) {}
+        }
+        window.pilotPopulations = popData; 
+    }
+    
+    return popData || { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
+}
+
 // 1. אתחול מסך היעדים
 window.goalsManager.initGoalsScreen = async function () {
     const selectType = document.getElementById('goals-filter-flight-type');
@@ -32,6 +87,21 @@ window.goalsManager.initGoalsScreen = async function () {
         }
     }
 
+    const periodSelect = document.getElementById('goals-period-select');
+    const weekSelect = document.getElementById('goals-week-select');
+
+    if (periodSelect && !periodSelect.dataset.listenerAttached) {
+        periodSelect.addEventListener('change', () => {
+            window.goalsManager.updateGoalsSubPops();
+        });
+        periodSelect.dataset.listenerAttached = "true";
+    }
+
+    if (weekSelect && !weekSelect.dataset.listenerAttached) {
+        weekSelect.addEventListener('change', window.goalsManager.refreshGoalsAndMetrics);
+        weekSelect.dataset.listenerAttached = "true";
+    }
+
     const popTypeSelect = document.getElementById('goals-pop-type');
     const subPopSelect = document.getElementById('goals-sub-pop');
 
@@ -47,6 +117,18 @@ window.goalsManager.initGoalsScreen = async function () {
         subPopSelect.dataset.listenerAttached = "true";
     }
 
+    const goalFlightSelector = document.getElementById('stats-goal-flight-selector');
+    if (goalFlightSelector && !goalFlightSelector.dataset.listenerAttached) {
+        goalFlightSelector.addEventListener('change', window.goalsManager.refreshGoalsChart);
+        goalFlightSelector.dataset.listenerAttached = "true";
+    }
+
+    const metricSelector = document.getElementById('stats-metric-selector');
+    if (metricSelector && !metricSelector.dataset.listenerAttached) {
+        metricSelector.addEventListener('change', window.goalsManager.refreshMetricsChart);
+        metricSelector.dataset.listenerAttached = "true";
+    }
+
     await window.goalsManager.updateGoalsSubPops();
 };
 
@@ -55,9 +137,11 @@ window.goalsManager.updateGoalsSubPops = async function () {
     try {
         const typeSelect = document.getElementById('goals-pop-type');
         const subPopSelect = document.getElementById('goals-sub-pop');
+        const periodSelect = document.getElementById('goals-period-select');
         if (!typeSelect || !subPopSelect) return;
 
         const type = typeSelect.value;
+        const selectedPeriod = periodSelect?.value;
 
         if (!type || type === "") {
             subPopSelect.innerHTML = '<option value="ALL">כל הקבוצות</option>';
@@ -68,49 +152,20 @@ window.goalsManager.updateGoalsSubPops = async function () {
 
         subPopSelect.disabled = false;
 
-        // טעינה בטוחה של נתוני אוכלוסיות (כולל הגנה מפני קריסות אם הנתונים טרם נטענו)
-        let popData = window.pilotPopulations;
-
-        const hasPopData = popData &&
-            ((popData.instructorGroups?.length > 0) ||
-                (popData.courses?.length > 0) ||
-                (popData.conversionGroups?.length > 0));
-
-        if (!hasPopData) {
-            if (window.firestoreFunctions && window.db) {
-                try {
-                    const { doc, getDoc } = window.firestoreFunctions;
-                    const popSnap = await getDoc(doc(window.db, "settings", "populations"));
-                    if (popSnap.exists()) {
-                        popData = popSnap.data();
-                        window.pilotPopulations = popData;
-                    }
-                } catch (e) {
-                    console.error("Firebase error loading populations:", e);
-                }
-            }
-
-            // Fallback לטעינה מקומית מ-adminManager במידה ו-Firebase נכשל או ריק
-            if (!popData || (!popData.courses && !popData.instructorGroups)) {
-                const { pilotPopulations } = await import('./adminManager.js');
-                popData = pilotPopulations || { instructorGroups: [], courses: [], conversionGroups: [] };
-                window.pilotPopulations = popData;
-            }
-        }
-
-        const populations = popData || { instructorGroups: [], courses: [], conversionGroups: [] };
+        // שימוש בפונקציה המאובטחת לטעינת נתונים
+        let popData = await getPopDataForPeriod(selectedPeriod);
 
         let list = [];
         if (type === 'instructors') {
-            list = populations.instructorGroups || [];
+            list = popData.instructorGroups || [];
         } else if (type === 'conversion') {
-            list = populations.conversionGroups || [];
+            list = popData.conversionGroups || [];
         } else {
-            list = populations.courses || [];
+            list = popData.courses || [];
         }
 
         let optionsHtml = '<option value="ALL">כל הקבוצות</option>';
-        optionsHtml += list.map(item => `<option value="${item.name.trim().replace(/"/g, '&quot;')}">${item.name}</option>`).join('');
+        optionsHtml += list.map(item => `<option value="${(item.name || '').trim().replace(/"/g, '&quot;')}">${item.name}</option>`).join('');
 
         subPopSelect.innerHTML = optionsHtml;
 
@@ -124,6 +179,7 @@ window.goalsManager.updateGoalsSubPops = async function () {
 window.goalsManager.refreshGoalsAndMetrics = async function () {
     const selectedPeriod = document.getElementById('goals-period-select')?.value;
     const selectedWeek = parseInt(document.getElementById('goals-week-select')?.value);
+    
     try {
         const type = document.getElementById('goals-pop-type')?.value;
         const subPopName = document.getElementById('goals-sub-pop')?.value.trim() || "ALL";
@@ -135,57 +191,86 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
             f.executionStatus !== 'טרם דווחה' && f.executionStatus !== 'בוטלה'
         );
 
+        if (selectedPeriod && selectedPeriod !== "ALL" && selectedPeriod !== "") {
+            filtered = filtered.filter(f => {
+                const rawPeriod = f.isAdminAdded ? f.period : (window.getPeriodName ? window.getPeriodName(f.date) : f.period);
+                return String(rawPeriod || '').trim() === selectedPeriod.trim();
+            });
+        }
+
+        if (selectedWeek && !isNaN(selectedWeek) && selectedPeriod && window.planningSettings) {
+            const planning = window.planningSettings;
+            filtered = filtered.filter(f => {
+                if (!f.date) return false;
+                const reportDate = new Date(f.date);
+                reportDate.setHours(0, 0, 0, 0);
+
+                let baseDateStr = null;
+                if (selectedPeriod === window.getPeriodName?.(new Date(planning.periodCurrStart))) baseDateStr = planning.periodCurrStart;
+                else if (selectedPeriod === window.getPeriodName?.(new Date(planning.periodPrevStart))) baseDateStr = planning.periodPrevStart;
+                else if (selectedPeriod === window.getPeriodName?.(new Date(planning.periodNextStart))) baseDateStr = planning.periodNextStart;
+
+                if (baseDateStr) {
+                    const baseDate = new Date(baseDateStr);
+                    baseDate.setHours(0, 0, 0, 0);
+                    baseDate.setDate(baseDate.getDate() - baseDate.getDay()); 
+
+                    const diffDays = Math.round((reportDate - baseDate) / (1000 * 60 * 60 * 24));
+                    const faultWeekNum = Math.floor(diffDays / 7) + 1;
+                    return faultWeekNum === selectedWeek;
+                }
+                return true; 
+            });
+        }
+
         if (selectedFlightType) {
             filtered = filtered.filter(f => f.data?.['סוג גיחה'] === selectedFlightType);
         }
 
         if (type && type !== "") {
-            let popData = window.pilotPopulations || (typeof pilotPopulations !== 'undefined' ? pilotPopulations : null);
+            let popData = await getPopDataForPeriod(selectedPeriod);
 
-            if (!popData && window.firestoreFunctions && window.db) {
-                const { doc, getDoc } = window.firestoreFunctions;
-                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
-                if (popSnap.exists()) popData = popSnap.data();
+            if (popData) {
+                let groups = [];
+                if (type === 'instructors') groups = popData.instructorGroups || [];
+                else if (type === 'conversion') groups = popData.conversionGroups || [];
+                else groups = popData.courses || [];
+
+                const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName.trim().replace(/["']/g, '"');
+
+                let relevantPilots = [];
+                if (cleanSubPopName === "ALL" || cleanSubPopName === "") {
+                    groups.forEach(g => {
+                        let members = g.members || g.students || [];
+                        if (g.inactiveStudents) members = members.filter(m => !g.inactiveStudents.includes(m));
+                        relevantPilots.push(...members);
+                    });
+                    relevantPilots = [...new Set(relevantPilots)];
+                } else {
+                    const group = groups.find(g => {
+                        const gName = g.name ? g.name.trim().replace(/["']/g, '"') : "";
+                        return gName === cleanSubPopName;
+                    });
+                    if (group) {
+                        let members = group.members || group.students || [];
+                        if (group.inactiveStudents) members = members.filter(m => !group.inactiveStudents.includes(m));
+                        relevantPilots = members;
+                    }
+                }
+
+                // ניקוי רווחים בלבד, בדיוק כמו במעקב הקבוצתי
+                const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
+
+                filtered = filtered.filter(f => {
+                    const fData = f.data || {};
+                    const pilotsInFlight = [
+                        fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left'],
+                        fData['מדריך'], fData['מדריכה'], fData['instructor-main'], fData['instructor-name-1']
+                    ].map(p => p?.toString().trim()).filter(Boolean);
+
+                    return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
+                });
             }
-
-            if (!popData) return; 
-
-            const mapping = popData.flightMapping || {};
-            let allowedFlights = [];
-            if (type === 'instructors') allowedFlights = mapping.instructors || [];
-            else if (type === 'conversion') allowedFlights = mapping.conversion || [];
-            else allowedFlights = mapping.students || [];
-
-            let groups = [];
-            if (type === 'instructors') groups = popData.instructorGroups || [];
-            else if (type === 'conversion') groups = popData.conversionGroups || [];
-            else groups = popData.courses || [];
-
-            let targetPilots = [];
-            if (subPopName === "ALL") {
-                groups.forEach(g => targetPilots.push(...(g.members || g.students || [])));
-                targetPilots = [...new Set(targetPilots)];
-            } else {
-                const group = groups.find(g => normalize(g.name) === normalize(subPopName));
-                if (group) targetPilots = group.members || group.students || [];
-            }
-
-            const cleanTargetPilots = targetPilots.map(p => p?.trim()).filter(Boolean);
-
-            filtered = filtered.filter(f => {
-                const fData = f.data || {};
-                const fName = (fData['שם גיחה'] || '').trim();
-
-                const pilotsInFlight = [
-                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
-                ].map(n => n?.toString().trim()).filter(Boolean);
-
-                const isFlightMapped = allowedFlights.length === 0 || allowedFlights.includes(fName);
-                if (!isFlightMapped) return false;
-
-                if (cleanTargetPilots.length === 0) return true;
-                return pilotsInFlight.some(p => cleanTargetPilots.includes(p));
-            });
         }
 
         currentFilteredFlights = filtered;
@@ -196,20 +281,13 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
     }
 };
 
-// 4. רינדור גרף יעדים
 function renderGoalsChart(flights) {
     const id = 'chart-goals-status';
     const ctx = document.getElementById(id);
     const selector = document.getElementById('stats-goal-flight-selector');
     if (!ctx || !selector) return;
 
-    const existingChart = Chart.getChart(ctx);
-    if (existingChart) existingChart.destroy();
-
-    if (chartInstances.goals) {
-        chartInstances.goals.destroy();
-        chartInstances.goals = null;
-    }
+    destroyChartIfExists('goals', id);
 
     const currentSelectedName = selector.value;
     const namesSet = new Set();
@@ -217,16 +295,20 @@ function renderGoalsChart(flights) {
         if (f.data?.['שם גיחה']) namesSet.add(f.data['שם גיחה']);
     });
 
-    selector.innerHTML = '<option value="">כל הגיחות</option>' +
+    const newHtml = '<option value="">כל הגיחות</option>' +
         Array.from(namesSet).map(name => `<option value="${name}" ${name === currentSelectedName ? 'selected' : ''}>${name}</option>`).join('');
+    
+    if (selector.innerHTML !== newHtml) {
+        selector.innerHTML = newHtml;
+    }
 
     const activeFlightName = selector.value;
-    const flightsToProcess = activeFlightName ? flights.filter(f => f.data?.['שם גיחה'] === activeFlightName) : flights;
+    const flightsToProcess = activeFlightName && activeFlightName !== "" ? flights.filter(f => f.data?.['שם גיחה'] === activeFlightName) : flights;
 
     let met = 0; let notMet = 0;
 
     flightsToProcess.forEach(f => {
-        if (f.goalsStatus) {
+        if (f.goalsStatus && typeof f.goalsStatus === 'object') {
             Object.values(f.goalsStatus).forEach(status => {
                 if (status === 'עמד.ה') met++;
                 if (status === 'לא עמד.ה') notMet++;
@@ -263,36 +345,36 @@ function renderGoalsChart(flights) {
     });
 }
 
-// 5. רינדור גרף מדדים
 function renderMetricsUtilizationChart(flights) {
     const id = 'chart-metrics-utilization';
     const ctx = document.getElementById(id);
     const selector = document.getElementById('stats-metric-selector');
     if (!ctx || !selector) return;
 
-    const existingChart = Chart.getChart(ctx);
-    if (existingChart) existingChart.destroy();
-
-    if (chartInstances.metrics) {
-        chartInstances.metrics.destroy();
-        chartInstances.metrics = null;
-    }
+    destroyChartIfExists('metrics', id);
 
     const metricsData = {};
     flights.forEach(f => {
-        const selectedMetrics = f.data?.['מדדי ביצוע'] || [];
+        const selectedMetrics = Array.isArray(f.data?.['מדדי ביצוע']) ? f.data['מדדי ביצוע'] : [];
         selectedMetrics.forEach(m => {
-            if (!metricsData[m.main]) metricsData[m.main] = {};
-            metricsData[m.main][m.value] = (metricsData[m.main][m.value] || 0) + 1;
+            if (m && m.main && m.value) {
+                if (!metricsData[m.main]) metricsData[m.main] = {};
+                metricsData[m.main][m.value] = (metricsData[m.main][m.value] || 0) + 1;
+            }
         });
     });
 
     const currentSelected = selector.value;
-    selector.innerHTML = Object.keys(metricsData).map(m =>
+    const newHtml = Object.keys(metricsData).map(m =>
         `<option value="${m}" ${m === currentSelected ? 'selected' : ''}>${m}</option>`
     ).join('') || '<option value="">אין מדדים</option>';
 
+    if (selector.innerHTML !== newHtml) {
+        selector.innerHTML = newHtml;
+    }
+
     const activeMetric = selector.value;
+    
     if (!activeMetric || !metricsData[activeMetric]) return;
 
     const subLabels = Object.keys(metricsData[activeMetric]);
@@ -328,14 +410,19 @@ function renderMetricsUtilizationChart(flights) {
     });
 }
 
-// 6. כפתורי שליטה (רענון, אחוזים/מספרים, ייצוא דוח)
-window.goalsManager.refreshGoalsChart = () => {
-    renderGoalsChart(currentFilteredFlights);
-};
+function destroyChartIfExists(key, canvasId) {
+    if (chartInstances[key]) {
+        chartInstances[key].destroy();
+        chartInstances[key] = null;
+    }
+    const existingChart = Chart.getChart(canvasId);
+    if (existingChart) {
+        existingChart.destroy();
+    }
+}
 
-window.goalsManager.refreshMetricsChart = () => {
-    renderMetricsUtilizationChart(currentFilteredFlights);
-};
+window.goalsManager.refreshGoalsChart = () => { renderGoalsChart(currentFilteredFlights); };
+window.goalsManager.refreshMetricsChart = () => { renderMetricsUtilizationChart(currentFilteredFlights); };
 
 window.goalsManager.toggleValueType = function () {
     showAsPercent = !showAsPercent;

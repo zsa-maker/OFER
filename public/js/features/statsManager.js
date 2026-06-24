@@ -33,6 +33,7 @@ let currentFilteredFlights = [];
 let cachedPlanningData = null;
 
 let currentMainCardId = 'stats-card-planning';
+let instructorsChartMode = 'hours'; // יכול להיות 'hours' או 'flights'
 
 export async function renderStatsDashboard() {
     initFiltersUI();
@@ -57,17 +58,21 @@ export async function renderStatsDashboard() {
     updateCrewFilterState();
     updateCrewFilterOptions(timeFilteredFlights);
 
-    // סינון לפי צוות
     let finalFlights = filterFlightsByCrew(timeFilteredFlights);
 
-    // --- הוספה: עדכון וסינון לפי סוג גיחה ---
+    updateSimulatorFilterOptions(finalFlights);
+    const selectedSimulator = document.getElementById('filter-simulator')?.value;
+    if (selectedSimulator) {
+        finalFlights = finalFlights.filter(f => f.data && f.data['סימולטור'] === selectedSimulator);
+    }
+
     updateFlightTypeFilterOptions(finalFlights);
     const selectedFlightType = document.getElementById('filter-flight-type')?.value;
 
     if (selectedFlightType) {
         finalFlights = finalFlights.filter(f => f.data && f.data['סוג גיחה'] === selectedFlightType);
     }
-
+    
     currentFilteredFlights = finalFlights;
 
     const exportBtn = document.getElementById('export-report-btn');
@@ -75,13 +80,11 @@ export async function renderStatsDashboard() {
         exportBtn.classList.toggle('hidden', !selectedFlightType);
     }
 
-    // --- הוספה: הסתרת גרף שעות מאמן כאשר נבחר סוג גיחה ---
     const simCard = document.getElementById('stats-card-sim-hours');
     const typeCard = document.getElementById('stats-card-flight-types');
     if (simCard) {
         if (selectedFlightType) {
             simCard.classList.add('hidden');
-            // אם במקרה גרף המאמנים הוא המוגדל כרגע, נחזיר את המיקוד לגרף התכנון כדי לא להשאיר חור במסך
             if (currentMainCardId === 'stats-card-sim-hours') {
                 window.statsManager.swapToMain('stats-card-planning');
             }
@@ -99,7 +102,6 @@ export async function renderStatsDashboard() {
             typeCard.classList.remove('hidden');
         }
     }
-    // ----------------------------------------------------
 
     requestAnimationFrame(() => {
         renderExecutionStatusChart(finalFlights);
@@ -108,7 +110,6 @@ export async function renderStatsDashboard() {
         renderInstructorsChart(finalFlights);
         renderPlanningVsExecutionChart(finalFlights, cachedPlanningData, dateFilterPredicate);
 
-        // נרנדר את גרף שעות מאמן רק אם לא בחרנו סוג גיחה ספציפי
         if (!selectedFlightType) {
             renderSimulatorsUsageChart(timeFilteredFlights);
         }
@@ -118,8 +119,6 @@ export async function renderStatsDashboard() {
         }
     });
 }
-
-// --- פונקציות עזר (Helpers) ---
 
 function updateFlightTypeFilterOptions(flights) {
     const selectType = document.getElementById('filter-flight-type');
@@ -154,7 +153,6 @@ function renderGoalsChart(flights) {
 
     destroyChartIfExists('goals', id);
 
-    // עדכון סלקטור שמות הגיחות הפנימי
     const currentSelectedName = selector.value;
     const namesSet = new Set();
     flights.forEach(f => {
@@ -165,8 +163,6 @@ function renderGoalsChart(flights) {
         Array.from(namesSet).map(name => `<option value="${name}" ${name === currentSelectedName ? 'selected' : ''}>${name}</option>`).join('');
 
     const activeFlightName = selector.value;
-
-    // סינון הגיחות לחישוב במידה ונבחרה גיחה ספציפית
     const flightsToProcess = activeFlightName ? flights.filter(f => f.data?.['שם גיחה'] === activeFlightName) : flights;
 
     let met = 0;
@@ -188,7 +184,7 @@ function renderGoalsChart(flights) {
             labels: ['עמד.ה ביעדים', 'לא עמד.ה ביעדים'],
             datasets: [{
                 data: [met, notMet],
-                backgroundColor: ['#10B981', '#EF4444'], // ירוק ואדום
+                backgroundColor: ['#10B981', '#EF4444'],
             }]
         },
         options: {
@@ -217,14 +213,12 @@ window.statsManager.exportReport = function () {
         return;
     }
 
-    // איסוף תמונות הגרפים (מוודא שהגרפים קיימים)
     const goalsCanvas = document.getElementById('chart-goals-status');
     const metricsCanvas = document.getElementById('chart-metrics-utilization');
 
     const goalsImg = goalsCanvas ? goalsCanvas.toDataURL('image/png') : '';
     const metricsImg = metricsCanvas ? metricsCanvas.toDataURL('image/png') : '';
 
-    // איסוף הערות כלליות (אם קיים והסוג הוא יום אימון)
     let remarksHTML = '';
     if (flightType === 'יום אימון') {
         const remarks = currentFilteredFlights
@@ -248,7 +242,6 @@ window.statsManager.exportReport = function () {
         }
     }
 
-    // יצירת חלון ההדפסה
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
         <html dir="rtl" lang="he">
@@ -294,17 +287,11 @@ window.statsManager.exportReport = function () {
     `);
 
     printWindow.document.close();
-
-    // מפעיל את חלון ההדפסה אוטומטית (עם עיכוב קל כדי לוודא שהתמונות נטענו)
-    setTimeout(() => {
-        printWindow.focus();
-        // אופציונלי: printWindow.print();
-    }, 500);
+    setTimeout(() => { printWindow.focus(); }, 500);
 };
 
-// חשיפת הפונקציה לאירוע onchange של הסלקטור
 window.statsManager.refreshGoalsChart = () => {
-    renderGoalsChart(currentFilteredFlights);
+    renderGoalsChart(window.currentFilteredFlights || []);
 };
 
 function getInstructorName(flight) {
@@ -325,6 +312,61 @@ async function fetchPlanningData() {
     }
 }
 
+// === פונקציית עזר גלובלית לטעינת אוכלוסיות באופן בטוח (הוספה חסרה) ===
+async function getPopDataForPeriod(selectedPeriod) {
+    let popData = window.pilotPopulations;
+    let periodToFetch = selectedPeriod;
+
+    // חישוב עצמאי ובטוח של התקופה הנוכחית אם לא נבחרה תקופה ספציפית
+    if (!periodToFetch || periodToFetch === "ALL") {
+        const d = new Date();
+        let year = d.getFullYear();
+        const month = d.getMonth();
+        if (month === 11) {
+            year++;
+            periodToFetch = `1/${year.toString().slice(-2)}`;
+        } else {
+            periodToFetch = `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
+        }
+    }
+
+    // ניסיון משיכה מהשרת לפי התקופה הספציפית
+    if (periodToFetch && window.firestoreFunctions && window.db) {
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const safePeriodName = periodToFetch.replace(/\//g, '-');
+            const periodPopRef = doc(window.db, "populations_by_period", safePeriodName);
+            const periodPopSnap = await getDoc(periodPopRef);
+            if (periodPopSnap.exists()) {
+                popData = periodPopSnap.data();
+                return popData;
+            }
+        } catch (e) {
+            console.error("Firebase error loading period populations:", e);
+        }
+    }
+
+    // גיבוי למאגר הכללי הישן
+    if (!popData) {
+        if (window.firestoreFunctions && window.db) {
+            try {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
+                if (popSnap.exists()) popData = popSnap.data();
+            } catch (e) { }
+        }
+        if (!popData) {
+            try {
+                const { pilotPopulations } = await import('./adminManager.js');
+                popData = pilotPopulations;
+            } catch (e) { }
+        }
+        window.pilotPopulations = popData;
+    }
+
+    return popData || { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
+}
+
 function getDateFilterPredicate() {
     const elFilterType = document.getElementById('stats-filter-type');
     const filterType = elFilterType ? elFilterType.value : 'period';
@@ -341,7 +383,7 @@ function getDateFilterPredicate() {
         const selectedVal = document.getElementById('stats-period-select')?.value;
         if (!selectedVal) return () => false;
         return (date) => {
-            return getPeriodDisplay(date) === selectedVal; // השוואה לפי המחרוזת המוצגת (למשל 1/26)
+            return getPeriodDisplay(date) === selectedVal;
         };
     }
 
@@ -381,7 +423,7 @@ function filterFlightsByCrew(flights) {
     return flights.filter(flight => {
         const d = flight.data || {};
         const fFem = getInstructorName(flight);
-        // const fMale = (d['מדריך'] || '').trim();
+        const fMale = (d['מדריך'] || '').trim();
         const matchFem = instructorFem === "" || fFem === instructorFem;
         const matchMale = instructorMale === "" || fMale === instructorMale;
         return matchFem && matchMale;
@@ -393,31 +435,29 @@ function destroyChartIfExists(key, canvasId) {
         chartInstances[key].destroy();
         chartInstances[key] = null;
     }
-    // פתרון לשגיאת Canvas is already in use - השמדה מפורשת מה-Registry של Chart.js
     const existingChart = Chart.getChart(canvasId);
     if (existingChart) {
         existingChart.destroy();
     }
 }
 
-// 1. גרף סטטוס ביצוע
 function renderExecutionStatusChart(flights) {
     const id = 'chart-execution-status';
     const ctx = document.getElementById(id);
     if (!ctx) return;
     destroyChartIfExists('execution', id);
 
-    let counts = { 'בוצעו במלואן': 0, 'בוצעו חלקית': 0, 'בוטלו': 0 };
+    let counts = { 'בוצעו במלואן': 0, 'גיחות מופרעות': 0, 'בוטלו': 0 };
     flights.forEach(f => {
         const status = getFlightStatus(f);
         if (status === 'full') counts['בוצעו במלואן']++;
-        else if (status === 'partial') counts['בוצעו חלקית']++;
+        else if (status === 'partial') counts['גיחות מופרעות']++;
         else if (status === 'cancelled') counts['בוטלו']++;
     });
 
     chartInstances.execution = new Chart(ctx, {
         type: 'pie',
-        plugins: [ChartDataLabels], // הפעלת התוסף
+        plugins: [ChartDataLabels],
         data: {
             labels: Object.keys(counts),
             datasets: [{
@@ -426,12 +466,10 @@ function renderExecutionStatusChart(flights) {
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
                 datalabels: {
-                    color: '#3f3f3fff',
-                    font: { weight: 'bold' },
+                    color: '#3f3f3fff', font: { weight: 'bold' },
                     formatter: (value, ctx) => {
                         if (!showAsPercent) return value;
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
@@ -443,7 +481,6 @@ function renderExecutionStatusChart(flights) {
     });
 }
 
-// 2. גרף סיבות ביטול
 function renderCancellationReasonsChart(flights) {
     const id = 'chart-cancellation-reasons';
     const ctx = document.getElementById(id);
@@ -451,14 +488,19 @@ function renderCancellationReasonsChart(flights) {
     destroyChartIfExists('cancellation', id);
 
     const cancelledFlights = flights.filter(f => getFlightStatus(f) === 'cancelled');
+    const counts = countByKey(cancelledFlights, f => f.data?.['סיבת ביטול'] || 'לא צוינה סיבה');
 
-    // מציג את הסיבה המדויקת כפי שנשמרה בגיחה. אם אין סיבה, נרשום "לא צוינה סיבה"
-    const counts = countByKey(cancelledFlights, f => {
-        const r = f.data?.['סיבת ביטול'];
-        return r ? r : 'לא צוינה סיבה';
+    // איסוף פירוט לתקלות טכניות בלבד
+    const techBreakdown = {};
+    cancelledFlights.forEach(f => {
+        const reason = f.data?.['סיבת ביטול'] || 'לא צוינה סיבה';
+        if (reason.includes('טכני')) {
+            // * הערה: שנה את המפתח 'סיווג טכני' לאיך שזה מוגדר אצלך בדאטה *
+            const subReason = f.data?.['סיווג טכני'] || f.data?.['פירוט ביטול'] || 'ללא סיווג נוסף';
+            techBreakdown[subReason] = (techBreakdown[subReason] || 0) + 1;
+        }
     });
 
-    // מערך צבעים גדול יותר למקרה שיש הרבה סיבות (גוונים של אדום)
     const bgColors = [
         '#f0c5c5', '#af7c7c', '#701f1f', '#fa0101', '#835757',
         '#3b0202', '#f78383', '#f3eeee', '#3d2828', '#FFCDD2',
@@ -466,22 +508,29 @@ function renderCancellationReasonsChart(flights) {
     ];
 
     chartInstances.cancellation = new Chart(ctx, {
-        type: 'pie',
-        plugins: [ChartDataLabels],
-        data: {
-            labels: Object.keys(counts),
-            datasets: [{
-                data: Object.values(counts),
-                backgroundColor: bgColors // Chart.js ישתמש בצבעים לפי סדר
-            }]
-        },
+        type: 'pie', plugins: [ChartDataLabels],
+        data: { labels: Object.keys(counts), datasets: [{ data: Object.values(counts), backgroundColor: bgColors }] },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
+                tooltip: {
+                    callbacks: {
+                        afterBody: (tooltipItems) => {
+                            const item = tooltipItems[0];
+                            // בדיקה האם העכבר מרחף מעל גזרה של סיבה טכנית
+                            if (item.label.includes('טכני')) {
+                                let extra = ['','📌 פירוט תקלות טכניות:'];
+                                Object.entries(techBreakdown).forEach(([k, v]) => {
+                                    extra.push(`  • ${k}: ${v}`);
+                                });
+                                return extra;
+                            }
+                            return [];
+                        }
+                    }
+                },
                 datalabels: {
-                    color: '#3f3f3fff',
-                    font: { weight: 'bold' },
+                    color: '#3f3f3fff', font: { weight: 'bold' },
                     formatter: (value, ctx) => {
                         if (!showAsPercent) return value;
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
@@ -493,7 +542,6 @@ function renderCancellationReasonsChart(flights) {
     });
 }
 
-// 3. גרף סוגי גיחות
 function renderFlightTypesChart(flights) {
     const id = 'chart-flight-types';
     const ctx = document.getElementById(id);
@@ -509,15 +557,11 @@ function renderFlightTypesChart(flights) {
 
     chartInstances.types = new Chart(ctx, {
         type: 'bar',
-        data: {
-            labels: Object.keys(counts),
-            datasets: [{ label: 'מספר גיחות', data: Object.values(counts), backgroundColor: '#3B82F6' }]
-        },
+        data: { labels: Object.keys(counts), datasets: [{ label: 'מספר גיחות', data: Object.values(counts), backgroundColor: '#3B82F6' }] },
         options: { responsive: true, maintainAspectRatio: false }
     });
 }
 
-// 4. גרף מדריכים
 function renderInstructorsChart(flights) {
     const id = 'chart-instructors';
     const ctx = document.getElementById(id);
@@ -525,15 +569,16 @@ function renderInstructorsChart(flights) {
     destroyChartIfExists('instructors', id);
 
     const hoursByInstructor = {};
+    const flightsByInstructor = {};
 
     flights.forEach(f => {
         const name = getInstructorName(f);
-        // הוספת התנאי: אם השם ריק או שווה ל"ללא", לא נספור את השעות בגרף המדריכים
-        if (!name || name === 'ללא') return;
+        if (!name || name === 'ללא' || f.data?.['שם גיחה'] === 'תרגול התנעה') return;
 
-        // סינון "תרגול התנעה" (קיים בקוד)
-        if (f.data?.['שם גיחה'] === 'תרגול התנעה') return;
+        // ספירת גיחות
+        flightsByInstructor[name] = (flightsByInstructor[name] || 0) + 1;
 
+        // ספירת שעות
         const start = f.data?.['שעת התחלה'];
         const end = f.data?.['שעת סיום'];
         if (start && end) {
@@ -542,31 +587,42 @@ function renderInstructorsChart(flights) {
             let sMins = h1 * 60 + m1;
             let eMins = h2 * 60 + m2;
             if (eMins < sMins) eMins += 1440;
-
-            const duration = (eMins - sMins) / 60;
-            hoursByInstructor[name] = (hoursByInstructor[name] || 0) + duration;
+            hoursByInstructor[name] = (hoursByInstructor[name] || 0) + ((eMins - sMins) / 60);
         }
     });
+
+    const isHours = instructorsChartMode === 'hours';
+    const dataToUse = isHours ? hoursByInstructor : flightsByInstructor;
+    const labelText = isHours ? 'שעות מאמן' : 'מספר גיחות';
+    const dataArr = Object.values(dataToUse).map(v => isHours ? v.toFixed(1) : v);
 
     chartInstances.instructors = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: Object.keys(hoursByInstructor),
-            datasets: [{
-                label: 'שעות מאמן',
-                data: Object.values(hoursByInstructor).map(v => v.toFixed(1)),
-                backgroundColor: '#8B5CF6'
-            }]
+            labels: Object.keys(dataToUse),
+            datasets: [{ label: labelText, data: dataArr, backgroundColor: '#8B5CF6' }]
         },
         options: {
-            responsive: true,
+            responsive: true, 
             maintainAspectRatio: false,
-            scales: { y: { beginAtZero: true, title: { display: true, text: 'שעות' } } }
+            onClick: () => {
+                // החלפת מצב ורינדור מחדש בלחיצה
+                instructorsChartMode = isHours ? 'flights' : 'hours';
+                renderInstructorsChart(flights);
+            },
+            scales: { y: { beginAtZero: true, title: { display: true, text: isHours ? 'שעות' : 'גיחות' } } },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        footer: () => '💡 לחץ על הגרף כדי להחליף בין שעות לגיחות'
+                    }
+                }
+            }
         }
     });
 }
 
-// 5. גרף תכנון מול ביצוע (כולל לוגיקת צבירה)
+
 function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilterPredicate) {
     const id = 'chart-planning-execution';
     const ctx = document.getElementById(id);
@@ -580,7 +636,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     const dailyData = {};
     const allDates = new Set();
 
-    // פונקציות עזר קריטיות - מונעות את תזוזת התאריכים אחורה בגלל אזור הזמן (UTC לעומת שעון ישראל)
     const getLocalDStr = (dateInput) => {
         const d = new Date(dateInput);
         const y = d.getFullYear();
@@ -594,22 +649,16 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         return new Date(y, m - 1, d);
     };
 
-    // א. מציאת תאריך הגיחה האחרונה ביותר במאגר
     let lastFlightDate = null;
     savedFlights.forEach(f => {
         if (!f.date) return;
-        const dStr = getLocalDStr(f.date);
-        const d = createLocalMidnight(dStr);
-        if (!lastFlightDate || d > lastFlightDate) {
-            lastFlightDate = d;
-        }
+        const d = createLocalMidnight(getLocalDStr(f.date));
+        if (!lastFlightDate || d > lastFlightDate) lastFlightDate = d;
     });
 
-    // ב. הכנת התכנון המקורי
     if (!selectedFlightType && planningData?.originalPlans) {
         Object.entries(planningData.originalPlans).forEach(([dStr, count]) => {
-            const dObj = createLocalMidnight(dStr);
-            if (dateFilterPredicate(dObj)) {
+            if (dateFilterPredicate(createLocalMidnight(dStr))) {
                 allDates.add(dStr);
                 if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
                 dailyData[dStr].planned = Number(count) || 0;
@@ -617,11 +666,9 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         });
     }
 
-    // ג. חישוב התכנון העדכני (לפי חוקיות: עבר=מאגר, עתיד=לוח שנה)
     const dbCounts = {};
     savedFlights.forEach(f => {
-        if (!f.date) return;
-        if (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType) return;
+        if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
         const dStr = getLocalDStr(f.date);
         dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
     });
@@ -631,7 +678,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
 
     allRelevantDates.forEach(dStr => {
         const dObj = createLocalMidnight(dStr);
-
         if (dateFilterPredicate(dObj)) {
             allDates.add(dStr);
             if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
@@ -640,25 +686,21 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
                 dailyData[dStr].current = dbCounts[dStr] || 0;
             } else {
                 if (lastFlightDate && dObj <= lastFlightDate) {
-                    dailyData[dStr].current = dbCounts[dStr] || 0; // זמן עבר - נלקח מהמאגר
+                    dailyData[dStr].current = dbCounts[dStr] || 0;
                 } else {
                     const calData = planningData?.dailyPlans?.[dStr];
-                    dailyData[dStr].current = (typeof calData === 'object') ? (Number(calData.count) || 0) : (Number(calData) || 0); // זמן עתיד - נלקח מלוח השנה
+                    dailyData[dStr].current = (typeof calData === 'object') ? (Number(calData.count) || 0) : (Number(calData) || 0);
                 }
             }
         }
     });
 
-    // ד. חישוב ביצוע בפועל
     executedFlights.forEach(f => {
         if (!f.date) return;
         const dStr = getLocalDStr(f.date);
-        const dObj = createLocalMidnight(dStr);
-
-        if (dateFilterPredicate(dObj)) {
+        if (dateFilterPredicate(createLocalMidnight(dStr))) {
             const status = getFlightStatus(f);
-            const isSuccess = (status === 'full') || (status === 'partial' && f.data['נדרש ביצוע חוזר'] !== 'כן');
-            if (isSuccess) {
+            if ((status === 'full') || (status === 'partial' && f.data['נדרש ביצוע חוזר'] !== 'כן')) {
                 allDates.add(dStr);
                 if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
                 dailyData[dStr].actual++;
@@ -676,12 +718,8 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         seriesActual = new Array(26).fill(0);
 
         sortedDates.forEach(dStr => {
-            const dObj = createLocalMidnight(dStr);
-            const weekIdx = getWeekOfPeriod(dObj, planningData) - 1;
-
-            // בטיחות: מוודא שהשבוע לא יחרוג מחוץ למערך ויאבד נתונים
+            const weekIdx = getWeekOfPeriod(createLocalMidnight(dStr), planningData) - 1;
             const safeWeekIdx = Math.min(Math.max(weekIdx, 0), 25);
-
             if (weekIdx >= 0) {
                 seriesPlanned[safeWeekIdx] += dailyData[dStr].planned;
                 seriesCurrent[safeWeekIdx] += dailyData[dStr].current;
@@ -714,11 +752,9 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     datasets.push({ label: 'ביצוע בפועל', data: seriesActual, borderColor: '#4BC0C0', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1 });
 
     chartInstances.planning = new Chart(ctx, {
-        type: 'line',
-        data: { labels, datasets: datasets },
+        type: 'line', data: { labels, datasets },
         options: {
-            responsive: true, maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
+            responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             plugins: {
                 tooltip: {
                     callbacks: {
@@ -726,19 +762,12 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
                             const currentPlanItem = tooltipItems.find(i => i.dataset.label.includes('עדכני') || i.dataset.label.includes('במאגר'));
                             const actualItem = tooltipItems.find(i => i.dataset.label.includes('בפועל'));
                             if (!currentPlanItem || !actualItem) return '';
-
                             const currentPlan = currentPlanItem.raw || 0;
                             const actual = actualItem.raw || 0;
                             if (currentPlan === 0) return '';
-
-                            const nakaTarget = currentPlan * (nakaPercent / 100);
-                            const executionRate = (actual / currentPlan) * 100;
-
-                            return '\n' +
-                                `-----------------------` + '\n' +
-                                `אחוז נק"ע מוגדר: ${nakaPercent}%` + '\n' +
-                                `יעד נק"ע (גיחות): ${nakaTarget.toFixed(1)}` + '\n' +
-                                `עמידה ביחס לתכנון: ${executionRate.toFixed(1)}%` + '\n';
+                            return '\n-----------------------\n' +
+                                `אחוז נק"ע מוגדר: ${nakaPercent}%\nיעד נק"ע (גיחות): ${(currentPlan * (nakaPercent / 100)).toFixed(1)}\n` +
+                                `עמידה ביחס לתכנון: ${((actual / currentPlan) * 100).toFixed(1)}%\n`;
                         }
                     },
                     bodyFont: { size: 13 }, footerFont: { size: 12, weight: 'bold' }, footerColor: '#fbbf24', padding: 10
@@ -748,7 +777,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     });
 }
 
-// 6. גרף שעות שימוש במאמנים
 function renderSimulatorsUsageChart(flights) {
     const id = 'chart-sim-hours';
     const ctx = document.getElementById(id);
@@ -761,8 +789,6 @@ function renderSimulatorsUsageChart(flights) {
 
     flights.forEach(f => {
         if (!f.date || !f.data) return;
-
-        const dStr = f.date;
         const sim = (f.data?.['סימולטור'] || '').toUpperCase();
         let group = sim.includes('FFS') ? 'FFS' : (sim.includes('VIPT') ? 'VIPT' : null);
         if (!group) return;
@@ -774,36 +800,25 @@ function renderSimulatorsUsageChart(flights) {
             const [h2, m2] = end.split(':').map(Number);
             let sMins = h1 * 60 + m1;
             let eMins = h2 * 60 + m2;
-            if (eMins < sMins) eMins += 1440; // טיפול בחציית חצות
+            if (eMins < sMins) eMins += 1440;
 
             const duration = (eMins - sMins) / 60;
             const status = getFlightStatus(f);
-
-            // לוגיקה לקביעת הצלחה: בוצעה במלואה או בוצעה חלקית ללא צורך בביצוע חוזר
             const isSuccess = (status === 'full') || (status === 'partial' && f.data['נדרש ביצוע חוזר'] !== 'כן');
 
-            if (isSuccess) {
-                usageSuccess[group] += duration;
-            } else {
-                usageFailed[group] += duration;
-            }
+            if (isSuccess) usageSuccess[group] += duration;
+            else usageFailed[group] += duration;
 
-            // חישוב חלון פעילות (קיבולת) - מציאת הגיחה הראשונה והאחרונה באותו יום
-            if (!dayWindows[group][dStr]) {
-                dayWindows[group][dStr] = { min: 1440, max: 0 };
-            }
-            dayWindows[group][dStr].min = Math.min(dayWindows[group][dStr].min, sMins);
-            dayWindows[group][dStr].max = Math.max(dayWindows[group][dStr].max, eMins);
+            if (!dayWindows[group][f.date]) dayWindows[group][f.date] = { min: 1440, max: 0 };
+            dayWindows[group][f.date].min = Math.min(dayWindows[group][f.date].min, sMins);
+            dayWindows[group][f.date].max = Math.max(dayWindows[group][f.date].max, eMins);
         }
     });
 
-    // סכימת הקיבולת הכוללת
     const capacity = { 'FFS': 0, 'VIPT': 0 };
     ['FFS', 'VIPT'].forEach(group => {
         Object.values(dayWindows[group]).forEach(win => {
-            if (win.max > win.min) {
-                capacity[group] += (win.max - win.min) / 60;
-            }
+            if (win.max > win.min) capacity[group] += (win.max - win.min) / 60;
         });
     });
 
@@ -812,47 +827,15 @@ function renderSimulatorsUsageChart(flights) {
         data: {
             labels: ['FFS', 'VIPT'],
             datasets: [
-                {
-                    label: 'ביצוע מוצלח',
-                    data: [usageSuccess['FFS'].toFixed(1), usageSuccess['VIPT'].toFixed(1)],
-                    backgroundColor: '#6366F1',
-                    borderRadius: 4,
-                    order: 2,
-                    stack: 'usage' // הצמדה לערמה של הביצוע
-                },
-                {
-                    label: 'ביטולים / ביצוע חוזר',
-                    data: [usageFailed['FFS'].toFixed(1), usageFailed['VIPT'].toFixed(1)],
-                    backgroundColor: 'rgba(99, 102, 241, 0.4)', // כחול בשקיפות נמוכה
-                    borderRadius: 4,
-                    order: 2,
-                    stack: 'usage' // מופיע מעל הביצוע המוצלח באותה עמודה
-                },
-                {
-                    label: ' שעות הפעלה',
-                    data: [capacity['FFS'].toFixed(1), capacity['VIPT'].toFixed(1)],
-                    backgroundColor: 'rgba(209, 213, 219, 0.5)',
-                    borderColor: '#9CA3AF',
-                    borderWidth: 1,
-                    borderRadius: 4,
-                    order: 1 // מופיע מאחורי עמודות הביצוע
-                }
+                { label: 'ביצוע מוצלח', data: [usageSuccess['FFS'].toFixed(1), usageSuccess['VIPT'].toFixed(1)], backgroundColor: '#6366F1', borderRadius: 4, order: 2, stack: 'usage' },
+                { label: 'ביטולים / ביצוע חוזר', data: [usageFailed['FFS'].toFixed(1), usageFailed['VIPT'].toFixed(1)], backgroundColor: 'rgba(99, 102, 241, 0.4)', borderRadius: 4, order: 2, stack: 'usage' },
+                { label: ' שעות הפעלה', data: [capacity['FFS'].toFixed(1), capacity['VIPT'].toFixed(1)], backgroundColor: 'rgba(209, 213, 219, 0.5)', borderColor: '#9CA3AF', borderWidth: 1, borderRadius: 4, order: 1 }
             ]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: true, position: 'top', rtl: true, labels: { font: { family: 'Rubik' } } }
-            },
-            scales: {
-                x: { stacked: true }, // הפעלת ערמה בציר X
-                y: {
-                    stacked: true, // הפעלת ערמה בציר Y
-                    beginAtZero: true,
-                    title: { display: true, text: 'שעות' }
-                }
-            }
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: 'top', rtl: true, labels: { font: { family: 'Rubik' } } } },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'שעות' } } }
         }
     });
 }
@@ -861,9 +844,8 @@ function getFlightStatus(flight) {
     const status = flight.executionStatus;
     const d = flight.data || {};
     const flightType = d['סוג גיחה'] || '';
-    const cancelReason = d['סיבת ביטול'] || '';
-    if (status === 'בוטלה' || status === 'גיחה בוטלה' || cancelReason || flightType === 'ביטול גיחה') return 'cancelled';
-    if (flightType === 'ביצוע חלקי' || d['סוג ביצוע'] === 'חלקי') return 'partial';
+    if (status === 'בוטלה' || status === 'גיחה בוטלה' || d['סיבת ביטול'] || flightType === 'ביטול גיחה') return 'cancelled';
+    if (flightType === 'ביצוע גיחה מופרעת' || d['סוג ביצוע'] === 'מופרעת' || d['סוג ביצוע'] === 'חלקי' || flightType === 'גיחה חלקי') return 'partial';
     return 'full';
 }
 
@@ -884,12 +866,8 @@ function getWeekOfPeriod(date, planning) {
     const pStartSun = new Date(pStart);
     pStartSun.setDate(pStartSun.getDate() - pStartSun.getDay());
     pStartSun.setHours(0, 0, 0, 0);
-
-    // התיקון הקריטי: Math.round מונע את זליגת השבוע במעבר לשעון קיץ (DST)
-    const diffDays = Math.round((currSun - pStartSun) / (1000 * 60 * 60 * 24));
-    return Math.floor(diffDays / 7) + 1;
+    return Math.floor(Math.round((currSun - pStartSun) / (1000 * 60 * 60 * 24)) / 7) + 1;
 }
-
 
 function populateWeekDropdown() {
     const weekSelect = document.getElementById('stats-week-value');
@@ -909,11 +887,11 @@ function populateStatsPeriodSelect(flights) {
 
     const currentVal = select.value;
     const periods = new Set();
-
     flights.forEach(f => {
-        if (!f.date) return;
-        const display = getPeriodDisplay(f.date); // שימוש בפונקציה החדשה מ-util.js
-        if (display) periods.add(display);
+        if (f.date) {
+            const display = getPeriodDisplay(f.date);
+            if (display) periods.add(display);
+        }
     });
 
     const sortedPeriods = Array.from(periods).sort((a, b) => {
@@ -975,42 +953,28 @@ export function swapToMain(clickedCardId) {
 
     if (!mainCard || !clickedCard) return;
 
-    // 1. עדכון גבהים
     mainCard.classList.remove('md:col-span-2', 'md:row-span-2');
     mainCard.querySelector('.chart-wrapper').classList.replace('h-[500px]', 'h-[200px]');
 
     clickedCard.classList.add('md:col-span-2', 'md:row-span-2');
     clickedCard.querySelector('.chart-wrapper').classList.replace('h-[200px]', 'h-[500px]');
 
-    // 2. הזזת הכרטיס ב-DOM
     container.prepend(clickedCard);
     currentMainCardId = clickedCardId;
 
-    // 3. אנימציית Resize חלקה
-    const duration = 500; // תואם ל-duration-500 ב-CSS
+    const duration = 500;
     const startTime = performance.now();
 
     function animateResize(currentTime) {
         const elapsed = currentTime - startTime;
-
-        // ביצוע Resize לכל הגרפים כדי שיתאימו לגודל המשתנה של הקונטיינר
-        Object.values(chartInstances).forEach(chart => {
-            if (chart) chart.resize();
-        });
-
-        if (elapsed < duration) {
-            requestAnimationFrame(animateResize);
-        } else {
-            // סנכרון סופי לאחר סיום האנימציה
+        Object.values(chartInstances).forEach(chart => { if (chart) chart.resize(); });
+        if (elapsed < duration) requestAnimationFrame(animateResize);
+        else {
             Object.values(chartInstances).forEach(chart => {
-                if (chart) {
-                    chart.resize();
-                    chart.update('none'); // 'none' חוסך אנימציה פנימית מיותרת של Chart.js
-                }
+                if (chart) { chart.resize(); chart.update('none'); }
             });
         }
     }
-
     requestAnimationFrame(animateResize);
 }
 
@@ -1029,13 +993,11 @@ function initFiltersUI() {
         filterTypeSelect.addEventListener('change', (e) => toggleFilterInputs(e.target.value));
     }
 
-    // איחוד כל הפונקציות לתוך אובייקט הניהול
     Object.assign(window.statsManager, {
         renderStatsDashboard,
         onCrewFilterChange,
         swapToMain,
 
-        // הצגת טבלת האוכלוסיות
         showPopulationTable: () => {
             const container = document.getElementById('stats-population-table-container');
             if (container) {
@@ -1046,76 +1008,38 @@ function initFiltersUI() {
             }
         },
 
-        // עדכון רשימת תתי-האוכלוסיות (קורסים/קבוצות)
         updateSubPops: async () => {
             const type = document.getElementById('stats-table-pop-type').value;
             const subPopSelect = document.getElementById('stats-table-sub-pop');
             if (!subPopSelect) return;
 
-            // איפוס הרשימה
             subPopSelect.innerHTML = '<option value="">כל התתי-אוכלוסיות</option>';
 
-            // 1. טעינה בטוחה של הנתונים מ-Firebase
-            let popData = window.pilotPopulations;
-            if (!popData && window.firestoreFunctions) {
-                const { doc, getDoc } = window.firestoreFunctions;
-                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
-                if (popSnap.exists()) {
-                    popData = popSnap.data();
-                    window.pilotPopulations = popData;
-                }
-            }
-            if (!popData) {
-                const { pilotPopulations } = await import('./adminManager.js');
-                popData = pilotPopulations;
-            }
+            const popData = await getPopDataForPeriod(null); // בטבלת האוכלוסיות נמשוך מהמאגר הכללי
 
             let list = [];
+            if (type === 'instructors') list = popData.instructorGroups || [];
+            else if (type === 'conversion') list = popData.conversionGroups || [];
+            else list = popData.courses || [];
 
-            // 2. בחירת הרשימה הנכונה
-            if (type === 'instructors') {
-                list = popData.instructorGroups || [];
-            } else if (type === 'conversion') {
-                list = popData.conversionGroups || [];
-            } else {
-                list = popData.courses || [];
-            }
-
-            // יצירת האפשרויות ב-Select
             list.forEach(item => {
                 const opt = document.createElement('option');
                 opt.value = item.name;
                 opt.textContent = item.name;
                 subPopSelect.appendChild(opt);
             });
-
-            // קריאה לריענון הטבלה עצמה
             window.statsManager.updatePopTable();
         },
 
-        // רינדור הנתונים לטבלה
         updatePopTable: async () => {
             const type = document.getElementById('stats-table-pop-type').value;
             const subPopName = document.getElementById('stats-table-sub-pop').value;
             const tbody = document.getElementById('pop-table-body');
             if (!tbody) return;
 
-            let popData = window.pilotPopulations;
-            if (!popData && window.firestoreFunctions) {
-                const { doc, getDoc } = window.firestoreFunctions;
-                const popSnap = await getDoc(doc(window.db, "settings", "populations"));
-                if (popSnap.exists()) {
-                    popData = popSnap.data();
-                    window.pilotPopulations = popData;
-                }
-            }
-            if (!popData) {
-                const { pilotPopulations } = await import('./adminManager.js');
-                popData = pilotPopulations;
-            }
+            const popData = await getPopDataForPeriod(null);
 
             const mapping = popData.flightMapping || { students: [], instructors: [], conversion: [] };
-
             let relevantFlightNames = [];
             if (type === 'instructors') relevantFlightNames = mapping.instructors || [];
             else if (type === 'conversion') relevantFlightNames = mapping.conversion || [];
@@ -1127,30 +1051,38 @@ function initFiltersUI() {
             else if (type === 'conversion') groups = popData.conversionGroups || [];
             else groups = popData.courses || [];
 
-            if (subPopName) {
-                const group = groups.find(g => g.name === subPopName);
-                if (group) relevantPilots = group.students || group.members || [];
-            } else {
-                groups.forEach(g => relevantPilots.push(...(g.students || g.members || [])));
+            const cleanSubPopName = subPopName ? subPopName.trim().replace(/["']/g, '"') : "ALL";
+
+            if (cleanSubPopName === "ALL" || cleanSubPopName === "") {
+                groups.forEach(g => {
+                    let members = g.members || g.students || [];
+                    if (g.inactiveStudents) members = members.filter(m => !g.inactiveStudents.includes(m));
+                    relevantPilots.push(...members);
+                });
                 relevantPilots = [...new Set(relevantPilots)];
+            } else {
+                const group = groups.find(g => {
+                    const gName = g.name ? g.name.trim().replace(/["']/g, '"') : "";
+                    return gName === cleanSubPopName;
+                });
+                if (group) {
+                    let members = group.members || group.students || [];
+                    if (group.inactiveStudents) members = members.filter(m => !group.inactiveStudents.includes(m));
+                    relevantPilots = members;
+                }
             }
 
             const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
 
             const filtered = (window.savedFlights || []).filter(f => {
                 const fData = f.data || {};
-                const fName = fData['שם גיחה'];
-                
                 const pilotsInFlight = [
-                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
+                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left'],
+                    fData['מדריך'], fData['מדריכה'], fData['instructor-main'], fData['instructor-name-1']
                 ].map(p => p?.toString().trim()).filter(Boolean);
 
-                const isCorrectFlight = relevantFlightNames.length === 0 || relevantFlightNames.includes(fName);
-                const isCorrectPilot = cleanRelevantPilots.length === 0 || pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
-
-                return isCorrectFlight && isCorrectPilot;
+                return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
             });
-
             filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
             if (filtered.length === 0) {
@@ -1162,9 +1094,7 @@ function initFiltersUI() {
                         <td class="p-3 text-sm text-center border-l border-gray-100">${f.data['שם גיחה'] || '---'}</td>
                         <td class="p-3 text-sm text-center border-l border-gray-100">${new Date(f.date).toLocaleDateString('he-IL')}</td>
                         <td class="p-3 text-sm text-center font-bold">
-                            <span class="${f.executionStatus === 'בוצעה' ? 'text-green-600' : 'text-gray-600'}">
-                                ${f.executionStatus || 'בוצעה'}
-                            </span>
+                            <span class="${f.executionStatus === 'בוצעה' ? 'text-green-600' : 'text-gray-600'}">${f.executionStatus || 'בוצעה'}</span>
                         </td>
                     </tr>
                 `).join('');
@@ -1181,8 +1111,50 @@ function toggleFilterInputs(type) {
     if (active) active.classList.remove('hidden');
 }
 
-// משתנה עזר לשמירת הטיסות המסוננות לצורך ריענון הגרף בשינוי Select
+function updateSimulatorFilterOptions(flights) {
+    const selectSim = document.getElementById('filter-simulator');
+    if (!selectSim) return;
+
+    const currentVal = selectSim.value;
+    const simSet = new Set();
+
+    flights.forEach(f => {
+        const sim = f.data?.['סימולטור'];
+        if (sim) simSet.add(sim);
+    });
+
+    selectSim.innerHTML = '<option value="">כל הסימולטורים</option>';
+    Array.from(simSet).sort().forEach(sim => {
+        const op = document.createElement('option');
+        op.value = sim;
+        op.textContent = sim;
+        selectSim.appendChild(op);
+    });
+
+    if (simSet.has(currentVal)) {
+        selectSim.value = currentVal;
+    }
+}
+
+// --- ניהול מסך יעדים ומדדים ---
+
+let showAsPercent = false;
 let lastFilteredFlightsForMetrics = [];
+
+window.statsManager.toggleValueType = function () {
+    showAsPercent = !showAsPercent;
+    const btn = document.getElementById('toggle-percent-btn');
+    if (btn) btn.textContent = showAsPercent ? "הצג במספרים #" : "הצג באחוזים %";
+
+    window.statsManager.renderStatsDashboard();
+    if (typeof window.statsManager.refreshGoalsAndMetrics === 'function') {
+        window.statsManager.refreshGoalsAndMetrics();
+    }
+};
+
+window.statsManager.refreshMetricsChart = () => {
+    renderMetricsUtilizationChart(lastFilteredFlightsForMetrics);
+};
 
 function renderMetricsUtilizationChart(flights) {
     const id = 'chart-metrics-utilization';
@@ -1195,18 +1167,23 @@ function renderMetricsUtilizationChart(flights) {
 
     const metricsData = {};
     flights.forEach(f => {
-        const selectedMetrics = f.data?.['מדדי ביצוע'] || [];
+        const selectedMetrics = Array.isArray(f.data?.['מדדי ביצוע']) ? f.data['מדדי ביצוע'] : [];
         selectedMetrics.forEach(m => {
-            if (!metricsData[m.main]) metricsData[m.main] = {};
-            metricsData[m.main][m.value] = (metricsData[m.main][m.value] || 0) + 1;
+            if (m && m.main && m.value) {
+                if (!metricsData[m.main]) metricsData[m.main] = {};
+                metricsData[m.main][m.value] = (metricsData[m.main][m.value] || 0) + 1;
+            }
         });
     });
 
-    // עדכון הסלקטור
     const currentSelected = selector.value;
-    selector.innerHTML = Object.keys(metricsData).map(m =>
+    const newHtml = Object.keys(metricsData).map(m =>
         `<option value="${m}" ${m === currentSelected ? 'selected' : ''}>${m}</option>`
     ).join('') || '<option value="">אין מדדים</option>';
+
+    if (selector.innerHTML !== newHtml) {
+        selector.innerHTML = newHtml;
+    }
 
     const activeMetric = selector.value;
     if (!activeMetric || !metricsData[activeMetric]) return;
@@ -1214,28 +1191,15 @@ function renderMetricsUtilizationChart(flights) {
     const subLabels = Object.keys(metricsData[activeMetric]);
     const subValues = Object.values(metricsData[activeMetric]);
 
-    // יצירת גרף פאי
     chartInstances.metrics = new Chart(ctx, {
-        type: 'pie',
-        plugins: [ChartDataLabels],
-        data: {
-            labels: subLabels,
-            datasets: [{
-                data: subValues,
-                backgroundColor: [
-                    '#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
-                ],
-                borderWidth: 1
-            }]
-        },
+        type: 'pie', plugins: [ChartDataLabels],
+        data: { labels: subLabels, datasets: [{ data: subValues, backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'], borderWidth: 1 }] },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend: { position: 'bottom', rtl: true },
                 datalabels: {
-                    color: '#fff',
-                    font: { weight: 'bold', size: 12 },
+                    color: '#fff', font: { weight: 'bold', size: 12 },
                     formatter: (value, ctx) => {
                         if (!showAsPercent) return value;
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
@@ -1247,186 +1211,11 @@ function renderMetricsUtilizationChart(flights) {
     });
 }
 
-let showAsPercent = false;
-
-window.statsManager.toggleValueType = function () {
-    showAsPercent = !showAsPercent;
-    const btn = document.getElementById('toggle-percent-btn');
-    btn.textContent = showAsPercent ? "הצג במספרים #" : "הצג באחוזים %";
-    window.statsManager.renderStatsDashboard(); // רינדור מחדש עם המצב החדש
-};
-
-// פונקציה לריענון בשינוי ה-Select (להוסיף ל-window.statsManager)
-window.statsManager.refreshMetricsChart = () => {
-    renderMetricsUtilizationChart(lastFilteredFlightsForMetrics);
-};
-
-
-// פונקציה זו טוענת את אפשרויות "סוג גיחה" לתוך הסלקטור ומציירת את הגרפים בפעם הראשונה
-window.statsManager.initGoalsScreen = function () {
-    const selectType = document.getElementById('goals-filter-flight-type');
-    if (selectType) {
-        const typesSet = new Set();
-        (window.savedFlights || []).forEach(f => {
-            if (f.data && f.data['סוג גיחה']) typesSet.add(f.data['סוג גיחה']);
-        });
-
-        selectType.innerHTML = '<option value="">כל הסוגים</option>';
-        Array.from(typesSet).sort().forEach(type => {
-            selectType.innerHTML += `<option value="${type}">${type}</option>`;
-        });
-    }
-
-    // הפעלה ראשונית של הגרפים ברגע שנכנסים למסך
-    window.statsManager.refreshGoalsAndMetrics();
-};
-
-// פונקציית עזר לניקוי שמות
-const cleanName = (name) => name ? name.trim() : '';
-
-// 1. עדכון רשימת תתי-האוכלוסיות (קורסים/קבוצות) - מותאם לסינון כמו במעקב טייסים
-window.statsManager.updateGoalsSubPops = async () => {
-    const type = document.getElementById('goals-pop-type')?.value;
-    const subPopSelect = document.getElementById('goals-sub-pop');
-    if (!subPopSelect) return;
-
-    subPopSelect.innerHTML = '<option value="">כל הקבוצות</option>';
-
-    // אם נבחר "כלל האוכלוסיות", ננטרל את בחירת הקבוצה ונרענן
-    if (!type) {
-        subPopSelect.disabled = true;
-        window.statsManager.refreshGoalsAndMetrics();
-        return;
-    }
-
-    subPopSelect.disabled = false;
-
-    // משיכת נתונים מהשרת במידה וטרם נטענו בזיכרון המקומי
-    let popData = window.pilotPopulations;
-    if (!popData && window.firestoreFunctions) {
-        const { doc, getDoc } = window.firestoreFunctions;
-        const popSnap = await getDoc(doc(window.db, "settings", "populations"));
-        if (popSnap.exists()) {
-            popData = popSnap.data();
-            window.pilotPopulations = popData; // שמירה בזיכרון הגלובלי
-        }
-    }
-    // גיבוי אחרון
-    if (!popData) {
-        const { pilotPopulations } = await import('./adminManager.js');
-        popData = pilotPopulations;
-    }
-
-    let list = [];
-    if (type === 'instructors') {
-        list = popData.instructorGroups || [];
-    } else if (type === 'conversion') {
-        list = popData.conversionGroups || [];
-    } else {
-        // שינוי: במקום לבדוק 'students', ה-else יתפוס הכל (גם 'course' וגם 'courses')
-        list = popData.courses || [];
-    }
-
-    list.forEach(item => {
-        const opt = document.createElement('option');
-        opt.value = item.name;
-        opt.textContent = item.name;
-        subPopSelect.appendChild(opt);
-    });
-
-    window.statsManager.refreshGoalsAndMetrics();
-};
-
-// 2. סינון הגיחות ורינדור הגרפים
-// 2. סינון הגיחות ורינדור הגרפים - מבוסס על לוגיקת עמוד הפרופילים (profileManager.js)
-window.statsManager.refreshGoalsAndMetrics = async function () { 
-    const type = document.getElementById('goals-pop-type')?.value; 
-    // הוספת ניקוי מרכאות בדומה ל-profileManager.js
-    const subPopName = document.getElementById('goals-sub-pop')?.value.trim().replace(/["']/g, '"') || "";
-    const selectedFlightType = document.getElementById('goals-filter-flight-type')?.value;
-
-    // 1. טעינת נתוני אוכלוסיות (מוודא שיש מיפוי גיחות)
-    let popData = window.pilotPopulations;
-    if (!popData) {
-        const { pilotPopulations } = await import('./adminManager.js');
-        popData = pilotPopulations;
-    }
-
-    // 2. סינון ראשוני של גיחות שבוצעו ולא בוטלו
-    let filtered = (window.savedFlights || []).filter(f =>
-        f.executionStatus !== 'טרם דווחה' && f.executionStatus !== 'בוטלה'
-    );
-
-    // 3. סינון לפי סוג גיחה
-    if (selectedFlightType) {
-        filtered = filtered.filter(f => f.data?.['סוג גיחה'] === selectedFlightType);
-    }
-
-    // 4. לוגיקת סינון לפי אוכלוסייה - מותאם למנגנון ב-profileManager.js
-    if (type && popData) {
-        const mapping = popData.flightMapping || { students: [], instructors: [], conversion: [] };
-
-        let relevantFlightNames = [];
-        if (type === 'instructors') relevantFlightNames = mapping.instructors || [];
-        else if (type === 'conversion') relevantFlightNames = mapping.conversion || []; 
-        else relevantFlightNames = mapping.students || [];
-
-        // איסוף הטייסים האקטיבי - בדיוק כמו בפרופילים
-       let relevantPilots = [];
-            let groups = [];
-            if (type === 'instructors') {
-                groups = popData.instructorGroups || [];
-            } else if (type === 'conversion') {
-                groups = popData.conversionGroups || [];
-            } else {
-                groups = popData.courses || [];
-            }
-
-            if (subPopName) {
-                const group = groups.find(g => g.name === subPopName);
-                if (group) {
-                    relevantPilots = group.students || group.members || [];
-                }
-            } else {
-                // התיקון: במצב של "הכל", נאסוף את כל הטייסים ששייכים לסוג האוכלוסייה שבחרת!
-                groups.forEach(g => relevantPilots.push(...(g.students || g.members || [])));
-                relevantPilots = [...new Set(relevantPilots)];
-            }
-
-            const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
-
-            // 4. סינון הגיחות בפועל
-            const filtered = (window.savedFlights || []).filter(f => {
-                const fData = f.data || {};
-                const fName = fData['שם גיחה'];
-                
-                // התיקון: שולפים רק את מי שישב בכיסא הטייס
-                const pilotsInFlight = [
-                    fData['טייס ימין'],
-                    fData['טייס שמאל'],
-                    fData['pilot-right'],
-                    fData['pilot-left']
-                ].map(p => p?.toString().trim()).filter(Boolean);
-
-                const isCorrectFlight = relevantFlightNames.length === 0 || relevantFlightNames.includes(fName);
-                
-                // מוודא שהטייס שהטיס את הגיחה אכן שייך לקבוצה הרלוונטית
-                const isCorrectPilot = cleanRelevantPilots.length === 0 || pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
-
-                return isCorrectFlight && isCorrectPilot;
-            });
-    }
-
-    // 5. עדכון הגרפים עם הנתונים המסוננים
-    window.currentFilteredFlights = filtered;
-    if (typeof renderGoalsChart === 'function') renderGoalsChart(filtered);
-    if (typeof renderMetricsUtilizationChart === 'function') renderMetricsUtilizationChart(filtered);
-};
-
-// 3. עדכון פונקציית האתחול
-// 3. עדכון פונקציית האתחול
 window.statsManager.initGoalsScreen = async function () {
-    // טעינת סוגי גיחות לסלקטור
+    if (!cachedPlanningData) {
+        cachedPlanningData = await fetchPlanningData();
+    }
+
     const selectType = document.getElementById('goals-filter-flight-type');
     if (selectType) {
         const typesSet = new Set();
@@ -1434,34 +1223,179 @@ window.statsManager.initGoalsScreen = async function () {
             if (f.data?.['סוג גיחה']) typesSet.add(f.data['סוג גיחה']);
         });
         selectType.innerHTML = '<option value="">כל הסוגים</option>';
-        Array.from(typesSet).sort().forEach(t => {
-            selectType.innerHTML += `<option value="${t}">${t}</option>`;
+        Array.from(typesSet).sort().forEach(type => {
+            selectType.innerHTML += `<option value="${type}">${type}</option>`;
         });
 
-        // מאזין לשינוי סוג גיחה
         if (!selectType.dataset.listenerAttached) {
             selectType.addEventListener('change', window.statsManager.refreshGoalsAndMetrics);
             selectType.dataset.listenerAttached = "true";
         }
     }
 
-    // --- התיקון: הוספת מאזינים לשינוי אוכלוסייה ---
+    const periodSelect = document.getElementById('goals-period-select');
+    const weekSelect = document.getElementById('goals-week-select');
+
+    if (periodSelect && !periodSelect.dataset.listenerAttached) {
+        periodSelect.addEventListener('change', () => window.statsManager.updateGoalsSubPops());
+        periodSelect.dataset.listenerAttached = "true";
+    }
+    if (weekSelect && !weekSelect.dataset.listenerAttached) {
+        weekSelect.addEventListener('change', window.statsManager.refreshGoalsAndMetrics);
+        weekSelect.dataset.listenerAttached = "true";
+    }
+
     const popTypeSelect = document.getElementById('goals-pop-type');
     const subPopSelect = document.getElementById('goals-sub-pop');
 
     if (popTypeSelect && !popTypeSelect.dataset.listenerAttached) {
-        popTypeSelect.addEventListener('change', () => {
-            window.statsManager.updateGoalsSubPops();
-        });
+        popTypeSelect.addEventListener('change', () => window.statsManager.updateGoalsSubPops());
         popTypeSelect.dataset.listenerAttached = "true";
     }
-
     if (subPopSelect && !subPopSelect.dataset.listenerAttached) {
         subPopSelect.addEventListener('change', window.statsManager.refreshGoalsAndMetrics);
         subPopSelect.dataset.listenerAttached = "true";
     }
-    // ------------------------------------------------
 
-    // אתחול רשימת הקבוצות והרצה ראשונית
+    const goalFlightSelector = document.getElementById('stats-goal-flight-selector');
+    if (goalFlightSelector && !goalFlightSelector.dataset.listenerAttached) {
+        goalFlightSelector.addEventListener('change', window.statsManager.refreshGoalsChart);
+        goalFlightSelector.dataset.listenerAttached = "true";
+    }
+
+    const metricSelector = document.getElementById('stats-metric-selector');
+    if (metricSelector && !metricSelector.dataset.listenerAttached) {
+        metricSelector.addEventListener('change', window.statsManager.refreshMetricsChart);
+        metricSelector.dataset.listenerAttached = "true";
+    }
+
     await window.statsManager.updateGoalsSubPops();
+};
+
+window.statsManager.updateGoalsSubPops = async function () {
+    const typeSelect = document.getElementById('goals-pop-type');
+    const subPopSelect = document.getElementById('goals-sub-pop');
+    const periodSelect = document.getElementById('goals-period-select');
+    if (!typeSelect || !subPopSelect) return;
+
+    const type = typeSelect.value;
+    const selectedPeriod = periodSelect?.value;
+
+    if (!type || type === "") {
+        subPopSelect.innerHTML = '<option value="ALL">כל הקבוצות</option>';
+        subPopSelect.disabled = true;
+        await window.statsManager.refreshGoalsAndMetrics();
+        return;
+    }
+
+    subPopSelect.disabled = false;
+
+    // קריאה לפונקציית העזר כדי להבטיח משיכה נכונה של התקופה
+    let popData = await getPopDataForPeriod(selectedPeriod);
+
+    let list = [];
+    if (type === 'instructors') list = popData.instructorGroups || [];
+    else if (type === 'conversion') list = popData.conversionGroups || [];
+    else list = popData.courses || [];
+
+    let optionsHtml = '<option value="ALL">כל הקבוצות</option>';
+    optionsHtml += list.map(item => {
+        const safeName = (item.name || '').trim().replace(/"/g, '&quot;');
+        return `<option value="${safeName}">${item.name}</option>`;
+    }).join('');
+
+    subPopSelect.innerHTML = optionsHtml;
+    await window.statsManager.refreshGoalsAndMetrics();
+};
+
+window.statsManager.refreshGoalsAndMetrics = async function () {
+    const type = document.getElementById('goals-pop-type')?.value;
+    const subPopName = document.getElementById('goals-sub-pop')?.value.trim().replace(/["']/g, '"') || "ALL";
+    const selectedFlightType = document.getElementById('goals-filter-flight-type')?.value;
+    const selectedPeriod = document.getElementById('goals-period-select')?.value;
+    const selectedWeek = parseInt(document.getElementById('goals-week-select')?.value);
+    const normalize = (name) => name ? name.trim().replace(/&quot;/g, '"').replace(/["']/g, '"') : "";
+
+    let filtered = (window.savedFlights || []).filter(f =>
+        f.executionStatus !== 'טרם דווחה' && f.executionStatus !== 'בוטלה'
+    );
+
+    // 1. סינון לפי תקופה
+    if (selectedPeriod && selectedPeriod !== "ALL" && selectedPeriod !== "") {
+        filtered = filtered.filter(f => {
+            const display = window.getPeriodDisplay ? window.getPeriodDisplay(f.date) : f.period;
+            const rawPeriod = f.isAdminAdded ? f.period : display;
+            return String(rawPeriod || '').trim() === selectedPeriod.trim();
+        });
+    }
+
+    // 2. סינון לפי שבוע 
+    if (selectedWeek && !isNaN(selectedWeek) && selectedPeriod && cachedPlanningData) {
+        filtered = filtered.filter(f => {
+            if (!f.date) return false;
+            const weekNum = getWeekOfPeriod(f.date, cachedPlanningData);
+            return weekNum === selectedWeek;
+        });
+    }
+
+    // 3. סינון לפי סוג גיחה
+    if (selectedFlightType) {
+        filtered = filtered.filter(f => f.data?.['סוג גיחה'] === selectedFlightType);
+    }
+
+    // 4. סינון לפי אוכלוסייה (סוף סוף מכיל גם מדריכים!)
+    if (type && type !== "") {
+        let popData = await getPopDataForPeriod(selectedPeriod);
+
+        if (popData) {
+            let groups = [];
+            if (type === 'instructors') groups = popData.instructorGroups || [];
+            else if (type === 'conversion') groups = popData.conversionGroups || [];
+            else groups = popData.courses || [];
+
+const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName.trim().replace(/["']/g, '"');
+
+            let relevantPilots = [];
+            if (cleanSubPopName === "ALL" || cleanSubPopName === "") {
+                groups.forEach(g => {
+                    let members = g.members || g.students || [];
+                    if (g.inactiveStudents) members = members.filter(m => !g.inactiveStudents.includes(m));
+                    relevantPilots.push(...members);
+                });
+                relevantPilots = [...new Set(relevantPilots)];
+            } else {
+                const group = groups.find(g => {
+                    const gName = g.name ? g.name.trim().replace(/["']/g, '"') : "";
+                    return gName === cleanSubPopName;
+                });
+                if (group) {
+                    let members = group.members || group.students || [];
+                    if (group.inactiveStudents) members = members.filter(m => !group.inactiveStudents.includes(m));
+                    relevantPilots = members;
+                }
+            }
+
+            const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
+
+            filtered = filtered.filter(f => {
+                const fData = f.data || {};
+                const pilotsInFlight = [
+                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left'],
+                    fData['מדריך'], fData['מדריכה'], fData['instructor-main'], fData['instructor-name-1']
+                ].map(p => p?.toString().trim()).filter(Boolean);
+
+                return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
+            });
+        }
+    }
+
+    // 5. רינדור סופי
+    window.currentFilteredFlights = filtered;
+
+    if (typeof renderGoalsChart === 'function') {
+        renderGoalsChart(filtered);
+    }
+    if (typeof renderMetricsUtilizationChart === 'function') {
+        renderMetricsUtilizationChart(filtered);
+    }
 };

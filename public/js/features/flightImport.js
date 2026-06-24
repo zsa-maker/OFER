@@ -138,21 +138,39 @@ export async function importFlightsFromExcel(file) {
             flightsToSave.push(flightRecord);
         }
 
-        if (flightsToSave.length > 0) {
+       if (flightsToSave.length > 0) {
             const batchPromises = flightsToSave.map(flight => {
                 const flightsCollection = collection(window.db, "flights");
                 return addDoc(flightsCollection, flight);
             });
-            await Promise.all(batchPromises);
+            // שמירת המסמכים שנוצרו (כדי שנוכל למחוק אותם בביטול)
+            const addedDocs = await Promise.all(batchPromises);
             
             // *** קריאה לעדכון הרשימות הגלובליות ***
             await updateListsFromImport({
                 pilots: Array.from(newPilots),
-                // instructorsMale: Array.from(newInstructorsMale),
                 instructorsFemale: Array.from(newInstructorsFemale)
             });
 
-            showToast(`יוצרו בהצלחה ${flightsToSave.length} גיחות ועודכנו רשימות כוח אדם!`, 'green');
+            // יצירת פונקציית הביטול
+            const undoImport = async () => {
+                import('../components/modals.js').then(m => m.showToast('מבטל ייבוא, נא להמתין...', 'blue'));
+                const { doc, deleteDoc } = window.firestoreFunctions;
+                try {
+                    // מחיקת כל הגיחות שנוצרו הרגע
+                    for (const docRef of addedDocs) {
+                        await deleteDoc(doc(window.db, "flights", docRef.id));
+                    }
+                    import('../components/modals.js').then(m => m.showToast('הייבוא בוטל בהצלחה, הגיחות נמחקו.', 'green'));
+                    fetchFlights(); // רענון המסך
+                } catch (e) {
+                    console.error("שגיאה בביטול ייבוא:", e);
+                    import('../components/modals.js').then(m => m.showToast('שגיאה בביטול הייבוא.', 'red'));
+                }
+            };
+
+            // קריאה ל-Toast עם הפעלת ה-Undo
+            showToast(`יוצרו בהצלחה ${flightsToSave.length} גיחות ועודכנו רשימות כוח אדם!`, 'green', 3000, undoImport);
             fetchFlights();
         } else {
             showToast('לא נמצאו גיחות תקינות לייבוא.', 'red');

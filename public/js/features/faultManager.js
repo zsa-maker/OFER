@@ -141,25 +141,37 @@ export function populateFaultPeriodFilter() {
     const allFaults = Object.values(window.unifiedFaultsDatabase || {});
     const periods = new Set();
 
+    // 1. טעינת כל התקופות שנוצרו והוגדרו בעמוד המנהל
+    if (window.planningSettings?.periodConfigs) {
+        Object.keys(window.planningSettings.periodConfigs).forEach(p => periods.add(p));
+    }
+
+    // 2. גיבוי: הוספת תקופות שעולות מתוך נתוני התקלות בפועל
     allFaults.forEach(f => {
         if (f.firstReportTimestamp) {
-            const display = getPeriodDisplay(new Date(f.firstReportTimestamp));
-            if (display) periods.add(display);
+            const pName = typeof window.getPeriodName === 'function' 
+                ? window.getPeriodName(new Date(f.firstReportTimestamp)) 
+                : getPeriodDisplay(new Date(f.firstReportTimestamp));
+            if (pName) periods.add(pName);
         }
     });
 
+    // מיון התקופות בסדר כרונולוגי יורד (החדש ביותר ראשון)
     const sortedPeriods = Array.from(periods).sort((a, b) => {
-        const [pA, yA] = a.split('/');
-        const [pB, yB] = b.split('/');
-        return yA !== yB ? Number(yA) - Number(yB) : Number(pA) - Number(pB);
+        const [pA, yA] = a.split('/').map(Number);
+        const [pB, yB] = b.split('/').map(Number);
+        return (yB + pB / 10) - (yA + pA / 10);
     });
 
     select.innerHTML = sortedPeriods.map(p => `<option value="${p}">${p}</option>`).join('');
 
     if (sortedPeriods.length > 0) {
-        select.value = sortedPeriods[sortedPeriods.length - 1];
+        // בחירת התקופה הנוכחית של היום כברירת מחדל
+        const currentP = typeof window.getPeriodName === 'function' ? window.getPeriodName(new Date()) : sortedPeriods[0];
+        select.value = sortedPeriods.includes(currentP) ? currentP : sortedPeriods[0];
     }
 }
+
 export function populateFaultWeekFilter() {
     const select = document.getElementById('fault-week-select');
     if (!select) return;
@@ -184,28 +196,43 @@ export function renderFaultStatistics() {
         const reportDate = new Date(f.firstReportTimestamp);
         reportDate.setHours(0, 0, 0, 0);
 
-        if (timeFilterType === 'period') {
+if (timeFilterType === 'period') {
             const selectedPeriod = document.getElementById('fault-period-select')?.value;
-            matchTime = getPeriodDisplay(reportDate) === selectedPeriod;
+            const pName = typeof window.getPeriodName === 'function' ? window.getPeriodName(reportDate) : getPeriodDisplay(reportDate);
+            matchTime = pName === selectedPeriod;
         }
         else if (timeFilterType === 'week') {
             const selectedWeek = parseInt(document.getElementById('fault-week-select')?.value);
             const selectedPeriod = document.getElementById('fault-period-select')?.value;
 
             if (selectedWeek && selectedPeriod) {
-                let baseDateStr = null;
-                if (selectedPeriod === getPeriodDisplay(new Date(planning.periodCurrStart))) baseDateStr = planning.periodCurrStart;
-                else if (selectedPeriod === getPeriodDisplay(new Date(planning.periodPrevStart))) baseDateStr = planning.periodPrevStart;
-                else if (selectedPeriod === getPeriodDisplay(new Date(planning.periodNextStart))) baseDateStr = planning.periodNextStart;
+                const getStartSunday = (d) => {
+                    if (!d) return null;
+                    const s = new Date(d);
+                    s.setHours(0, 0, 0, 0);
+                    s.setDate(s.getDate() - s.getDay());
+                    return s;
+                };
 
-                if (baseDateStr) {
-                    const baseDate = new Date(baseDateStr);
-                    baseDate.setHours(0, 0, 0, 0);
-                    baseDate.setDate(baseDate.getDate() - baseDate.getDay());
+                const reportSunday = getStartSunday(reportDate);
+                let relevantStart = null;
+                const config = planning.periodConfigs?.[selectedPeriod];
 
-                    const diffDays = Math.round((reportDate - baseDate) / (1000 * 60 * 60 * 24));
+                if (config && config.startDate) {
+                    relevantStart = getStartSunday(new Date(config.startDate));
+                } else {
+                    const [pNum, pYear] = selectedPeriod.split('/');
+                    const fullYear = 2000 + parseInt(pYear);
+                    relevantStart = (pNum === "1") ? getStartSunday(new Date(fullYear - 1, 11, 15)) : getStartSunday(new Date(fullYear, 5, 15));
+                }
+
+                if (relevantStart) {
+                    const diffTime = reportSunday.getTime() - relevantStart.getTime();
+                    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
                     const faultWeekNum = Math.floor(diffDays / 7) + 1;
                     matchTime = (faultWeekNum === selectedWeek);
+                } else {
+                    matchTime = false;
                 }
             }
         }
@@ -616,13 +643,15 @@ export function renderFaultDatabaseTable() {
             return true;
         });
     }
+    
     filteredFaults = filteredFaults.filter(f => {
         const reportDate = new Date(f.firstReportTimestamp);
         reportDate.setHours(0, 0, 0, 0);
 
         if (timeFilterType === 'period') {
             const selectedPeriod = document.getElementById('fault-period-select')?.value;
-            return getPeriodDisplay(reportDate) === selectedPeriod;
+            const pName = typeof window.getPeriodName === 'function' ? window.getPeriodName(reportDate) : getPeriodDisplay(reportDate);
+            return pName === selectedPeriod;
         }
         else if (timeFilterType === 'week') {
             const selectedWeek = parseInt(document.getElementById('fault-week-select')?.value);
@@ -630,23 +659,35 @@ export function renderFaultDatabaseTable() {
             const planning = window.planningSettings || {};
 
             if (selectedWeek && selectedPeriod) {
-                let baseDateStr = null;
-                if (selectedPeriod === getPeriodDisplay(new Date(planning.periodCurrStart))) baseDateStr = planning.periodCurrStart;
-                else if (selectedPeriod === getPeriodDisplay(new Date(planning.periodPrevStart))) baseDateStr = planning.periodPrevStart;
-                else if (selectedPeriod === getPeriodDisplay(new Date(planning.periodNextStart))) baseDateStr = planning.periodNextStart;
+                const getStartSunday = (d) => {
+                    if (!d) return null;
+                    const s = new Date(d);
+                    s.setHours(0, 0, 0, 0);
+                    s.setDate(s.getDate() - s.getDay());
+                    return s;
+                };
 
-                if (baseDateStr) {
-                    const baseDate = new Date(baseDateStr);
-                    baseDate.setHours(0, 0, 0, 0);
-                    baseDate.setDate(baseDate.getDate() - baseDate.getDay());
-                    const diffDays = Math.round((reportDate - baseDate) / (1000 * 60 * 60 * 24));
+                const reportSunday = getStartSunday(reportDate);
+                let relevantStart = null;
+                const config = planning.periodConfigs?.[selectedPeriod];
+
+                if (config && config.startDate) {
+                    relevantStart = getStartSunday(new Date(config.startDate));
+                } else {
+                    const [pNum, pYear] = selectedPeriod.split('/');
+                    const fullYear = 2000 + parseInt(pYear);
+                    relevantStart = (pNum === "1") ? getStartSunday(new Date(fullYear - 1, 11, 15)) : getStartSunday(new Date(fullYear, 5, 15));
+                }
+
+                if (relevantStart) {
+                    const diffTime = reportSunday.getTime() - relevantStart.getTime();
+                    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
                     const faultWeekNum = Math.floor(diffDays / 7) + 1;
                     return faultWeekNum === selectedWeek;
                 }
             }
-            return true;
-        }
-        else if (timeFilterType === 'range') {
+            return false;
+        } else if (timeFilterType === 'range') {
             const startStr = document.getElementById('fault-date-start')?.value;
             const endStr = document.getElementById('fault-date-end')?.value;
             if (startStr && endStr) {

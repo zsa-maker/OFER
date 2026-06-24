@@ -139,7 +139,22 @@ export function switchAdminTab(tabId) {
             window.addGoalInput();
         }
     } else if (tabId === 'populations') {
-        renderPopulations();
+        // אכלוס סלקטור התקופות לפי מה שמוגדר ב-planningSettings
+        const periodSelect = document.getElementById('admin-population-period');
+        if (periodSelect && window.planningSettings && window.planningSettings.periodConfigs) {
+            const periods = Object.keys(window.planningSettings.periodConfigs).sort((a, b) => {
+                const [pA, yA] = a.split('/').map(Number);
+                const [pB, yB] = b.split('/').map(Number);
+                return (yB + pB / 10) - (yA + pA / 10);
+            });
+            periodSelect.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('');
+
+            // בחירת התקופה הנוכחית
+            const currPeriod = window.getPeriodName(new Date());
+            if (periods.includes(currPeriod)) periodSelect.value = currPeriod;
+        }
+
+        loadPopulationsForAdmin(); // במקום renderPopulations() ישיר
     }
 }
 
@@ -251,6 +266,7 @@ function renderAllLists() {
     // renderList('instructorsMale'); 
     renderList('instructorsFemale'); renderList('pilots'); renderList('observers'); renderList('simulators'); renderList('flightTypes'); renderList('flightNames'); renderList('technicians');
 }
+
 function renderList(type) {
     const listContainer = document.getElementById(`list-${type}`); if (!listContainer) return; listContainer.innerHTML = ''; const items = personnelLists[type] || [];
     if (items.length === 0) { listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים ברשימה.</li>`; return; }
@@ -299,17 +315,68 @@ export async function addPerson(type) {
     renderList(type);
 
     await savePersonnelLists(true);
-    showToast(`נוסף ונשמר: ${name}`, "green");
+
+    // פונקציית ביטול ההוספה
+    const undoAdd = async () => {
+        personnelLists[type] = personnelLists[type].filter(n => n !== name);
+        renderList(type);
+        await savePersonnelLists(true);
+        import('../components/modals.js').then(m => m.showToast(`ההוספה בוטלה, השם "${name}" הוסר.`, "blue"));
+    };
+
+    import('../components/modals.js').then(m => m.showToast(`נוסף ונשמר: ${name}`, "green", 3000, undoAdd));
 }
+
+window.addFromPersonnelModal = async () => {
+    const input = document.getElementById('personnel-new-name');
+    const name = input.value.trim();
+    if (!name) return;
+
+    if (!personnelLists[currentModalType].includes(name)) {
+        personnelLists[currentModalType].push(name);
+        personnelLists[currentModalType].sort();
+        input.value = '';
+        await savePersonnelLists(true);
+        window.filterPersonnelModal();
+        renderList(currentModalType); // עדכון הרשימה המקורית מאחורה
+
+        // פונקציית ביטול ההוספה מתוך המודאל
+        const undoAddModal = async () => {
+            personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== name);
+            window.filterPersonnelModal();
+            renderList(currentModalType);
+            await savePersonnelLists(true);
+            import('../components/modals.js').then(m => m.showToast(`ההוספה בוטלה, השם "${name}" הוסר.`, "blue"));
+        };
+
+        import('../components/modals.js').then(m => m.showToast(`השם "${name}" נוסף בהצלחה`, "green", 3000, undoAddModal));
+    } else {
+        showToast("השם כבר קיים ברשימה", "yellow");
+    }
+};
 
 export async function removePerson(type, index) {
     const nameToRemove = personnelLists[type][index];
     if (confirm(`למחוק את "${nameToRemove}"?`)) {
+        
+        // גיבוי לטובת Undo
+        const originalIndex = index;
+
         personnelLists[type].splice(index, 1);
         renderList(type);
-
         await savePersonnelLists(true);
-        showToast(`נמחק ונשמר: ${nameToRemove}`, "green");
+
+        const undoRemove = async () => {
+            // החזרה למערך באותו המיקום
+            personnelLists[type].splice(originalIndex, 0, nameToRemove);
+            renderList(type);
+            await savePersonnelLists(true);
+            import('../components/modals.js').then(m => m.showToast(`המחיקה בוטלה, "${nameToRemove}" הוחזר.`, "blue"));
+        };
+
+        import('../components/modals.js').then(m => 
+            m.showToast(`נמחק ונשמר: ${nameToRemove}`, "green", 3000, undoRemove)
+        );
     }
 }
 
@@ -319,17 +386,21 @@ export async function editPerson(type, index) {
 
     if (newName && newName.trim() && newName !== oldName) {
         const finalNewName = newName.trim();
-        
+
+        // הוספת בדיקת ולידציה למניעת כפילות
+        if (personnelLists[type].includes(finalNewName)) {
+            import('../components/modals.js').then(m => m.showToast("השם כבר קיים ברשימה.", "red"));
+            return;
+        }
         // 1. עדכון השם ברשימה המקומית ושמירה
         personnelLists[type][index] = finalNewName;
         personnelLists[type].sort();
         renderList(type);
         await savePersonnelLists(true);
-
         // 2. סריקה ועדכון השם בכל הגיחות הקיימות במסד הנתונים
         if (window.firestoreFunctions && window.db && window.savedFlights) {
             import('../components/modals.js').then(m => m.showToast("מעדכן גיחות קיימות... נא להמתין", "blue"));
-            
+
             try {
                 const { doc, updateDoc } = window.firestoreFunctions;
                 let count = 0;
@@ -366,7 +437,7 @@ export async function editPerson(type, index) {
                 } else {
                     import('../components/modals.js').then(m => m.showToast("השם עודכן ונשמר ברשימה.", "green"));
                 }
-                
+
                 // רענון התצוגה בחלון הניהול המתקדם (אם הוא פתוח כרגע)
                 if (typeof window.filterPersonnelModal === 'function' && !document.getElementById('personnel-manage-modal').classList.contains('hidden')) {
                     window.filterPersonnelModal();
@@ -445,8 +516,9 @@ export async function loadPlanningData() {
             }
         }
 
+        // קריאה בסוף פונקציית loadPlanningData הקיימת
         updatePeriodInputsUI();
-        renderPlanningCalendar();
+        window.renderPlanningSettings(); // החלפה של renderPlanningCalendar() הישן
     } catch (error) {
         console.error("Error loading planning data:", error);
     }
@@ -563,11 +635,6 @@ export function renderPlanningCalendar() {
     const monthNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
     if (monthTitle) monthTitle.textContent = `${monthNames[month]} ${year}`;
 
-    // שליחת תאריכי התקופות כפי שהוגדרו על ידי המשתמש
-    const pPrev = planningState.periodPrevStart;
-    const pCurr = planningState.periodCurrStart;
-    const pNext = planningState.periodNextStart;
-
     tbody.innerHTML = '';
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
@@ -576,59 +643,60 @@ export function renderPlanningCalendar() {
     // הולכים ליום ראשון הקרוב ביותר בתחילת החודש
     currentProcessDate.setDate(currentProcessDate.getDate() - currentProcessDate.getDay());
 
+    // פונקציית עזר למציאת יום ראשון שבו מתחילה הגיחה או התקופה
+    const getStartSunday = (d) => {
+        if (!d) return null;
+        const s = new Date(d);
+        s.setHours(0, 0, 0, 0);
+        s.setDate(s.getDate() - s.getDay());
+        return s;
+    };
+
     while (currentProcessDate <= lastDay || currentProcessDate.getDay() !== 0) {
         const tr = document.createElement('tr');
 
         let weekLabel = '-';
-        let relevantStart = null;
-        let periodName = '';
         let weekNumKey = null;
 
-        // פונקציית עזר למציאת יום ראשון שבו מתחילה הגיחה או התקופה
-        const getStartSunday = (d) => {
-            if (!d) return null;
-            const s = new Date(d);
-            s.setHours(0, 0, 0, 0);
-            s.setDate(s.getDate() - s.getDay());
-            return s;
-        };
-
         const currSunday = getStartSunday(currentProcessDate);
-        const pPrevSun = getStartSunday(pPrev);
-        const pCurrSun = getStartSunday(pCurr);
-        const pNextSun = getStartSunday(pNext);
 
-        /**
-         * קביעת התקופה הרלוונטית לפי סדר עדיפויות יורד (הבאה, אז הנוכחית, אז הקודמת).
-         * שיטה זו מונעת כפילויות בשבועות המעבר מכיוון שכל יום ראשון משויך לתקופה אחת בלבד.
-         */
-        if (pNextSun && currSunday >= pNextSun) {
-            relevantStart = pNextSun;
-            periodName = "באה";
-        } else if (pCurrSun && currSunday >= pCurrSun) {
-            relevantStart = pCurrSun;
-            periodName = "נוכחית";
-        } else if (pPrevSun && currSunday >= pPrevSun) {
-            relevantStart = pPrevSun;
-            periodName = "קודמת";
+        // שימוש בפונקציה החכמה כדי להבין לאיזו תקופה שייך השבוע הזה
+        const periodName = window.getPeriodName(currSunday);
+        let relevantStart = null;
+
+        if (periodName) {
+            const config = window.planningSettings?.periodConfigs?.[periodName];
+
+            if (config && config.startDate) {
+                // אם המנהל הגדיר תאריך מדויק לתקופה, נשתמש בו!
+                relevantStart = getStartSunday(new Date(config.startDate));
+            } else {
+                // חישוב תאריך התחלה אוטומטי במקרה שלא הוגדר תאריך ידני
+                const [pNum, pYear] = periodName.split('/');
+                const fullYear = 2000 + parseInt(pYear);
+                if (pNum === "1") {
+                    relevantStart = getStartSunday(new Date(fullYear - 1, 11, 15)); // 15 בדצמבר שנה שעברה
+                } else {
+                    relevantStart = getStartSunday(new Date(fullYear, 5, 15)); // 15 ביוני
+                }
+            }
         }
 
         if (relevantStart) {
             // חישוב מספר השבוע יחסית ליום ראשון של תחילת התקופה
             const diffDays = Math.round((currSunday - relevantStart) / (1000 * 60 * 60 * 24));
             const weekNum = Math.floor(diffDays / 7) + 1;
-            weekLabel = `שבוע ${weekNum}`;
 
-            const pKeyMap = { "נוכחית": "curr", "באה": "next", "קודמת": "prev" };
-            if (pKeyMap[periodName]) {
-                weekNumKey = `${pKeyMap[periodName]}_w${weekNum}`;
-            }
+            const finalWeekNum = Math.max(1, weekNum); // מונע מצב של "שבוע 0" בתפרי זמן
+            weekLabel = `שבוע ${finalWeekNum}`;
+            weekNumKey = `${periodName.replace('/', '-')}_w${finalWeekNum}`;
         }
 
         tr.innerHTML += `<td class="px-3 py-4 text-xs font-bold text-gray-700 bg-gray-50 border-l sticky right-0 z-10">${weekLabel}</td>`;
 
         let currentWeekDates = [];
 
+        // רינדור 7 הימים של השבוע
         for (let i = 0; i < 7; i++) {
             const y = currentProcessDate.getFullYear();
             const m = String(currentProcessDate.getMonth() + 1).padStart(2, '0');
@@ -706,7 +774,6 @@ export function renderPlanningCalendar() {
     }
 }
 
-
 // חפש את פונקציית savePlanningData ועדכן אותה:
 window.savePlanningData = async () => {
     if (!window.firestoreFunctions || !window.db) return;
@@ -770,22 +837,6 @@ window.savePlanningData = async () => {
     }
 };
 
-// הוסף ייצוא של פונקציית שם התקופה כדי שתהיה זמינה לכולם
-window.getPeriodName = (date) => {
-    if (!date) return "";
-    const d = new Date(date);
-    let year = d.getFullYear();
-    const month = d.getMonth();
-
-    if (month === 11) { // דצמבר נחשב כתקופה 1 של השנה הבאה
-        year++;
-        return `1/${year.toString().slice(-2)}`;
-    }
-
-    const yearShort = year.toString().slice(-2);
-    const periodNum = month < 5 ? "1" : "2";
-    return `${periodNum}/${yearShort}`;
-};
 
 // --- ייצוא לאקסל (CSV) ---
 function getHebrewDay(dateStr) {
@@ -1233,7 +1284,7 @@ window.filterPersonnelModal = () => {
     filteredItems.forEach(name => {
         const div = document.createElement('div');
         div.className = "flex justify-between items-center bg-white p-3 mb-2 rounded shadow-sm border border-gray-100";
-        
+
         const safeName = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
         div.innerHTML = `
@@ -1251,33 +1302,17 @@ window.filterPersonnelModal = () => {
     });
 };
 
-window.addFromPersonnelModal = async () => {
-    const input = document.getElementById('personnel-new-name');
-    const name = input.value.trim();
-    if (!name) return;
-
-    if (!personnelLists[currentModalType].includes(name)) {
-        personnelLists[currentModalType].push(name);
-        personnelLists[currentModalType].sort();
-        input.value = '';
-        await savePersonnelLists(true);
-        window.filterPersonnelModal();
-        renderList(currentModalType); // עדכון הרשימה המקורית מאחורה
-    } else {
-        showToast("השם כבר קיים ברשימה", "yellow");
-    }
-};
 
 window.initMergePersonnel = async (oldName) => {
     // משיכת כל השמות הזמינים למעט השם הנוכחי
     const availableNames = personnelLists[currentModalType].filter(n => n !== oldName);
 
-    if(availableNames.length === 0) {
+    if (availableNames.length === 0) {
         import('../components/modals.js').then(m => m.showToast("אין שמות נוספים ברשימה למזג אליהם.", "yellow"));
         return;
     }
 
-    // יצירת חלון קופץ צף (מודאל מותאם אישית דרך JS כדי לא לשנות קובצי HTML)
+    // יצירת חלון קופץ צף (מודאל מותאם אישית)
     const overlay = document.createElement('div');
     overlay.className = "fixed inset-0 bg-gray-900 bg-opacity-60 overflow-y-auto h-full w-full z-[60] flex justify-center items-center";
     overlay.id = "custom-merge-modal";
@@ -1306,7 +1341,6 @@ window.initMergePersonnel = async (oldName) => {
     `;
     document.body.appendChild(overlay);
 
-    // הגדרת אירועי לחיצה למודאל החדש
     document.getElementById('cancel-merge-btn').onclick = () => {
         document.body.removeChild(overlay);
     };
@@ -1320,7 +1354,7 @@ window.initMergePersonnel = async (oldName) => {
             return;
         }
 
-        if (!confirm('האם אתה בטוח? פעולה זו תעדכן את כל הגיחות במסד הנתונים ואינה הפיכה!')) return;
+        if (!confirm('האם אתה בטוח? פעולה זו תעדכן את כל הגיחות במסד הנתונים!')) return;
 
         document.body.removeChild(overlay);
         import('../components/modals.js').then(m => m.showToast("מבצע מיזוג... נא להמתין", "blue"));
@@ -1328,8 +1362,8 @@ window.initMergePersonnel = async (oldName) => {
         try {
             const { doc, updateDoc } = window.firestoreFunctions;
             let count = 0;
+            const updatedFlightIds = []; // מערך לשמירת מזהי הגיחות ששונו
 
-            // הרחבת המיפוי כדי לוודא שזה עובד לכל סוגי הרשימות
             const fieldMap = {
                 'instructorsFemale': ['מדריכה', 'instructor-name-1', 'מדריכה נוספת'],
                 'pilots': ['טייס ימין', 'טייס שמאל', 'pilot-right', 'pilot-left'],
@@ -1354,6 +1388,7 @@ window.initMergePersonnel = async (oldName) => {
 
                 if (changed) {
                     await updateDoc(doc(window.db, "flights", flight.id), { data: flight.data });
+                    updatedFlightIds.push(flight.id); // שמירת ה-ID לטובת שחזור
                     count++;
                 }
             }
@@ -1362,9 +1397,43 @@ window.initMergePersonnel = async (oldName) => {
             personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== oldName);
             await savePersonnelLists(true);
 
-            import('../components/modals.js').then(m => m.showToast(`מיזוג הושלם! ${count} גיחות עודכנו ל-${newName}.`, "green"));
+            // פונקציית ביטול פעולת המיזוג (Undo)
+            const undoMerge = async () => {
+                import('../components/modals.js').then(m => m.showToast("מבטל מיזוג, משחזר גיחות ומאגר...", "blue"));
+                try {
+                    // 1. החזרת השם הישן לגיחות ששונו
+                    for (let flightId of updatedFlightIds) {
+                        const flight = window.savedFlights.find(f => f.id === flightId);
+                        if (flight) {
+                            fieldsToUpdate.forEach(field => {
+                                if (flight.data[field] === newName) {
+                                    flight.data[field] = oldName;
+                                }
+                            });
+                            await updateDoc(doc(window.db, "flights", flightId), { data: flight.data });
+                        }
+                    }
+
+                    // 2. החזרת השם המקורי לרשימת אנשי הצוות
+                    if (!personnelLists[currentModalType].includes(oldName)) {
+                        personnelLists[currentModalType].push(oldName);
+                        personnelLists[currentModalType].sort();
+                        await savePersonnelLists(true);
+                    }
+
+                    import('../components/modals.js').then(m => m.showToast(`המיזוג בוטל! ${count} גיחות הוחזרו ל-${oldName}.`, "green"));
+                    window.filterPersonnelModal();
+                    window.renderList(currentModalType);
+                } catch (err) {
+                    console.error("Error undoing merge:", err);
+                    import('../components/modals.js').then(m => m.showToast("שגיאה בביטול המיזוג", "red"));
+                }
+            };
+
+            import('../components/modals.js').then(m => m.showToast(`מיזוג הושלם! ${count} גיחות עודכנו ל-${newName}.`, "green", 3000, undoMerge));
             window.filterPersonnelModal();
             window.renderList(currentModalType);
+
         } catch (error) {
             console.error("Merge error:", error);
             import('../components/modals.js').then(m => m.showToast("שגיאה בתהליך המיזוג", "red"));
@@ -1445,11 +1514,12 @@ export function renderPopulations() {
                        class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-orange-800">
                 <button onclick="window.removeGroup('course', ${cIdx})" class="text-red-500 text-xs">מחק</button>
             </div>
-            <div class="mb-2">
+           <div class="mb-2 relative">
                 <input type="text" id="${searchId}" oninput="window.renderPopulations()" 
-                       ${searchVal ? `<button onclick="document.getElementById('${searchId}').value=''; window.renderPopulations()" 
-           class="absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>` : ''}
-                <div class="border rounded p-1 h-24 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar">
+                       value="${searchVal}" placeholder="חפש להוספה..." class="w-full border rounded p-1 text-xs pr-6">
+                ${searchVal ? `<button onclick="document.getElementById('${searchId}').value=''; window.renderPopulations()" 
+                       class="absolute left-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>` : ''}
+                <div class="border rounded p-1 h-24 overflow-y-auto mb-1 mt-1 bg-gray-50 custom-scrollbar">
                     ${availableForCourse.map(p => `
                         <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-orange-50 p-1 cursor-pointer">
                             <input type="checkbox" class="course-cb-${cIdx}" value="${p.replace(/"/g, '&quot;')}">
@@ -1459,13 +1529,26 @@ export function renderPopulations() {
                 </div>
                 <button onclick="window.addSelectedToGroup('course', ${cIdx})" class="w-full bg-orange-500 text-white py-1 rounded text-xs">הוסף נבחרים</button>
             </div>
-            <ul class="space-y-1 mt-2">
-                ${course.students.map((s, sIdx) => `
-                    <li class="flex justify-between items-center text-xs bg-orange-50 p-1 rounded">
-                        <span>${s}</span>
-                        <button onclick="window.removeFromGroup('course', ${cIdx}, ${sIdx})" class="text-red-400">×</button>
+           <ul class="space-y-1 mt-2">
+                ${course.students.map((s, sIdx) => {
+            // בדיקה האם הופסקה פעילותו
+            const isInactive = course.inactiveStudents && course.inactiveStudents.includes(s);
+            const textClass = isInactive ? "text-gray-400 line-through" : "text-gray-800";
+            const bgClass = isInactive ? "bg-gray-100" : "bg-orange-50";
+
+            return `
+                    <li class="flex justify-between items-center text-xs ${bgClass} p-1 rounded">
+                        <span class="${textClass} font-medium">${s}</span>
+                        <div class="flex gap-2 items-center">
+                            <button onclick="window.toggleStudentStatus(${cIdx}, '${s.replace(/'/g, "\\'")}')" 
+                                class="text-[10px] ${isInactive ? 'text-green-600 font-bold' : 'text-gray-500 hover:text-gray-700'}">
+                                ${isInactive ? 'החזר' : 'הפסק פעילות'}
+                            </button>
+                            <button onclick="window.removeFromGroup('course', ${cIdx}, ${sIdx})" class="text-red-400 hover:text-red-600 font-bold text-sm">×</button>
+                        </div>
                     </li>
-                `).join('')}
+                    `;
+        }).join('')}
             </ul>
         </div>`;
     }).join('');
@@ -1674,17 +1757,29 @@ window.removeCourse = (idx) => {
     }
 };
 
+// פונקציית השמירה - שומרת *אך ורק* לנתיב של התקופה הספציפית, בלי Fallback גלובלי דורס!
 window.savePopulations = async (silent = false) => {
     if (!window.firestoreFunctions || !window.db) return;
     const { doc, setDoc } = window.firestoreFunctions;
+
+    let activePeriod = document.getElementById('admin-population-period')?.value;
+    if (!activePeriod) activePeriod = window.getPeriodName(new Date());
+
+    const safePeriodName = activePeriod.replace(/\//g, '-');
+    currentPeriodCoursesCache = null;
+    if (typeof renderList === 'function') window.renderList('pilots');
+
     try {
-        await setDoc(doc(window.db, "settings", "populations"), pilotPopulations);
+        // שמירת ה-Deep Copy למסד הנתונים, תחת השם הייחודי של התקופה
+        const dataToSave = JSON.parse(JSON.stringify(pilotPopulations));
+        await setDoc(doc(window.db, "populations_by_period", safePeriodName), dataToSave);
+
         if (!silent) {
-            showToast("הגדרות אוכלוסייה נשמרו!", "green");
+            import('../components/modals.js').then(m => m.showToast(`הגדרות אוכלוסייה נשמרו בלעדית לתקופה: ${activePeriod}`, "green"));
         }
     } catch (e) {
-        console.error("שגיאה בשמירה אוטומטית:", e);
-        if (!silent) showToast("שגיאה בשמירה", "red");
+        console.error("שגיאה בשמירה:", e);
+        if (!silent) import('../components/modals.js').then(m => m.showToast("שגיאה בשמירה", "red"));
     }
 };
 
@@ -1825,6 +1920,98 @@ function getAllMappedFlightNames() {
     return [...students, ...instructors, ...conversion];
 }
 
+export async function loadPopulationsForAdmin() {
+    const periodSelect = document.getElementById('admin-population-period');
+    if (!periodSelect || !periodSelect.value) return;
+
+    const selectedPeriod = periodSelect.value;
+    const safePeriodName = selectedPeriod.replace(/\//g, '-');
+
+    if (window.firestoreFunctions && window.db) {
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+
+            // 1. ננסה לטעון את האוכלוסייה של התקופה הספציפית הזו
+            const popRef = doc(window.db, "populations_by_period", safePeriodName);
+            const popSnap = await getDoc(popRef);
+
+            if (popSnap.exists()) {
+                // Deep Copy: יצירת עותק מנותק לחלוטין בזיכרון כדי למנוע דריסת כתובות
+                window.pilotPopulations = JSON.parse(JSON.stringify(popSnap.data()));
+            } else {
+                // 2. אם אין מידע לתקופה הנוכחית, נבצע "הורשה" חכמה מהתקופה הקודמת לה כרונולוגית!
+                const configs = window.planningSettings?.periodConfigs || {};
+                const sortedPeriods = Object.keys(configs).sort((a, b) => {
+                    const [pA, yA] = a.split('/').map(Number);
+                    const [pB, yB] = b.split('/').map(Number);
+                    return (yA + pA / 10) - (yB + pB / 10); // מיון עולה (הישן למעלה)
+                });
+
+                const currentIndex = sortedPeriods.indexOf(selectedPeriod);
+                let inheritedData = null;
+
+                // חיפוש בתקופה הקודמת (אם קיימת)
+                if (currentIndex > 0) {
+                    const prevPeriod = sortedPeriods[currentIndex - 1];
+                    const prevSafeName = prevPeriod.replace(/\//g, '-');
+                    const prevSnap = await getDoc(doc(window.db, "populations_by_period", prevSafeName));
+                    if (prevSnap.exists()) {
+                        inheritedData = prevSnap.data();
+                    }
+                }
+                if (inheritedData) {
+                    // הורשה (עותק מנותק) - מעתיק הכל כולל קורסים וחניכים!
+                    window.pilotPopulations = JSON.parse(JSON.stringify(inheritedData));
+
+                    import('../components/modals.js').then(m => m.showToast("נשאבו כל נתוני האוכלוסיות והקורסים מהתקופה הקודמת.", "blue"));
+                } else {
+                    // 3. Fallback אחרון: מבנה ריק לחלוטין
+                    window.pilotPopulations = {
+                        instructorGroups: [], courses: [], conversionGroups: [],
+                        flightMapping: { students: [], instructors: [], conversion: [] }
+                    };
+                }
+            }
+
+            // וידוא שהאובייקט המקומי בקובץ מתעדכן בדיוק לאובייקט החדש שיצרנו (למניעת באגים בתצוגה)
+            if (typeof pilotPopulations !== 'undefined') {
+                Object.assign(pilotPopulations, JSON.parse(JSON.stringify(window.pilotPopulations)));
+            }
+
+            renderPopulations();
+        } catch (error) {
+            console.error("Error loading populations for period:", error);
+        }
+    }
+}
+window.loadPopulationsForAdmin = loadPopulationsForAdmin;
+
+// פונקציית השמירה - שומרת *אך ורק* לנתיב של התקופה הספציפית, בלי Fallback גלובלי דורס!
+window.savePopulations = async (silent = false) => {
+    if (!window.firestoreFunctions || !window.db) return;
+    const { doc, setDoc } = window.firestoreFunctions;
+
+    let activePeriod = document.getElementById('admin-population-period')?.value;
+    if (!activePeriod) activePeriod = window.getPeriodName(new Date());
+
+    const safePeriodName = activePeriod.replace(/\//g, '-');
+
+    try {
+        // שמירת ה-Deep Copy למסד הנתונים, תחת השם הייחודי של התקופה
+        const dataToSave = JSON.parse(JSON.stringify(pilotPopulations));
+        await setDoc(doc(window.db, "populations_by_period", safePeriodName), dataToSave);
+
+        if (!silent) {
+            import('../components/modals.js').then(m => m.showToast(`הגדרות אוכלוסייה נשמרו בלעדית לתקופה: ${activePeriod}`, "green"));
+        }
+    } catch (e) {
+        console.error("שגיאה בשמירה:", e);
+        if (!silent) import('../components/modals.js').then(m => m.showToast("שגיאה בשמירה", "red"));
+    }
+};
+
+window.loadPopulationsForAdmin = loadPopulationsForAdmin;
+
 window.addFlightsToMapping = async (cat) => {
     const checkboxes = document.querySelectorAll(`.mapping-cb-${cat}:checked`);
     if (!pilotPopulations.flightMapping) {
@@ -1865,9 +2052,32 @@ window.renderAllLists = function () {
     Object.keys(personnelLists).forEach(type => window.renderList(type));
 };
 
-window.renderList = function (type) {
+let currentPeriodCoursesCache = null; // מטמון כדי למנוע טעינות מיותרות מול השרת
+
+// פונקציית פתיחה וסגירה של תת-הרשימות (אקורדיון)
+window.togglePilotAccordion = (id) => {
+    const el = document.getElementById(id);
+    const icon = document.getElementById('icon-' + id);
+    if (el) {
+        if (el.classList.contains('hidden')) {
+            el.classList.remove('hidden');
+            if (icon) icon.style.transform = 'rotate(180deg)';
+        } else {
+            el.classList.add('hidden');
+            if (icon) icon.style.transform = 'rotate(0deg)';
+        }
+    }
+};
+
+// פונקציית הרינדור המרכזית (שולחת לאקורדיון כשהסוג הוא טייסים)
+window.renderList = async function (type) {
+    if (type === 'pilots') {
+        await renderPilotsWithAccordion();
+        return;
+    }
+
     const listContainer = document.getElementById(`list-${type}`);
-    const searchInput = document.getElementById(`search-input-${type}`); // שים לב ל-ID הזה ב-HTML
+    const searchInput = document.getElementById(`search-input-${type}`);
     if (!listContainer) return;
 
     const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
@@ -1878,8 +2088,6 @@ window.renderList = function (type) {
     filtered.forEach((item) => {
         const li = document.createElement('li');
         li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
-
-        // ניקוי מרכאות לפני הזרקה לפונקציות העריכה והמחיקה
         const safeItem = item.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
         li.innerHTML = `
@@ -1891,6 +2099,187 @@ window.renderList = function (type) {
         listContainer.appendChild(li);
     });
 };
+
+// יצירת האקורדיונים של הקורסים
+async function renderPilotsWithAccordion() {
+    const listContainer = document.getElementById('list-pilots');
+    const headersContainer = document.getElementById('pilots-tabs-headers');
+
+    if (!listContainer) return;
+    if (headersContainer) headersContainer.innerHTML = ''; // מוחקים את אזור הטאבים הישן
+
+    // משיכת הקורסים של התקופה הנוכחית
+    if (!currentPeriodCoursesCache && window.firestoreFunctions && window.db) {
+        const currentPeriodName = window.getPeriodName(new Date());
+        const safePeriodName = currentPeriodName.replace(/\//g, '-');
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const popSnap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
+            if (popSnap.exists()) {
+                currentPeriodCoursesCache = popSnap.data().courses || [];
+            } else {
+                currentPeriodCoursesCache = [];
+            }
+        } catch (e) { console.error(e); currentPeriodCoursesCache = []; }
+    }
+
+    const currentCourses = currentPeriodCoursesCache || [];
+    const allPilots = personnelLists.pilots || [];
+
+    // מיפוי החניכים לקורסים
+    const courseMapping = {};
+    const assignedPilots = new Set();
+    currentCourses.forEach(c => {
+        courseMapping[c.name] = c.students || [];
+        (c.students || []).forEach(s => assignedPilots.add(s));
+    });
+
+    const unassignedPilots = allPilots.filter(p => !assignedPilots.has(p)).sort();
+
+    // פונקציית עזר ליצירת קבוצה נשלפת (אקורדיון) ב-HTML
+    const renderGroup = (title, pilotsArray, groupId, defaultOpen = false, themeClass = 'bg-gray-100 text-gray-700', inactiveArray = []) => {
+        if (!pilotsArray || pilotsArray.length === 0) return '';
+
+        let html = `
+        <div class="mb-3 border border-gray-200 rounded-md bg-white shadow-sm overflow-hidden">
+            <button onclick="window.togglePilotAccordion('${groupId}')" class="w-full flex justify-between items-center ${themeClass} hover:opacity-90 p-3 font-bold text-sm transition">
+                <span class="flex items-center gap-2"><i class="fas fa-users text-opacity-70"></i> ${title} (${pilotsArray.length})</span>
+                <i id="icon-${groupId}" class="fas fa-chevron-down transition-transform duration-200" style="transform: ${defaultOpen ? 'rotate(180deg)' : 'rotate(0deg)'}"></i>
+            </button>
+            <ul id="${groupId}" class="${defaultOpen ? '' : 'hidden'} divide-y divide-gray-100 bg-gray-50 p-1">
+        `;
+
+        // הפרדה ומיון: חניכים פעילים קודם (לפי א"ב), ואז מופסקים (לפי א"ב)
+        const activePilots = pilotsArray.filter(p => !inactiveArray.includes(p)).sort();
+        const inactivePilots = pilotsArray.filter(p => inactiveArray.includes(p)).sort();
+        const sortedPilots = [...activePilots, ...inactivePilots];
+
+        sortedPilots.forEach(item => {
+            const mainIndex = allPilots.indexOf(item);
+            
+            // הגדרת עיצוב טקסט אם החניך מופסק
+            const isInactive = inactiveArray.includes(item);
+            const textStyle = isInactive ? 'text-gray-400 line-through' : 'text-gray-800';
+
+            html += `
+                <li class="flex justify-between items-center p-2 hover:bg-gray-200 transition-colors rounded my-1 border border-transparent hover:border-gray-300">
+                    <span class="font-medium ${textStyle} truncate flex-grow ml-2" title="${isInactive ? 'הפסיק השתתפות' : ''}">${item}</span>
+                    <div class="flex gap-1 shrink-0">
+                        <button onclick="window.editPerson('pilots', ${mainIndex})" class="text-blue-500 hover:bg-blue-100 rounded p-1" title="ערוך שם">✏️</button>
+                        <button onclick="window.removePerson('pilots', ${mainIndex})" class="text-red-500 hover:bg-red-100 rounded p-1" title="מחק טייס">🗑️</button>
+                    </div>
+                </li>
+            `;
+        });
+        html += `</ul></div>`;
+        return html;
+    };
+
+    let finalHtml = '';
+
+    // 1. רינדור קורסים (צבע כתום בהיר) - סגורים כברירת מחדל כדי לא ליצור עומס
+    currentCourses.forEach((c, idx) => {
+        const inactiveList = c.inactiveStudents || []; // שליפת רשימת המופסקים של הקורס
+        finalHtml += renderGroup(
+            `קורס: ${c.name}`, 
+            courseMapping[c.name], 
+            `acc-course-${idx}`, 
+            false, 
+            'bg-orange-100 text-orange-900 border-b border-orange-200',
+            inactiveList
+        );
+    });
+
+    // 2. רינדור שאר הטייסים (צבע כחול בהיר) - פתוח כברירת מחדל
+    finalHtml += renderGroup('טייסים / מדריכים ללא קורס', unassignedPilots, 'acc-unassigned', true, 'bg-blue-50 text-blue-900 border-b border-blue-100');
+
+    listContainer.innerHTML = finalHtml;
+}
+
+window.setPilotsTab = (tabId) => {
+    currentPilotsTab = tabId;
+    window.renderList('pilots');
+};
+
+
+async function renderPilotsWithTabs() {
+    const listContainer = document.getElementById('list-pilots');
+    const headersContainer = document.getElementById('pilots-tabs-headers');
+    if (!listContainer || !headersContainer) return;
+
+    // שליפת הקורסים של התקופה *הנוכחית* בלבד, עם מנגנון מטמון למהירות
+    if (!currentPeriodCoursesCache && window.firestoreFunctions && window.db) {
+        const currentPeriodName = window.getPeriodName(new Date());
+        const safePeriodName = currentPeriodName.replace(/\//g, '-');
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const popSnap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
+            if (popSnap.exists()) {
+                currentPeriodCoursesCache = popSnap.data().courses || [];
+            } else {
+                currentPeriodCoursesCache = [];
+            }
+        } catch (e) { console.error(e); currentPeriodCoursesCache = []; }
+    }
+
+    const currentCourses = currentPeriodCoursesCache || [];
+    const allPilots = personnelLists.pilots || [];
+
+    // בניית מיפוי מי שייך לאן
+    const courseMapping = {};
+    const assignedPilots = new Set();
+    currentCourses.forEach(c => {
+        courseMapping[c.name] = c.students || [];
+        (c.students || []).forEach(s => assignedPilots.add(s));
+    });
+
+    const unassignedPilots = allPilots.filter(p => !assignedPilots.has(p));
+
+    // רינדור הטאבים
+    const getBtnClass = (isActive) => isActive
+        ? 'bg-ofer-orange text-white font-bold px-2 py-1 rounded-t border-b-2 border-ofer-orange text-[11px]'
+        : 'bg-gray-50 text-gray-600 hover:bg-gray-200 px-2 py-1 rounded-t border-b-2 border-transparent transition text-[11px]';
+
+    let tabsHtml = `
+        <button onclick="window.setPilotsTab('all')" class="whitespace-nowrap ${getBtnClass(currentPilotsTab === 'all')}">הכל</button>
+        <button onclick="window.setPilotsTab('unassigned')" class="whitespace-nowrap ${getBtnClass(currentPilotsTab === 'unassigned')}">ללא קורס</button>
+    `;
+
+    currentCourses.forEach(c => {
+        tabsHtml += `<button onclick="window.setPilotsTab('${c.name}')" class="whitespace-nowrap ${getBtnClass(currentPilotsTab === c.name)}">${c.name}</button>`;
+    });
+    headersContainer.innerHTML = tabsHtml;
+
+    // סינון הרשימה לפי הטאב הנבחר
+    let listToShow = [];
+    if (currentPilotsTab === 'all') listToShow = allPilots;
+    else if (currentPilotsTab === 'unassigned') listToShow = unassignedPilots;
+    else listToShow = courseMapping[currentPilotsTab] || [];
+
+    listToShow.sort();
+
+    listContainer.innerHTML = '';
+    if (listToShow.length === 0) {
+        listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-4">אין טייסים בקטגוריה זו</li>`;
+        return;
+    }
+
+    listToShow.forEach(item => {
+        const li = document.createElement('li');
+        li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
+        const safeItem = item.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        // מחפשים את האינדקס במערך המקורי תמיד כדי שהמחיקה והעריכה יעבדו כרגיל
+        const mainIndex = allPilots.indexOf(item);
+
+        li.innerHTML = `
+            <span class="font-medium text-gray-800 truncate flex-grow ml-2">${item}</span>
+            <div class="flex gap-1 shrink-0">
+                <button onclick="window.editPerson('pilots', ${mainIndex})" class="text-blue-500 p-1">✏️</button>
+                <button onclick="window.removePerson('pilots', ${mainIndex})" class="text-red-500 p-1">🗑️</button>
+            </div>`;
+        listContainer.appendChild(li);
+    });
+}
 
 window.openMergeModal = (type) => {
     const labelMap = {
@@ -2093,6 +2482,314 @@ window.removeConversionGroup = (idx) => {
     }
 };
 
+// פונקציה לשמירת/עדכון שורה של תקופה כולל תאריך ההתחלה שלה
+window.savePeriodConfigRow = async () => {
+    const periodNameInput = document.getElementById('admin-new-period-name');
+    const startDateInput = document.getElementById('admin-new-period-start');
+    const minInput = document.getElementById('admin-new-period-min');
+    const targetInput = document.getElementById('admin-new-period-target');
+
+    if (!periodNameInput || !periodNameInput.value.trim()) {
+        alert("נא להזין שם תקופה תקין (למשל 1/26)");
+        return;
+    }
+
+    const periodKey = periodNameInput.value.trim();
+    const startDate = startDateInput ? startDateInput.value : "";
+
+    if (!window.planningSettings) window.planningSettings = {};
+    if (!window.planningSettings.periodConfigs) window.planningSettings.periodConfigs = {};
+
+    // עדכון המבנה בזיכרון - שומרים את התאריך בפנים!
+    window.planningSettings.periodConfigs[periodKey] = {
+        minFlights: parseInt(minInput.value) || 0,
+        targetFlights: parseInt(targetInput.value) || 0,
+        startDate: startDate, // שמירת תאריך ההתחלה הספציפי של התקופה הזו
+        nakaValue: window.planningSettings.periodConfigs[periodKey]?.nakaValue || 85
+    };
+
+    // שמירה ל-Firebase Firestore
+    if (window.firestoreFunctions && window.db) {
+        const { doc, setDoc } = window.firestoreFunctions;
+        try {
+            await setDoc(doc(window.db, "settings", "planning"), window.planningSettings);
+            import('../components/modals.js').then(m => m.showToast(`תקופה ${periodKey} עודכנה בהצלחה!`, "green"));
+
+            // רענון התצוגה במסך הניהול ובדרופדאונים
+            if (typeof window.renderPlanningSettings === 'function') window.renderPlanningSettings();
+        } catch (e) {
+            console.error("Error saving period config:", e);
+        }
+    }
+};
+
+
+// מחיקת קונפיגורציית תקופה מהמערכת
+window.deletePeriodConfigRow = async (pKey) => {
+    if (!confirm(`האם אתה בטוח שברצונך למחוק את הגדרות תקופה ${pKey}?\n* הגיחות השייכות לתקופה זו יחזרו להיות מחושבות לפי ברירת המחדל האוטומטית.`)) return;
+
+    if (window.planningSettings?.periodConfigs && window.planningSettings.periodConfigs[pKey]) {
+        delete window.planningSettings.periodConfigs[pKey];
+
+        if (window.firestoreFunctions && window.db) {
+            const { doc, setDoc } = window.firestoreFunctions;
+            try {
+                await setDoc(doc(window.db, "settings", "planning"), window.planningSettings);
+                import('../components/modals.js').then(m => m.showToast(`תקופה ${pKey} נמחקה מהמערכת`, "green"));
+                window.clearPeriodForm();
+                window.renderPlanningSettings();
+            } catch (e) {
+                console.error("Error deleting period:", e);
+            }
+        }
+    }
+};
+
+// עדכון פונקציית שמירת השורה כדי שתנקה את הטופס בסיום ותשמור על שמות שדות אחידים
+const originalSavePeriodConfigRow = window.savePeriodConfigRow;
+
+// תמיכה בפתיחת וסגירת טופס התקופות
+window.openNewPeriodForm = () => {
+    window.clearPeriodForm();
+    document.getElementById('period-form-container').classList.remove('hidden');
+    document.getElementById('admin-new-period-name').focus();
+};
+window.closePeriodForm = () => {
+    document.getElementById('period-form-container').classList.add('hidden');
+};
+
+// שמירת התקופה (כולל תאריך סיום)
+window.savePeriodConfigRow = async () => {
+    const name = document.getElementById('admin-new-period-name').value.trim();
+    const start = document.getElementById('admin-new-period-start').value;
+    const end = document.getElementById('admin-new-period-end').value; // הוספת תאריך סיום
+    const naka = parseInt(document.getElementById('admin-new-period-naka').value) || 85;
+    const min = parseInt(document.getElementById('admin-new-period-min').value) || 0;
+    const target = parseInt(document.getElementById('admin-new-period-target').value) || 0;
+
+    if (!name || !start) {
+        alert("חובה להזין לפחות שם תקופה ותאריך תחילת תקופה תקינים.");
+        return;
+    }
+
+    if (!window.planningSettings) window.planningSettings = {};
+    if (!window.planningSettings.periodConfigs) window.planningSettings.periodConfigs = {};
+
+    window.planningSettings.periodConfigs[name] = {
+        startDate: start,
+        endDate: end || null, // שומרים אם קיים
+        nakaValue: naka,
+        minFlights: min,
+        targetFlights: target,
+        naka: naka,
+        min: min,
+        target: target
+    };
+
+    if (window.firestoreFunctions && window.db) {
+        const { doc, setDoc } = window.firestoreFunctions;
+        try {
+            await setDoc(doc(window.db, "settings", "planning"), window.planningSettings);
+            import('../components/modals.js').then(m => m.showToast(`הגדרות תקופה ${name} נשמרו בהצלחה!`, "green"));
+            window.closePeriodForm();
+            window.renderPlanningSettings();
+        } catch (e) {
+            console.error(e);
+        }
+    }
+};
+
+// רינדור הטבלה והבאנר של התקופה הנוכחית
+export function renderAllPeriodsTable() {
+    const tbody = document.getElementById('admin-periods-table-body');
+    const banner = document.getElementById('current-period-banner');
+    if (!tbody || !banner) return;
+
+    tbody.innerHTML = '';
+    banner.innerHTML = '';
+
+    const configs = window.planningSettings?.periodConfigs || {};
+    const sortedPeriods = Object.keys(configs).sort((a, b) => {
+        const [pA, yA] = a.split('/').map(Number);
+        const [pB, yB] = b.split('/').map(Number);
+        return (yB + pB / 10) - (yA + pA / 10); // הכי חדש ראשון
+    });
+
+    if (sortedPeriods.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-400 italic">אין תקופות מוגדרות במערכת.</td></tr>`;
+        banner.innerHTML = `<div class="text-gray-600 font-bold">לא מוגדרות תקופות. המערכת פועלת על פי תאריכים אוטומטיים.</div>`;
+        return;
+    }
+
+    // זיהוי התקופה הנוכחית האמיתית (לפי תאריך של היום)
+    const currentPeriodName = window.getPeriodName(new Date());
+
+    // רינדור הבאנר לתקופה הנוכחית
+    if (configs[currentPeriodName]) {
+        const cp = configs[currentPeriodName];
+        const sDate = cp.startDate ? new Date(cp.startDate).toLocaleDateString('he-IL') : 'לא מוגדר';
+        const eDate = cp.endDate ? new Date(cp.endDate).toLocaleDateString('he-IL') : 'פתוח';
+        banner.innerHTML = `
+            <div>
+                <span class="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded mb-2 inline-block">התקופה הנוכחית הפעילה</span>
+                <h2 class="text-2xl font-black text-blue-900">${currentPeriodName}</h2>
+                <p class="text-sm text-blue-700 font-medium mt-1">תאריכים: ${sDate} עד ${eDate}</p>
+            </div>
+            <div class="flex gap-6 text-center">
+                <div class="bg-white p-3 rounded-md shadow-sm border border-blue-100 min-w-[80px]">
+                    <div class="text-xl font-bold text-gray-800">${cp.targetFlights || cp.target || 0}</div>
+                    <div class="text-xs text-gray-500 font-medium">יעד</div>
+                </div>
+                <div class="bg-white p-3 rounded-md shadow-sm border border-blue-100 min-w-[80px]">
+                    <div class="text-xl font-bold text-gray-800">${cp.minFlights || cp.min || 0}</div>
+                    <div class="text-xs text-gray-500 font-medium">מזער</div>
+                </div>
+            </div>
+            <div>
+                <button onclick="window.editPeriodConfigRow('${currentPeriodName}')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-2 px-6 rounded border border-blue-300 transition">
+                    <i class="fas fa-edit ml-1"></i> ערוך תקופה נוכחית
+                </button>
+            </div>
+        `;
+    }
+
+    // רינדור טבלת היסטוריה (כל התקופות)
+    sortedPeriods.forEach(pKey => {
+        const config = configs[pKey];
+        const formattedStart = config.startDate ? new Date(config.startDate).toLocaleDateString('he-IL') : 'לא הוגדר';
+        const formattedEnd = config.endDate ? new Date(config.endDate).toLocaleDateString('he-IL') : '---';
+        const naka = config.nakaValue !== undefined ? config.nakaValue : (config.naka || 85);
+        const minFlights = config.minFlights !== undefined ? config.minFlights : (config.min || 0);
+        const targetFlights = config.targetFlights !== undefined ? config.targetFlights : (config.target || 0);
+
+        const isCurrent = (pKey === currentPeriodName);
+        const rowClass = isCurrent ? "bg-blue-50/50" : "hover:bg-gray-50 transition-colors";
+
+        const tr = document.createElement('tr');
+        tr.className = rowClass;
+        tr.innerHTML = `
+            <td class="px-4 py-3 font-bold text-gray-900">${pKey} ${isCurrent ? '<span class="text-blue-500 text-xs mr-2">(נוכחית)</span>' : ''}</td>
+            <td class="px-4 py-3 text-gray-600">${formattedStart} <i class="fas fa-arrow-left text-xs text-gray-400 mx-1"></i> ${formattedEnd}</td>
+            <td class="px-4 py-3 text-gray-600">${naka}%</td>
+            <td class="px-4 py-3 text-gray-600">${minFlights} / ${targetFlights}</td>
+            <td class="px-4 py-3 whitespace-nowrap">
+                <button onclick="window.editPeriodConfigRow('${pKey}')" class="text-blue-600 hover:text-blue-900 font-medium ml-3 transition">ערוך</button>
+                <button onclick="window.deletePeriodConfigRow('${pKey}')" class="text-red-600 hover:text-red-900 font-medium transition">מחק</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// טעינת נתונים לעריכה
+window.editPeriodConfigRow = (pKey) => {
+    const configs = window.planningSettings?.periodConfigs || {};
+    const config = configs[pKey];
+    if (!config) return;
+
+    window.openNewPeriodForm();
+    document.getElementById('period-form-title').textContent = `עריכת תקופה: ${pKey}`;
+
+    document.getElementById('admin-new-period-name').value = pKey;
+    document.getElementById('admin-new-period-name').setAttribute('readonly', 'true');
+    document.getElementById('admin-new-period-name').classList.add('bg-gray-100');
+
+    document.getElementById('admin-new-period-start').value = config.startDate || '';
+    document.getElementById('admin-new-period-end').value = config.endDate || '';
+    document.getElementById('admin-new-period-naka').value = config.nakaValue !== undefined ? config.nakaValue : (config.naka || 85);
+    document.getElementById('admin-new-period-min').value = config.minFlights !== undefined ? config.minFlights : (config.min || 0);
+    document.getElementById('admin-new-period-target').value = config.targetFlights !== undefined ? config.targetFlights : (config.target || 0);
+
+    document.getElementById('period-form-container').scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+// ניקוי טופס
+window.clearPeriodForm = () => {
+    document.getElementById('period-form-title').textContent = 'הגדרת תקופה חדשה';
+    document.getElementById('admin-new-period-name').value = '';
+    document.getElementById('admin-new-period-name').removeAttribute('readonly');
+    document.getElementById('admin-new-period-name').classList.remove('bg-gray-100');
+    document.getElementById('admin-new-period-start').value = '';
+    document.getElementById('admin-new-period-end').value = '';
+    document.getElementById('admin-new-period-naka').value = '85';
+    document.getElementById('admin-new-period-min').value = '';
+    document.getElementById('admin-new-period-target').value = '';
+};
+
+// שיפור פונקציית הזיהוי כך שתתחשב בתאריך סיום (אם הוזן)
+window.getPeriodName = (dateInput) => {
+    if (!dateInput) return "";
+    const d = new Date(dateInput);
+    const checkTime = d.getTime();
+    const plan = window.planningSettings;
+
+    if (plan && plan.periodConfigs) {
+        const definedPeriods = Object.keys(plan.periodConfigs)
+            .map(pKey => ({
+                name: pKey,
+                startTime: plan.periodConfigs[pKey].startDate ? new Date(plan.periodConfigs[pKey].startDate).setHours(0, 0, 0, 0) : null,
+                endTime: plan.periodConfigs[pKey].endDate ? new Date(plan.periodConfigs[pKey].endDate).setHours(23, 59, 59, 999) : null
+            }))
+            .filter(p => p.startTime !== null)
+            .sort((a, b) => b.startTime - a.startTime); // מהחדש לישן
+
+        for (let p of definedPeriods) {
+            // אם לתקופה יש תאריך סיום - נוודא שהגיחה נופלת בדיוק בטווח
+            if (p.endTime) {
+                if (checkTime >= p.startTime && checkTime <= p.endTime) return p.name;
+            } else {
+                // אם אין תאריך סיום, מספיק שהגיחה אחרי תאריך ההתחלה
+                if (checkTime >= p.startTime) return p.name;
+            }
+        }
+    }
+
+    // Fallback: אמצע חודש יוני / דצמבר
+    let year = d.getFullYear();
+    const month = d.getMonth();
+    const day = d.getDate();
+    let periodNum = "1";
+
+    if (month === 5) periodNum = day < 15 ? "1" : "2";
+    else if (month === 11) {
+        if (day >= 15) { periodNum = "1"; year++; }
+        else { periodNum = "2"; }
+    }
+    else if (month > 5 && month < 11) periodNum = "2";
+    else periodNum = "1";
+
+    return `${periodNum}/${year.toString().slice(-2)}`;
+};
+
+// פונקציית רענון מאוחדת לטאב התכנון
+window.renderPlanningSettings = () => {
+    if (typeof renderAllPeriodsTable === 'function') {
+        renderAllPeriodsTable();
+    }
+    if (typeof renderPlanningCalendar === 'function') {
+        renderPlanningCalendar();
+    }
+};
+
+window.toggleStudentStatus = (cIdx, studentName) => {
+    if (!pilotPopulations.courses[cIdx].inactiveStudents) {
+        pilotPopulations.courses[cIdx].inactiveStudents = [];
+    }
+    const inactiveList = pilotPopulations.courses[cIdx].inactiveStudents;
+    const idx = inactiveList.indexOf(studentName);
+
+    if (idx === -1) {
+        if (confirm(`האם להפסיק פעילות של ${studentName} בקורס?\n* הוא ייצבע באפור ולא יופיע יותר בטבלת המעקב המרכזית.`)) {
+            inactiveList.push(studentName);
+        }
+    } else {
+        inactiveList.splice(idx, 1);
+    }
+
+    window.renderPopulations();
+    window.savePopulations(true);
+};
+
 // חשיפה ל-window
 window.editMetricConfig = window.editMetricConfig;
 window.deleteMetricConfig = window.deleteMetricConfig;
@@ -2153,3 +2850,10 @@ window.renderFlightMappingUI = window.renderFlightMappingUI;
 window.filterFlightMappingList = window.filterFlightMappingList;
 window.addFlightsToMapping = window.addFlightsToMapping;
 window.removeFlightFromMapping = window.removeFlightFromMapping;
+window.renderPlanningSettings = window.renderPlanningSettings;
+window.savePeriodConfigRow = window.savePeriodConfigRow;
+window.clearPeriodForm = window.clearPeriodForm;
+window.editPeriodConfigRow = window.editPeriodConfigRow;
+window.deletePeriodConfigRow = window.deletePeriodConfigRow;
+window.openNewPeriodForm = window.openNewPeriodForm;
+window.closePeriodForm = window.closePeriodForm;

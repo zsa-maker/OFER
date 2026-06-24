@@ -122,8 +122,11 @@ const missionDatabase = {
             if (typeof dateObj === 'string') dateObj = new Date(dateObj);
             if (!dateObj || isNaN(dateObj.getTime())) return '';
 
-            // חישוב שם תקופה (למשל 1/26)
+            // חישוב שם תקופה לפי הגדרות עמוד הניהול הדינמיות
             if (key === 'period') {
+                if (typeof window.getPeriodName === 'function') {
+                    return window.getPeriodName(dateObj);
+                }
                 let year = dateObj.getFullYear();
                 const month = dateObj.getMonth();
                 if (month === 11) return `1/${(year + 1).toString().slice(-2)}`;
@@ -132,14 +135,11 @@ const missionDatabase = {
                 return `${periodNum}/${yearShort}`;
             }
 
-            // חישוב שבוע
+            // חישוב מספר שבוע יחסי ליום ראשון של תחילת התקופה שהוגדרה
             if (key === 'week') {
-                const pNext = planning.periodNextStart ? new Date(planning.periodNextStart) : null;
-                const pCurr = planning.periodCurrStart ? new Date(planning.periodCurrStart) : null;
-                const pPrev = planning.periodPrevStart ? new Date(planning.periodPrevStart) : null;
+                const periodName = typeof window.getPeriodName === 'function' ? window.getPeriodName(dateObj) : "";
+                if (!periodName) return '';
 
-                let relevantStart = null;
-                // מציאת יום ראשון של תחילת התקופה הרלוונטית
                 const getStartSunday = (d) => {
                     if (!d) return null;
                     const s = new Date(d);
@@ -149,21 +149,26 @@ const missionDatabase = {
                 };
 
                 const dateSunday = getStartSunday(dateObj);
-                const pNextSun = getStartSunday(pNext);
-                const pCurrSun = getStartSunday(pCurr);
-                const pPrevSun = getStartSunday(pPrev);
+                let relevantStart = null;
+                const config = planning.periodConfigs?.[periodName];
 
-                if (pNextSun && dateSunday >= pNextSun) relevantStart = pNextSun;
-                else if (pCurrSun && dateSunday >= pCurrSun) relevantStart = pCurrSun;
-                else if (pPrevSun && dateSunday >= pPrevSun) relevantStart = pPrevSun;
+                if (config && config.startDate) {
+                    // שימוש בתאריך המדויק שהגדיר המנהל
+                    relevantStart = getStartSunday(new Date(config.startDate));
+                } else {
+                    // חישוב אוטומטי במקרה שלא הוגדר תאריך ידני
+                    const [pNum, pYear] = periodName.split('/');
+                    const fullYear = 2000 + parseInt(pYear);
+                    relevantStart = (pNum === "1") ? getStartSunday(new Date(fullYear - 1, 11, 15)) : getStartSunday(new Date(fullYear, 5, 15));
+                }
 
                 if (!relevantStart) return '';
                 const diffTime = dateSunday.getTime() - relevantStart.getTime();
                 const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                return Math.floor(diffDays / 7) + 1;
+                return Math.max(1, Math.floor(diffDays / 7) + 1);
             }
 
-            // החזרת תאריך בפורמט למכונה (עבור ה-Input Date)
+            // החזרת תאריך בפורמט למכונה
             if (key === 'date') {
                 const y = dateObj.getFullYear();
                 const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -171,14 +176,13 @@ const missionDatabase = {
                 return `${y}-${m}-${d}`;
             }
         }
-
         // --- לוגיקה לסינון סטטוס (חדש) ---
         if (key === 'statusText') {
             const status = item.executionStatus;
             const d = item.data || {};
 
             if (status === 'בוטלה' || d['סיבת ביטול'] || d['סוג גיחה'] === 'ביטול גיחה') return 'בוטלה';
-            if (d['סוג ביצוע'] === 'חלקי' || d['סוג גיחה'] === 'ביצוע חלקי') return 'חלקית';
+            if (d['סוג ביצוע'] === 'מופרעת' || d['סוג ביצוע'] === 'חלקי' || d['סוג גיחה'] === 'גיחה מופרעת') return 'מופרעת';
             if (['דווחה', 'בוצעה ידנית', 'בוצעה'].includes(status)) return 'בוצעה';
             if (status === 'טרם דווחה') return 'טרם בוצעה';
             return 'אחר';
@@ -209,7 +213,7 @@ const missionDatabase = {
     },
 
     /**
-     * אכלוס רשימות הבחירה (Dropdowns) בפילטרים
+     * אכלוס רשימות הבחירה (Dropdowns) בפילטרים עם מיון כרונולוגי/מספרי תקין
      */
     populateSelect: function (elementId, dataKey, dataSource) {
         const select = document.getElementById(elementId);
@@ -227,8 +231,12 @@ const missionDatabase = {
 
         let uniqueValues = [...new Set(allValues)].filter(v => v !== '');
 
-        // מיון מיוחד לתאריכים או מספרים
+        // מיון מיוחד המטפל במספרים (שבועות), תאריכים ומחרוזות
         uniqueValues.sort((a, b) => {
+            // אם שני הערכים הם מספרים או מחרוזות שמייצגות מספרים (כמו שבועות)
+            if (a !== '' && b !== '' && !isNaN(a) && !isNaN(b)) {
+                return Number(a) - Number(b);
+            }
             // אם זה נראה כמו תאריך YYYY-MM-DD
             if (typeof a === 'string' && a.match(/^\d{4}-\d{2}-\d{2}$/)) return a.localeCompare(b);
             return String(a).localeCompare(String(b));
@@ -248,7 +256,7 @@ const missionDatabase = {
     /**
      * החלת הפילטרים על הנתונים ורינדור הטבלה מחדש
      */
-    applyFilters: function () {
+    applyFilters: async function () {
         const getVal = (id) => document.getElementById(id)?.value || '';
         const dataSource = (window.savedFlights && window.savedFlights.length > 0) ? window.savedFlights : this.allData;
         const finalData = dataSource.filter(item => {
@@ -267,10 +275,94 @@ const missionDatabase = {
 
         this.renderTable(finalData);
 
-        // עדכון הרשימות הנפתחות בהתאם לסינון הנוכחי (כדי להראות רק אופציות רלוונטיות)
-        // הערה: ניתן לבטל את זה אם רוצים שהרשימות תמיד יהיו מלאות
-        const filtersToUpdate = Object.keys(this.KEY_MAP).filter(k => k !== 'db-filter-period' && k !== 'db-filter-week');
-        // filtersToUpdate.forEach(id => this.populateSelect(id, this.KEY_MAP[id], finalData)); 
+        const selectedPeriod = getVal('db-filter-period');
+        if (selectedPeriod) {
+            // אם נבחרה תקופה, נמשוך מהאוכלוסיות שלה
+            await this.updateDropdownsByPeriod(selectedPeriod, finalData);
+        } else {
+            // אם לא נבחרה, הרשימות יציגו רק את הנתונים שמסוננים בטבלה כרגע
+            const filtersToUpdate = Object.keys(this.KEY_MAP).filter(k => k !== 'db-filter-period' && k !== 'db-filter-week');
+            filtersToUpdate.forEach(id => this.populateSelect(id, this.KEY_MAP[id], finalData));
+        }
+    },
+    updateDropdownsByPeriod: async function(periodName, finalData) {
+        const safePeriodName = periodName.replace(/\//g, '-');
+        let periodPopulations = null;
+
+        // שאיבת הגדרות האוכלוסיות והגיחות של התקופה הספציפית מהשרת
+        if (window.firestoreFunctions && window.db) {
+            try {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const popSnap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
+                if (popSnap.exists()) {
+                    periodPopulations = popSnap.data();
+                }
+            } catch (e) {
+                console.error("Error fetching populations for dropdowns", e);
+            }
+        }
+
+        let relevantFlights = new Set();
+        let relevantPilots = new Set();
+        let relevantInstructors = new Set();
+
+        if (periodPopulations) {
+            // איסוף הגיחות מתוך "מיפוי גיחות"
+            if (periodPopulations.flightMapping) {
+                [...(periodPopulations.flightMapping.students || []), 
+                 ...(periodPopulations.flightMapping.instructors || []), 
+                 ...(periodPopulations.flightMapping.conversion || [])].forEach(f => relevantFlights.add(f));
+            }
+            // איסוף טייסים מקורסים וקבוצות הסבה
+            if (periodPopulations.courses) {
+                periodPopulations.courses.forEach(c => (c.students || []).forEach(s => relevantPilots.add(s)));
+            }
+            if (periodPopulations.conversionGroups) {
+                periodPopulations.conversionGroups.forEach(g => (g.members || []).forEach(m => relevantPilots.add(m)));
+            }
+            // איסוף מדריכות
+            if (periodPopulations.instructorGroups) {
+                periodPopulations.instructorGroups.forEach(g => (g.members || []).forEach(m => relevantInstructors.add(m)));
+            }
+        }
+
+        // עדכון הפילטרים על סמך האוכלוסיות שהוגדרו
+        this.updateSpecificDropdown('db-filter-flight-name', Array.from(relevantFlights), finalData, 'שם גיחה');
+        this.updateSpecificDropdown('db-filter-instructorFem', Array.from(relevantInstructors), finalData, 'מדריכה');
+        this.updateSpecificDropdown('db-filter-pilot', Array.from(relevantPilots), finalData, 'pilot_calculated');
+        
+        // שאר הפילטרים (תאריכים, מאמנים, סטטוס, שבועות) יתעדכנו על בסיס הגיחות בפועל של התקופה (finalData)
+        ['db-filter-type', 'db-filter-simulator', 'db-filter-status', 'db-filter-date', 'db-filter-week'].forEach(id => {
+            this.populateSelect(id, this.KEY_MAP[id], finalData);
+        });
+    },
+
+    updateSpecificDropdown: function(elementId, configuredItems, finalData, dataKey) {
+        const select = document.getElementById(elementId);
+        if (!select) return;
+        const currentVal = select.value;
+        
+        // מוסיפים גם נתונים שקיימים היסטורית בטבלה לתקופה זו (כדי שיהיה אפשר לסנן אותם גם אם הוסרו מהניהול)
+        let actualValues = [];
+        finalData.forEach(item => {
+            const val = this.getValue(item, dataKey);
+            if (Array.isArray(val)) actualValues.push(...val);
+            else actualValues.push(val);
+        });
+
+        // איחוד הנתונים, סינון כפילויות ומיון
+        let uniqueValues = [...new Set([...configuredItems, ...actualValues])].filter(v => v !== '');
+        uniqueValues.sort((a, b) => String(a).localeCompare(String(b)));
+
+        select.innerHTML = '<option value="">הכל</option>';
+        uniqueValues.forEach(val => {
+            const option = document.createElement('option');
+            option.value = val;
+            option.textContent = val;
+            select.appendChild(option);
+        });
+
+        if (currentVal && uniqueValues.includes(currentVal)) select.value = currentVal;
     },
 
     checkMatch: function (item, key, filterValue) {
@@ -498,19 +590,52 @@ const missionDatabase = {
         document.body.removeChild(link);
     },
 
-    deleteSelected: async function () {
+   deleteSelected: async function () {
         if (this.selectedFlights.size === 0) return;
-        if (!confirm(`האם למחוק לצמיתות ${this.selectedFlights.size} גיחות?`)) return;
+        if (!confirm(`האם למחוק ${this.selectedFlights.size} גיחות?`)) return;
 
-        const { doc, deleteDoc } = window.firestoreFunctions;
+        const { doc, deleteDoc, setDoc } = window.firestoreFunctions;
+        
+        // יצירת גיבוי של הגיחות שעומדות להימחק
+        const backupFlights = [];
+        for (const id of this.selectedFlights) {
+            const flightToBackup = this.allData.find(f => f.id === id);
+            if (flightToBackup) {
+                // שמירת עותק עמוק נקי מ-references שלא ניתנים לשמירה
+                const flightCopy = JSON.parse(JSON.stringify(flightToBackup));
+                backupFlights.push(flightCopy);
+            }
+        }
+
         showToast("מוחק גיחות...", "blue");
 
         try {
             for (const id of this.selectedFlights) {
                 await deleteDoc(doc(window.db, "flights", id));
             }
-            showToast("המחיקה הושלמה", "green");
-            // טעינה מחדש של הנתונים במקום ריענון מלא של הדף
+            
+            // פונקציית ביטול המחיקה
+            const undoDelete = async () => {
+                import('../components/modals.js').then(m => m.showToast('משחזר גיחות...', 'blue'));
+                try {
+                    for (const flight of backupFlights) {
+                        const flightId = flight.id;
+                        delete flight.id; // מסירים את ה-ID מה-payload עצמו
+                        // כתיבה חזרה ל-Firestore לאותו ID מקורי
+                        await setDoc(doc(window.db, "flights", flightId), flight);
+                    }
+                    import('../components/modals.js').then(m => m.showToast('הגיחות שוחזרו בהצלחה.', 'green'));
+                    if (window.fetchFlights) await window.fetchFlights();
+                } catch (e) {
+                    console.error("Undo delete failed:", e);
+                    import('../components/modals.js').then(m => m.showToast('שגיאה בשחזור הגיחות.', 'red'));
+                }
+            };
+
+            showToast("המחיקה הושלמה", "green", 3000, undoDelete);
+            
+            this.selectedFlights.clear();
+            this.updateBulkDeleteUI();
             if (window.fetchFlights) await window.fetchFlights();
         } catch (e) {
             console.error(e);

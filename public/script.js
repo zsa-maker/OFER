@@ -12,7 +12,7 @@ const simulatorFaults = {
     'מאמן VIPT': []
 };
 
-const flightTypes = ['גיחה רגילה', 'ביצוע חלקי', 'ביטול גיחה'];
+const flightTypes = ['גיחה רגילה', ' ', 'ביטול גיחה'];
 
 let savedFlights = [];
 let currentForm = {};

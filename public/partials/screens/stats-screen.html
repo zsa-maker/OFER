@@ -55,6 +55,14 @@
                     </select>
                 </div>
 
+                <div class="filter-group">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">סימולטור:</label>
+                    <select id="filter-simulator" onchange="window.statsManager.renderStatsDashboard()"
+                        class="block w-48 rounded-md border-gray-300 shadow-sm focus:border-ofer-orange focus:ring-ofer-orange">
+                        <option value="">כל הסימולטורים</option>
+                    </select>
+                </div>
+
 
                 <div class="mr-auto flex gap-2">
                     <button id="toggle-percent-btn" onclick="window.statsManager.toggleValueType()"

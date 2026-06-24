@@ -66,18 +66,22 @@
                 <ul id="list-instructorsFemale" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
             </div>
 
-            <div class="bg-white p-4 rounded-lg shadow">
+            <div class="bg-white p-4 rounded-lg shadow flex flex-col h-[450px]">
                 <h3 class="font-bold text-lg mb-2 text-gray-700 border-b pb-2 cursor-pointer hover:text-ofer-orange"
                     onclick="window.openAdvancedPersonnel('pilots', 'טייסים')">
                     טייסים <span class="text-xs font-normal">(לחץ לניהול מתקדם)</span>
                 </h3>
                 <div class="flex mb-2">
-                    <input type="text" id="input-pilots" placeholder="הוסף..."
+                    <input type="text" id="input-pilots" placeholder="הוסף טייס..."
                         class="flex-grow border rounded-r px-2 py-1 text-sm">
                     <button onclick="window.addPerson('pilots')"
                         class="bg-ofer-orange text-white px-3 rounded-l hover:bg-ofer-dark-brown">+</button>
                 </div>
-                <ul id="list-pilots" class="space-y-1 h-64 overflow-y-auto custom-scrollbar"></ul>
+                <div id="pilots-tabs-headers"
+                    class="flex gap-1 mb-2 overflow-x-auto text-xs pb-1 border-b border-gray-100 custom-scrollbar">
+                </div>
+
+                <ul id="list-pilots" class="space-y-1 overflow-y-auto custom-scrollbar flex-grow"></ul>
             </div>
 
             <div class="bg-white p-4 rounded-lg shadow">
@@ -283,50 +287,85 @@
                 <button onclick="window.changePlanningMonth(1)"
                     class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded">&gt;</button>
             </div>
-            <div>
-                <button onclick="window.savePlanningData()"
-                    class="bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white font-bold py-2 px-6 rounded shadow">שמור
-                    שינויים</button>
-            </div>
         </div>
+
         <div class="bg-white rounded-lg shadow overflow-x-auto mb-8">
             <table class="min-w-full divide-y divide-gray-200">
                 <tbody id="planning-calendar-body" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
             </table>
-            <div class="flex gap-4 items-end mb-4 flex-wrap" dir="rtl">
-                <div>
-                    <label id="label-period-prev" class="block text-xs font-bold text-gray-600 mb-1">תקופה קודמת</label>
-                    <input type="date" id="input-period-prev"
-                        class="border rounded px-2 py-1 text-sm shadow-sm focus:ring-2 focus:ring-ofer-orange">
+        </div>
+
+        <div id="current-period-banner"
+            class="bg-blue-50 border border-blue-200 p-6 rounded-lg shadow-sm mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+        </div>
+
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-bold text-xl text-gray-800">היסטוריית תקופות</h3>
+            <button onclick="window.openNewPeriodForm()"
+                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow flex gap-2 items-center transition-colors">
+                <i class="fas fa-plus"></i> פתח תקופה חדשה
+            </button>
+        </div>
+
+        <div id="period-form-container"
+            class="hidden bg-white p-6 rounded-lg shadow-md border-t-4 border-ofer-orange mb-6 transition-all duration-300">
+            <h3 class="font-bold text-lg text-gray-800 mb-4" id="period-form-title">הגדרת תקופה חדשה</h3>
+            <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">שם תקופה </label>
+                    <input type="text" id="admin-new-period-name" placeholder="2/26 לדוגמה: "
+                        class="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-ofer-orange">
                 </div>
-                <div class="flex gap-2 items-end">
-                    <div>
-                        <label id="label-period-curr"
-                            class="block text-xs font-bold text-gray-600 mb-1 text-blue-700">תקופה נוכחית</label>
-                        <input type="date" id="input-period-curr"
-                            class="border rounded px-2 py-1 text-sm shadow-sm border-blue-300">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1 text-blue-700">נק"ע (%)</label>
-                        <input type="number" id="input-period-naka" min="0" max="100" placeholder="85"
-                            class="border rounded px-2 py-1 text-sm shadow-sm border-blue-300 w-14 text-center">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1 text-green-700">מזער</label>
-                        <input type="number" id="input-period-min" placeholder="0"
-                            class="border rounded px-2 py-1 text-sm shadow-sm border-green-300 w-14 text-center">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600 mb-1 text-green-700">יעד</label>
-                        <input type="number" id="input-period-target" placeholder="0"
-                            class="border rounded px-2 py-1 text-sm shadow-sm border-green-300 w-14 text-center">
-                    </div>
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">תאריך תחילה</label>
+                    <input type="date" id="admin-new-period-start"
+                        class="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-ofer-orange">
                 </div>
-                <div>
-                    <label id="label-period-next" class="block text-xs font-bold text-gray-600 mb-1">תקופה באה</label>
-                    <input type="date" id="input-period-next" class="border rounded px-2 py-1 text-sm shadow-sm">
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">תאריך סיום (אופציונלי)</label>
+                    <input type="date" id="admin-new-period-end"
+                        class="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-ofer-orange">
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">נק"ע (%)</label>
+                    <input type="number" id="admin-new-period-naka" value="85"
+                        class="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-ofer-orange">
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">מזער גיחות</label>
+                    <input type="number" id="admin-new-period-min" placeholder="0"
+                        class="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-ofer-orange">
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">יעד גיחות</label>
+                    <input type="number" id="admin-new-period-target" placeholder="0"
+                        class="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-ofer-orange">
                 </div>
             </div>
+            <div class="flex gap-3 pt-4 mt-4 border-t">
+                <button onclick="window.savePeriodConfigRow()"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded shadow transition">שמור
+                    הגדרות תקופה</button>
+                <button onclick="window.closePeriodForm()"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded transition">ביטול
+                    וסגירה</button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-right">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-600">תקופה</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-600">תאריכים (תחילה - סיום)</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-600">נק"ע</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-600">מזער / יעד</th>
+                        <th class="px-4 py-3 text-sm font-bold text-gray-600">פעולות</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-periods-table-body" class="bg-white divide-y divide-gray-200 text-sm">
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -406,7 +445,12 @@
     <div id="tab-content-populations" class="admin-tab-content hidden">
         <div class="bg-white p-6 rounded-lg shadow mb-6">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="font-bold text-xl text-gray-800">סיווג אוכלוסיות טייסים</h3>
+                <div class="flex items-center gap-4">
+                    <h3 class="font-bold text-xl text-gray-800">סיווג אוכלוסיות טייסים</h3>
+                    <select id="admin-population-period" onchange="window.loadPopulationsForAdmin()"
+                        class="border p-2 rounded-md shadow-sm bg-blue-50 font-bold min-w-[120px]">
+                    </select>
+                </div>
                 <button onclick="window.savePopulations()"
                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow">שמור
                     שינויים</button>
