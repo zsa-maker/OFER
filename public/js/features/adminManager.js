@@ -230,36 +230,77 @@ export async function loadPersonnelLists() {
 export async function syncFromExistingFlights() {
     if (!savedFlights || savedFlights.length === 0) { showToast("לא נמצאו גיחות במערכת לסנכרון.", "yellow"); return; }
     if (!confirm("פעולה זו תסרוק את כל הגיחות הקיימות ותוסיף שמות חסרים לרשימות. להמשיך?")) return;
+    
     let addedCount = 0;
-    const sets = {
-        // instructorsMale: new Set(personnelLists.instructorsMale || []),
-        instructorsFemale: new Set(personnelLists.instructorsFemale || []),
-        pilots: new Set(personnelLists.pilots || []),
-        observers: new Set(personnelLists.observers || []),
-        simulators: new Set(personnelLists.simulators || []),
-        flightTypes: new Set(personnelLists.flightTypes || []),
-        flightNames: new Set(personnelLists.flightNames || [])
+    
+    // שימוש במערכים רגילים כדי שנוכל להפעיל את isDuplicate
+    const lists = {
+        instructorsFemale: personnelLists.instructorsFemale || [],
+        pilots: personnelLists.pilots || [],
+        observers: personnelLists.observers || [],
+        simulators: personnelLists.simulators || [],
+        flightTypes: personnelLists.flightTypes || [],
+        flightNames: personnelLists.flightNames || []
     };
+
     savedFlights.forEach(flight => {
         const d = flight.data || {};
-        const add = (key, setKey) => { const val = d[key]; if (val && typeof val === 'string' && val.trim().length > 1) { if (!sets[setKey].has(val.trim())) { sets[setKey].add(val.trim()); addedCount++; } } };
-        // add('מדריך', 'instructorsMale'); add('instructor-main', 'instructorsMale');
+        const add = (key, listKey) => { 
+            const val = d[key]; 
+            if (val && typeof val === 'string' && val.trim().length > 1) { 
+                const cleanVal = val.trim();
+                // אם הערך לא קיים (מתעלם מגרשיים), נוסיף אותו
+                if (!isDuplicate(lists[listKey], cleanVal)) { 
+                    lists[listKey].push(cleanVal); 
+                    addedCount++; 
+                } 
+            } 
+        };
+        
         add('מדריכה', 'instructorsFemale'); add('instructor-name-1', 'instructorsFemale');
         add('טייס ימין', 'pilots'); add('טייס שמאל', 'pilots'); add('pilot-right', 'pilots'); add('pilot-left', 'pilots');
         add('מתצפת', 'observers'); add('observer', 'observers');
         add('סימולטור', 'simulators'); add('סוג גיחה', 'flightTypes'); add('שם גיחה', 'flightNames');
     });
-    Object.keys(sets).forEach(key => { personnelLists[key] = Array.from(sets[key]).sort(); });
-    if (addedCount > 0) { await savePersonnelLists(); renderAllLists(); showToast(`נוספו ${addedCount} ערכים חדשים!`, "green"); } else { showToast("הכל מעודכן. לא נמצאו ערכים חדשים.", "blue"); }
+
+    Object.keys(lists).forEach(key => { personnelLists[key] = lists[key].sort(); });
+    
+    if (addedCount > 0) { 
+        await savePersonnelLists(); 
+        renderAllLists(); 
+        showToast(`נוספו ${addedCount} ערכים חדשים!`, "green"); 
+    } else { 
+        showToast("הכל מעודכן. לא נמצאו ערכים חדשים.", "blue"); 
+    }
 }
 
 export async function updateListsFromImport(newNamesData) {
     if (personnelLists.pilots.length === 0) await loadPersonnelLists();
     let hasChanges = false;
-    const mergeNames = (category, newNames) => { if (!newNames || newNames.length === 0) return; const currentSet = new Set(personnelLists[category] || []); newNames.forEach(name => { const cleanName = name.trim(); if (cleanName && !currentSet.has(cleanName)) { currentSet.add(cleanName); hasChanges = true; } }); personnelLists[category] = Array.from(currentSet).sort(); };
-    // mergeNames('instructorsMale', newNamesData.instructorsMale);
-    mergeNames('instructorsFemale', newNamesData.instructorsFemale); mergeNames('pilots', newNamesData.pilots);
-    if (hasChanges) { const { doc, setDoc } = window.firestoreFunctions; if (window.db) await setDoc(doc(window.db, "settings", "personnel"), personnelLists); renderAllLists(); }
+    
+    const mergeNames = (category, newNames) => { 
+        if (!newNames || newNames.length === 0) return; 
+        const currentList = personnelLists[category] || []; 
+        
+        newNames.forEach(name => { 
+            const cleanName = name.trim(); 
+            // שימוש בבדיקת כפילויות חכמה
+            if (cleanName && !isDuplicate(currentList, cleanName)) { 
+                currentList.push(cleanName); 
+                hasChanges = true; 
+            } 
+        }); 
+        personnelLists[category] = currentList.sort(); 
+    };
+    
+    mergeNames('instructorsFemale', newNamesData.instructorsFemale); 
+    mergeNames('pilots', newNamesData.pilots);
+    
+    if (hasChanges) { 
+        const { doc, setDoc } = window.firestoreFunctions; 
+        if (window.db) await setDoc(doc(window.db, "settings", "personnel"), personnelLists); 
+        renderAllLists(); 
+    }
 }
 
 function renderAllLists() {
@@ -298,6 +339,14 @@ export async function savePersonnelLists(silent = false) {
     }
 }
 
+// פונקציית עזר שמשווה מחרוזות תוך התעלמות מגרשיים, מרכאות (אנגלית/עברית) ורווחים
+export function isDuplicate(list, newValue) {
+    if (!list || !newValue) return false;
+    const normalize = (str) => typeof str === 'string' ? str.replace(/['"״׳]/g, '').trim() : '';
+    const normalizedNew = normalize(newValue);
+    return list.some(item => normalize(item) === normalizedNew);
+}
+
 export async function addPerson(type) {
     const input = document.getElementById(`input-${type}`);
     if (!input) return;
@@ -306,7 +355,9 @@ export async function addPerson(type) {
     if (!name) return showToast("נא להזין ערך.", "yellow");
 
     if (!personnelLists[type]) personnelLists[type] = [];
-    if (personnelLists[type].includes(name)) return showToast("הערך כבר קיים.", "red");
+    
+    // בדיקת כפילויות חכמה שמתעלמת מגרשיים ומרכאות
+    if (isDuplicate(personnelLists[type], name)) return showToast("הערך כבר קיים ברשימה.", "red");
 
     personnelLists[type].push(name);
     personnelLists[type].sort();
@@ -332,7 +383,8 @@ window.addFromPersonnelModal = async () => {
     const name = input.value.trim();
     if (!name) return;
 
-    if (!personnelLists[currentModalType].includes(name)) {
+    // שימוש בפונקציה החכמה לבדיקת כפילות
+    if (!isDuplicate(personnelLists[currentModalType], name)) {
         personnelLists[currentModalType].push(name);
         personnelLists[currentModalType].sort();
         input.value = '';
@@ -354,7 +406,6 @@ window.addFromPersonnelModal = async () => {
         showToast("השם כבר קיים ברשימה", "yellow");
     }
 };
-
 export async function removePerson(type, index) {
     const nameToRemove = personnelLists[type][index];
     if (confirm(`למחוק את "${nameToRemove}"?`)) {
@@ -387,16 +438,21 @@ export async function editPerson(type, index) {
     if (newName && newName.trim() && newName !== oldName) {
         const finalNewName = newName.trim();
 
-        // הוספת בדיקת ולידציה למניעת כפילות
-        if (personnelLists[type].includes(finalNewName)) {
+        // יצירת רשימה זמנית שלא כוללת את הפריט הנוכחי
+        const listWithoutCurrent = personnelLists[type].filter((_, i) => i !== index);
+
+        // הוספת בדיקת ולידציה חכמה למניעת כפילות
+        if (isDuplicate(listWithoutCurrent, finalNewName)) {
             import('../components/modals.js').then(m => m.showToast("השם כבר קיים ברשימה.", "red"));
             return;
         }
+        
         // 1. עדכון השם ברשימה המקומית ושמירה
         personnelLists[type][index] = finalNewName;
         personnelLists[type].sort();
         renderList(type);
         await savePersonnelLists(true);
+        
         // 2. סריקה ועדכון השם בכל הגיחות הקיימות במסד הנתונים
         if (window.firestoreFunctions && window.db && window.savedFlights) {
             import('../components/modals.js').then(m => m.showToast("מעדכן גיחות קיימות... נא להמתין", "blue"));
@@ -438,7 +494,6 @@ export async function editPerson(type, index) {
                     import('../components/modals.js').then(m => m.showToast("השם עודכן ונשמר ברשימה.", "green"));
                 }
 
-                // רענון התצוגה בחלון הניהול המתקדם (אם הוא פתוח כרגע)
                 if (typeof window.filterPersonnelModal === 'function' && !document.getElementById('personnel-manage-modal').classList.contains('hidden')) {
                     window.filterPersonnelModal();
                 }
@@ -1268,33 +1323,40 @@ window.openAdvancedPersonnel = (type, label) => {
 };
 
 window.filterPersonnelModal = () => {
-    const searchTerm = document.getElementById('personnel-search-input').value.toLowerCase();
+    const rawSearchTerm = document.getElementById('personnel-search-input').value.toLowerCase();
+    
+    // פונקציית עזר לניקוי תווים מיוחדים מהחיפוש - כך "יט 1" ימצא גם את "י"ט 1"
+    const cleanString = (str) => typeof str === 'string' ? str.replace(/['"״׳]/g, '').trim() : '';
+    const searchTerm = cleanString(rawSearchTerm);
+    
     const container = document.getElementById('personnel-modal-list-container');
     const items = personnelLists[currentModalType] || [];
 
     container.innerHTML = '';
 
-    const filteredItems = items.filter(name => name.toLowerCase().includes(searchTerm));
+    // תיקון: מיפוי המערך תחילה כדי לשמור על האינדקס המקורי (הבטוח) גם אחרי פילטר
+    const filteredItems = items
+        .map((name, index) => ({ name, index }))
+        .filter(item => cleanString(item.name.toLowerCase()).includes(searchTerm));
 
     if (filteredItems.length === 0) {
         container.innerHTML = '<div class="text-center py-4 text-gray-500">לא נמצאו תוצאות</div>';
         return;
     }
 
-    filteredItems.forEach(name => {
+    filteredItems.forEach(item => {
+        const { name, index: originalIndex } = item;
         const div = document.createElement('div');
         div.className = "flex justify-between items-center bg-white p-3 mb-2 rounded shadow-sm border border-gray-100";
-
-        const safeName = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
         div.innerHTML = `
             <span class="font-bold text-gray-800">${name}</span>
             <div class="flex gap-2">
-                <button onclick="window.editPerson('${currentModalType}', personnelLists['${currentModalType}'].indexOf('${safeName}')); setTimeout(() => window.filterPersonnelModal(), 500);" 
+                <button onclick="window.editPerson('${currentModalType}', ${originalIndex}); setTimeout(() => window.filterPersonnelModal(), 500);" 
                         class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 font-bold">ערוך שם</button>
-                <button onclick="window.initMergePersonnel('${safeName}')" 
+                <button onclick="window.initMergePersonnel(${originalIndex})" 
                         class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">מיזוג לשם אחר</button>
-                <button onclick="window.removePerson('${currentModalType}', personnelLists['${currentModalType}'].indexOf('${safeName}')); window.filterPersonnelModal();" 
+                <button onclick="window.removePerson('${currentModalType}', ${originalIndex}); setTimeout(() => window.filterPersonnelModal(), 500);" 
                         class="text-red-500 hover:text-red-700 text-lg">🗑️</button>
             </div>
         `;
@@ -1303,11 +1365,25 @@ window.filterPersonnelModal = () => {
 };
 
 
-window.initMergePersonnel = async (oldName) => {
-    // משיכת כל השמות הזמינים למעט השם הנוכחי
-    const availableNames = personnelLists[currentModalType].filter(n => n !== oldName);
+window.initMergePersonnel = async (indexOrOldName) => {
+    let oldName = indexOrOldName;
+    let originalIndex = -1;
+    
+    // זיהוי אם קיבלנו אינדקס בטוח (מספר) ושליפת השם והאינדקס המדויקים
+    if (typeof indexOrOldName === 'number') {
+        originalIndex = indexOrOldName;
+        oldName = personnelLists[currentModalType][originalIndex];
+    } else {
+        originalIndex = personnelLists[currentModalType].indexOf(oldName);
+    }
 
-    if (availableNames.length === 0) {
+    // תיקון: סינון לפי האינדקס בלבד כדי להבטיח ששמות כפולים יופיעו ברשימה להמיזוג
+    const availableNames = personnelLists[currentModalType].filter((n, idx) => idx !== originalIndex);
+    
+    // ניקוי כפילויות ויזואליות ברשימת הבחירה עצמה בלבד
+    const uniqueAvailableNames = [...new Set(availableNames)];
+
+    if (uniqueAvailableNames.length === 0) {
         import('../components/modals.js').then(m => m.showToast("אין שמות נוספים ברשימה למזג אליהם.", "yellow"));
         return;
     }
@@ -1317,7 +1393,7 @@ window.initMergePersonnel = async (oldName) => {
     overlay.className = "fixed inset-0 bg-gray-900 bg-opacity-60 overflow-y-auto h-full w-full z-[60] flex justify-center items-center";
     overlay.id = "custom-merge-modal";
 
-    const optionsHtml = availableNames.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
+    const optionsHtml = uniqueAvailableNames.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
 
     overlay.innerHTML = `
         <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right" dir="rtl">
@@ -1362,7 +1438,7 @@ window.initMergePersonnel = async (oldName) => {
         try {
             const { doc, updateDoc } = window.firestoreFunctions;
             let count = 0;
-            const updatedFlightIds = []; // מערך לשמירת מזהי הגיחות ששונו
+            const updatedFlightIds = []; 
 
             const fieldMap = {
                 'instructorsFemale': ['מדריכה', 'instructor-name-1', 'מדריכה נוספת'],
@@ -1376,7 +1452,6 @@ window.initMergePersonnel = async (oldName) => {
 
             const fieldsToUpdate = fieldMap[currentModalType] || [];
 
-            // מעבר על כל הגיחות ועדכון במסד הנתונים
             for (let flight of window.savedFlights) {
                 let changed = false;
                 fieldsToUpdate.forEach(field => {
@@ -1388,20 +1463,23 @@ window.initMergePersonnel = async (oldName) => {
 
                 if (changed) {
                     await updateDoc(doc(window.db, "flights", flight.id), { data: flight.data });
-                    updatedFlightIds.push(flight.id); // שמירת ה-ID לטובת שחזור
+                    updatedFlightIds.push(flight.id); 
                     count++;
                 }
             }
 
-            // מחיקת השם הישן מהרשימה המקומית
-            personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== oldName);
+            // תיקון: מחיקת הפריט הספציפי שמוזג בלבד על פי מיקומו במערך
+            if (originalIndex > -1) {
+                personnelLists[currentModalType].splice(originalIndex, 1);
+            } else {
+                personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== oldName);
+            }
+            
             await savePersonnelLists(true);
 
-            // פונקציית ביטול פעולת המיזוג (Undo)
             const undoMerge = async () => {
                 import('../components/modals.js').then(m => m.showToast("מבטל מיזוג, משחזר גיחות ומאגר...", "blue"));
                 try {
-                    // 1. החזרת השם הישן לגיחות ששונו
                     for (let flightId of updatedFlightIds) {
                         const flight = window.savedFlights.find(f => f.id === flightId);
                         if (flight) {
@@ -1414,12 +1492,13 @@ window.initMergePersonnel = async (oldName) => {
                         }
                     }
 
-                    // 2. החזרת השם המקורי לרשימת אנשי הצוות
-                    if (!personnelLists[currentModalType].includes(oldName)) {
+                    // תיקון ביטול: השבת השם לאינדקס המקורי שבו היה
+                    if (originalIndex !== -1) {
+                        personnelLists[currentModalType].splice(originalIndex, 0, oldName);
+                    } else {
                         personnelLists[currentModalType].push(oldName);
-                        personnelLists[currentModalType].sort();
-                        await savePersonnelLists(true);
                     }
+                    await savePersonnelLists(true);
 
                     import('../components/modals.js').then(m => m.showToast(`המיזוג בוטל! ${count} גיחות הוחזרו ל-${oldName}.`, "green"));
                     window.filterPersonnelModal();
@@ -2080,21 +2159,35 @@ window.renderList = async function (type) {
     const searchInput = document.getElementById(`search-input-${type}`);
     if (!listContainer) return;
 
-    const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
+    const rawSearchTerm = searchInput ? searchInput.value.toLowerCase() : "";
+    
+    // ניקוי המרכאות בזמן חיפוש
+    const cleanString = (str) => typeof str === 'string' ? str.replace(/['"״׳]/g, '').trim() : '';
+    const searchTerm = cleanString(rawSearchTerm);
+
     const items = personnelLists[type] || [];
-    const filtered = items.filter(item => item.toLowerCase().includes(searchTerm));
+    const filtered = items.filter(item => cleanString(item.toLowerCase()).includes(searchTerm));
 
     listContainer.innerHTML = '';
+    
+    if (filtered.length === 0) { 
+        listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים.</li>`; 
+        return; 
+    }
+
     filtered.forEach((item) => {
         const li = document.createElement('li');
         li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
-        const safeItem = item.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        
+        // שימוש באינדקס בטוח למניעת שבירת HTML עם גרשיים
+        const originalIndex = items.indexOf(item);
+        const safeTitle = item.replace(/"/g, '&quot;'); 
 
         li.innerHTML = `
-            <span class="font-medium text-gray-800 truncate flex-grow ml-2">${item}</span>
+            <span class="font-medium text-gray-800 truncate flex-grow ml-2" title="${safeTitle}">${item}</span>
             <div class="flex gap-1 shrink-0">
-                <button onclick="window.editPerson('${type}', personnelLists['${type}'].indexOf('${safeItem}'))" class="text-blue-500 p-1">✏️</button>
-                <button onclick="window.removePerson('${type}', personnelLists['${type}'].indexOf('${safeItem}'))" class="text-red-500 p-1">🗑️</button>
+                <button onclick="window.editPerson('${type}', ${originalIndex})" class="text-blue-500 p-1">✏️</button>
+                <button onclick="window.removePerson('${type}', ${originalIndex})" class="text-red-500 p-1">🗑️</button>
             </div>`;
         listContainer.appendChild(li);
     });

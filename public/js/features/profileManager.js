@@ -631,6 +631,7 @@ export async function initProfilePage() {
     };
 }
 
+
 function populateFlightTypeSelects(flights) {
     const types = [...new Set(flights.map(f => f.data['סוג גיחה']).filter(Boolean))];
     const selects = ['profile-chart-type-select', 'profile-lessons-type-select'];
