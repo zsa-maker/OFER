@@ -11,6 +11,7 @@ import { loadPersonnelLists, initAdminPage, loadGoalsAndSystems } from '../featu
 import { setPeriodDates } from './util.js';
 import { initProfilePage } from '../features/profileManager.js';
 import { initSimulatorManager } from '../features/simulatorManager.js';
+import '../features/goalsManager.js';
 
 
 export function initializeAppEventListeners() {
@@ -23,6 +24,9 @@ export function initializeAppEventListeners() {
     initSimulatorManager();
     initProfilePage();
 
+    window.statsManager.ensureDataLoaded().then(() => {
+        console.log("Data initialized for all modules");
+    });
     // *** המאזינים של סרגל הניווט (showScreen) ***
     document.querySelectorAll('#sidebar button[data-screen-id]').forEach(button => {
         button.addEventListener('click', (event) => {
@@ -31,19 +35,24 @@ export function initializeAppEventListeners() {
 
             // הוספת האתחול האוטומטי למסך החדש
             if (screenId === 'goals-metrics-screen') {
-                window.statsManager.initGoalsScreen();
+                // קריאה לפונקציה מתוך האובייקט שייצרת ב-goalsManager.js
+                if (window.goalsManager && typeof window.goalsManager.initGoalsScreen === 'function') {
+                    window.goalsManager.initGoalsScreen();
+                } else {
+                    console.error("goalsManager.initGoalsScreen לא נמצא!");
+                }
             }
 
             if (screenId === 'admin-screen') {
                 initAdminPage();
             }
-            if (screenId === 'goals-metrics-screen') {
-                if (window.goalsManager) {
-                    window.goalsManager.initGoalsScreen();
-                }
+
+            if (screenId === 'admin-screen') {
+                initAdminPage();
             }
         });
     });
+
 
     document.getElementById('fault-system-filter')?.addEventListener('change', () => {
         renderFaultDatabaseTable();

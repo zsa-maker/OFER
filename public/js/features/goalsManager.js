@@ -4,6 +4,79 @@ import { savedFlights } from '../core/global.js';
 
 window.goalsManager = window.goalsManager || {};
 
+window.goalsManager.initGoalsScreen = async function () {
+   if (typeof window.statsManager.ensureDataLoaded === 'function') {
+        await window.statsManager.ensureDataLoaded();
+    }
+    
+    console.log("DEBUG: Initializing UI listeners...");
+
+    const weekSelect = document.getElementById('goals-week-select');
+    const periodSelect = document.getElementById('goals-period-select');
+
+    // 1. טעינה מלאה של האופציות קודם
+    await populateGoalsPeriodSelect();
+
+    // 2. סנכרון התקופה הנוכחית
+    if (periodSelect) {
+        const currentPeriod = window.getPeriodName(new Date()).trim(); // הוספת trim ליתר ביטחון
+        
+        // בדיקה שהערך באמת קיים באופציות
+        const optionExists = [...periodSelect.options].some(o => o.value.trim() === currentPeriod);
+        
+        if (optionExists) {
+            periodSelect.value = currentPeriod;
+        } else {
+            // אם לא מצאנו את התקופה, נבחר "ALL"
+            periodSelect.value = 'ALL';
+        }
+
+        // 3. עדכון הוויזואלי וטריגר של הפעולה
+        // שימוש ב-setTimeout קצר כדי לתת ל-DOM "להירגע" ולהתעדכן
+        setTimeout(() => {
+            periodSelect.dispatchEvent(new Event('change'));
+            console.log("DEBUG: Selected period set to:", periodSelect.value);
+        }, 100);
+    }
+
+    if (periodSelect) {
+        periodSelect.addEventListener('change', () => {
+            const isAll = periodSelect.value === 'ALL';
+            if (weekSelect) {
+                weekSelect.style.display = isAll ? 'none' : 'block';
+                const weekLabel = document.querySelector('label[for="goals-week-select"]');
+                if (weekLabel) weekLabel.style.display = isAll ? 'none' : 'block';
+            }
+            window.goalsManager.populateWeekSelect();
+            window.goalsManager.refreshGoalsAndMetrics();
+        });
+    }
+
+    // הוספת מאזין לבחירת שבוע
+    if (weekSelect) {
+        weekSelect.addEventListener('change', () => {
+            console.log("DEBUG: Week selected, refreshing...");
+            window.goalsManager.refreshGoalsAndMetrics();
+        });
+    }
+
+    await populateGoalsPeriodSelect();
+    window.goalsManager.populateFlightTypeSelect();
+    const typeSelect = document.getElementById('goals-filter-flight-type');
+    if (typeSelect) {
+        typeSelect.addEventListener('change', () => {
+            window.goalsManager.refreshGoalsAndMetrics();
+        });
+    }
+
+    // מצב התחלתי: להסתיר אם נבחר ALL כברירת מחדל
+    if (periodSelect?.value === 'ALL' && weekSelect) {
+        weekSelect.style.display = 'none';
+        const weekLabel = document.querySelector('label[for="goals-week-select"]');
+        if (weekLabel) weekLabel.style.display = 'none';
+    }
+};
+
 let chartInstances = {
     goals: null,
     metrics: null
@@ -17,16 +90,22 @@ async function getPopDataForPeriod(selectedPeriod) {
     let popData = window.pilotPopulations;
     let periodToFetch = selectedPeriod;
 
-    // חישוב עצמאי ובטוח של התקופה הנוכחית אם לא נבחרה תקופה ספציפית
+    // חישוב התקופה הנוכחית דרך הגדרות המנהל במקום חישוב מתמטי נוקשה
     if (!periodToFetch || periodToFetch === "ALL") {
-        const d = new Date();
-        let year = d.getFullYear();
-        const month = d.getMonth();
-        if (month === 11) {
-            year++;
-            periodToFetch = `1/${year.toString().slice(-2)}`;
+        if (typeof window.getPeriodName === 'function') {
+            // מביא את התקופה המדויקת לפי הגדרות המנהל (planningSettings)
+            periodToFetch = window.getPeriodName(new Date());
         } else {
-            periodToFetch = `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
+            // גיבוי אחרון בלבד (אם הפונקציה טרם נטענה)
+            const d = new Date();
+            let year = d.getFullYear();
+            const month = d.getMonth();
+            if (month === 11) {
+                year++;
+                periodToFetch = `1/${year.toString().slice(-2)}`;
+            } else {
+                periodToFetch = `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
+            }
         }
     }
 
@@ -53,105 +132,68 @@ async function getPopDataForPeriod(selectedPeriod) {
                 const { doc, getDoc } = window.firestoreFunctions;
                 const popSnap = await getDoc(doc(window.db, "settings", "populations"));
                 if (popSnap.exists()) popData = popSnap.data();
-            } catch(e) {}
+            } catch (e) { }
         }
         if (!popData) {
             try {
                 const { pilotPopulations } = await import('./adminManager.js');
                 popData = pilotPopulations;
-            } catch(e) {}
+            } catch (e) { }
         }
-        window.pilotPopulations = popData; 
+        window.pilotPopulations = popData;
     }
-    
+
     return popData || { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
 }
 
-// 1. אתחול מסך היעדים
-window.goalsManager.initGoalsScreen = async function () {
-    // --- אכלוס רשימת סוגי גיחות ---
-    const selectType = document.getElementById('goals-filter-flight-type');
-    if (selectType) {
-        const typesSet = new Set();
-        (window.savedFlights || []).forEach(f => {
-            if (f.data && f.data['סוג גיחה']) typesSet.add(f.data['סוג גיחה']);
-        });
+// פונקציית עזר חדשה לאכלוס תקופות שמושכת גם מהגיחות וגם מהגדרות
+async function populateGoalsPeriodSelect() {
+    const select = document.getElementById('goals-period-select');
+    if (!select) return;
 
-        selectType.innerHTML = '<option value="">כל הסוגים</option>';
-        Array.from(typesSet).sort().forEach(type => {
-            selectType.innerHTML += `<option value="${type}">${type}</option>`;
-        });
+    const periods = new Set();
+    const configs = window.planningSettings?.periodConfigs || {};
+    Object.keys(configs).forEach(p => periods.add(p.trim()));
 
-        if (!selectType.dataset.listenerAttached) {
-            selectType.addEventListener('change', window.goalsManager.refreshGoalsAndMetrics);
-            selectType.dataset.listenerAttached = "true";
-        }
-    }
-
-    // --- אכלוס רשימת התקופות מתוך עמוד הניהול ---
-    const periodSelect = document.getElementById('goals-period-select');
-    if (periodSelect) {
-        if (window.planningSettings && window.planningSettings.periodConfigs) {
-             const periods = Object.keys(window.planningSettings.periodConfigs).sort((a, b) => {
-                const [pA, yA] = a.split('/').map(Number);
-                const [pB, yB] = b.split('/').map(Number);
-                return (yA + pA / 10) - (yB + pB / 10);
-            });
-            
-            periodSelect.innerHTML = '<option value="ALL">כל התקופות</option>' + 
-                                     periods.map(p => `<option value="${p}">${p}</option>`).join('');
-
-            // בחירת התקופה הנוכחית כברירת מחדל
-            if (window.getPeriodName) {
-                const currPeriod = window.getPeriodName(new Date());
-                if (periods.includes(currPeriod)) {
-                    periodSelect.value = currPeriod;
-                }
+    // הוספת תקופות מתוך הגיחות - עם בדיקת תקינות
+    (window.savedFlights || []).forEach(f => {
+        if (f.date && typeof window.getPeriodName === 'function') {
+            const p = window.getPeriodName(f.date);
+            // אם קיבלנו תקופה שבורה (כמו 1/00), נתעלם ממנה
+            if (p && !p.includes('/00')) {
+                periods.add(p.trim());
             }
         }
+    });
 
-        if (!periodSelect.dataset.listenerAttached) {
-            periodSelect.addEventListener('change', () => {
-                window.goalsManager.updateGoalsSubPops();
-            });
-            periodSelect.dataset.listenerAttached = "true";
-        }
+    const sortedPeriods = Array.from(periods).sort((a, b) => {
+        const [pA, yA] = a.split('/');
+        const [pB, yB] = b.split('/');
+        return (Number(yB) + Number(pB) / 10) - (Number(yA) + Number(pA) / 10);
+    });
+
+    select.innerHTML = '<option value="ALL">כל התקופות</option>';
+    sortedPeriods.forEach(p => {
+        select.innerHTML += `<option value="${p}">${p}</option>`;
+    });
+}
+
+window.goalsManager.populateFlightTypeSelect = function() {
+    const typeSelect = document.getElementById('goals-filter-flight-type');
+    if (!typeSelect) {
+        console.warn("Dropdown 'goals-filter-flight-type' not found.");
+        return;
     }
 
-    const weekSelect = document.getElementById('goals-week-select');
-    if (weekSelect && !weekSelect.dataset.listenerAttached) {
-        weekSelect.addEventListener('change', window.goalsManager.refreshGoalsAndMetrics);
-        weekSelect.dataset.listenerAttached = "true";
-    }
+    // גישה לרשימה מתוך המשתנה הגלובלי שהוגדר ב-adminManager
+    // אם window.personnelLists לא זמין, נוודא שיש גיבוי או נבצע Import
+    const types = window.personnelLists?.flightTypes || ["יום אימון", "חניכים", "הסבת מדריכים", "צ'ק", "השכלה", "פנימי", "אבלואציה"];
 
-    const popTypeSelect = document.getElementById('goals-pop-type');
-    const subPopSelect = document.getElementById('goals-sub-pop');
-
-    if (popTypeSelect && !popTypeSelect.dataset.listenerAttached) {
-        popTypeSelect.addEventListener('change', () => {
-            window.goalsManager.updateGoalsSubPops();
-        });
-        popTypeSelect.dataset.listenerAttached = "true";
-    }
-
-    if (subPopSelect && !subPopSelect.dataset.listenerAttached) {
-        subPopSelect.addEventListener('change', window.goalsManager.refreshGoalsAndMetrics);
-        subPopSelect.dataset.listenerAttached = "true";
-    }
-
-    const goalFlightSelector = document.getElementById('stats-goal-flight-selector');
-    if (goalFlightSelector && !goalFlightSelector.dataset.listenerAttached) {
-        goalFlightSelector.addEventListener('change', window.goalsManager.refreshGoalsChart);
-        goalFlightSelector.dataset.listenerAttached = "true";
-    }
-
-    const metricSelector = document.getElementById('stats-metric-selector');
-    if (metricSelector && !metricSelector.dataset.listenerAttached) {
-        metricSelector.addEventListener('change', window.goalsManager.refreshMetricsChart);
-        metricSelector.dataset.listenerAttached = "true";
-    }
-
-    await window.goalsManager.updateGoalsSubPops();
+    // בניית האופציות
+    typeSelect.innerHTML = '<option value="ALL">כל הסוגים</option>' +
+        types.map(type => `<option value="${type}">${type}</option>`).join('');
+    
+    console.log("DEBUG: Flight types dropdown populated.");
 };
 
 // 2. עדכון רשימת תתי-האוכלוסיות (קורסים/קבוצות)
@@ -199,116 +241,92 @@ window.goalsManager.updateGoalsSubPops = async function () {
 
 // 3. סינון הגיחות ורינדור הגרפים
 window.goalsManager.refreshGoalsAndMetrics = async function () {
-    const selectedPeriod = document.getElementById('goals-period-select')?.value;
-    const selectedWeek = parseInt(document.getElementById('goals-week-select')?.value);
-    
+    console.log("DEBUG: Refreshing goals with Type filter...");
+
+    const periodSelect = document.getElementById('goals-period-select');
+    const weekSelect = document.getElementById('goals-week-select');
+    // הוספת קריאה לאלמנט של סוג הגיחה
+    const typeSelect = document.getElementById('goals-filter-flight-type');
+
+    const selectedPeriod = periodSelect?.value;
+    const selectedWeek = weekSelect?.value;
+    const selectedType = typeSelect?.value; // קריאת סוג הגיחה הנבחר
+
     try {
-        const type = document.getElementById('goals-pop-type')?.value;
-        const subPopName = document.getElementById('goals-sub-pop')?.value.trim() || "ALL";
-        const selectedFlightType = document.getElementById('goals-filter-flight-type')?.value;
-
-        const normalize = (name) => name ? name.trim().replace(/&quot;/g, '"').replace(/["']/g, '"') : "";
-
         let filtered = (window.savedFlights || []).filter(f =>
             f.executionStatus !== 'טרם דווחה' && f.executionStatus !== 'בוטלה'
         );
 
+        // 1. סינון תקופה
         if (selectedPeriod && selectedPeriod !== "ALL" && selectedPeriod !== "") {
             filtered = filtered.filter(f => {
-                const rawPeriod = f.isAdminAdded ? f.period : (window.getPeriodName ? window.getPeriodName(f.date) : f.period);
+                const rawPeriod = f.isAdminAdded ? f.period : window.getPeriodName(f.date);
                 return String(rawPeriod || '').trim() === selectedPeriod.trim();
             });
         }
 
-        if (selectedWeek && !isNaN(selectedWeek) && selectedPeriod && window.planningSettings) {
-            const planning = window.planningSettings;
+        // 2. סינון שבוע
+        if (selectedWeek && selectedWeek !== "ALL" && selectedWeek !== "") {
             filtered = filtered.filter(f => {
-                if (!f.date) return false;
-                const reportDate = new Date(f.date);
-                reportDate.setHours(0, 0, 0, 0);
-
-                let baseDateStr = null;
-                if (selectedPeriod === window.getPeriodName?.(new Date(planning.periodCurrStart))) baseDateStr = planning.periodCurrStart;
-                else if (selectedPeriod === window.getPeriodName?.(new Date(planning.periodPrevStart))) baseDateStr = planning.periodPrevStart;
-                else if (selectedPeriod === window.getPeriodName?.(new Date(planning.periodNextStart))) baseDateStr = planning.periodNextStart;
-
-                if (baseDateStr) {
-                    const baseDate = new Date(baseDateStr);
-                    baseDate.setHours(0, 0, 0, 0);
-                    baseDate.setDate(baseDate.getDate() - baseDate.getDay()); 
-
-                    const diffDays = Math.round((reportDate - baseDate) / (1000 * 60 * 60 * 24));
-                    const faultWeekNum = Math.floor(diffDays / 7) + 1;
-                    return faultWeekNum === selectedWeek;
-                }
-                return true; 
+                const flightWeek = f.week || window.goalsManager.getWeekNumber(f.date, selectedPeriod);
+                return String(flightWeek) === String(selectedWeek);
             });
         }
 
-        if (selectedFlightType) {
-            filtered = filtered.filter(f => f.data?.['סוג גיחה'] === selectedFlightType);
+        // 3. הוספת הסינון לפי סוג גיחה (התיקון)
+        if (selectedType && selectedType !== "ALL" && selectedType !== "") {
+            filtered = filtered.filter(f => {
+                return String(f.data?.['סוג גיחה'] || '').trim() === selectedType.trim();
+            });
         }
 
-        if (type && type !== "") {
-            let popData = await getPopDataForPeriod(selectedPeriod);
-
-            if (popData) {
-                let groups = [];
-                if (type === 'instructors') groups = popData.instructorGroups || [];
-                else if (type === 'conversion') groups = popData.conversionGroups || [];
-                else groups = popData.courses || [];
-
-                const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName.trim().replace(/["']/g, '"');
-
-                let relevantPilots = [];
-                if (cleanSubPopName === "ALL" || cleanSubPopName === "") {
-                    groups.forEach(g => {
-                        let members = g.members || g.students || [];
-                        if (g.inactiveStudents) members = members.filter(m => !g.inactiveStudents.includes(m));
-                        relevantPilots.push(...members);
-                    });
-                    relevantPilots = [...new Set(relevantPilots)];
-                } else {
-                    const group = groups.find(g => {
-                        const gName = g.name ? g.name.trim().replace(/["']/g, '"') : "";
-                        return gName === cleanSubPopName;
-                    });
-                    if (group) {
-                        let members = group.members || group.students || [];
-                        if (group.inactiveStudents) members = members.filter(m => !group.inactiveStudents.includes(m));
-                        relevantPilots = members;
-                    }
-                }
-
-                // ניקוי רווחים בלבד, בדיוק כמו במעקב הקבוצתי
-                const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
-
-                filtered = filtered.filter(f => {
-                    const fData = f.data || {};
-                    const pilotsInFlight = [
-                        fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
-                    ].map(p => p?.toString().trim()).filter(Boolean);
-
-                    return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
-                });
-            }
-        }
+        console.log("DEBUG: Filtered count after all filters:", filtered.length);
 
         currentFilteredFlights = filtered;
         renderGoalsChart(filtered);
         renderMetricsUtilizationChart(filtered);
+
     } catch (error) {
-        console.error("Error in refreshGoalsAndMetrics:", error);
+        console.error("CRITICAL ERROR in refreshGoalsAndMetrics:", error);
     }
 };
+// פונקציית עזר מאוחדת לחישוב מספר שבוע לפי תקופה
+window.goalsManager.getWeekNumber = function (dateVal, periodName) {
+    if (!window.planningSettings?.periodConfigs?.[periodName]) return null;
+
+    const config = window.planningSettings.periodConfigs[periodName];
+    const reportDate = new Date(dateVal);
+    const startDate = new Date(config.startDate);
+
+    // בדיקת תקינות תאריכים
+    if (isNaN(reportDate.getTime()) || isNaN(startDate.getTime())) return null;
+
+    const diffDays = Math.floor((reportDate - startDate) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return null;
+
+    const weekNum = Math.floor(diffDays / 7) + 1;
+
+    // הגבלה למספר השבועות המוגדר בתקופה (בדרך כלל 26)
+    return weekNum;
+};
+
+
+function safeDate(dateVal) {
+    if (dateVal instanceof Date) return dateVal;
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? null : d;
+}
 
 function renderGoalsChart(flights) {
-    const id = 'chart-goals-status';
-    const ctx = document.getElementById(id);
-    const selector = document.getElementById('stats-goal-flight-selector');
-    if (!ctx || !selector) return;
 
+    const id = 'chart-goals-status';
+    // מוודאים שהאלמנט קיים לפני שממשיכים
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+
+    // קריאה לפונקציה המתוקנת
     destroyChartIfExists('goals', id);
+    const selector = document.getElementById('stats-goal-flight-selector');
 
     const currentSelectedName = selector.value;
     const namesSet = new Set();
@@ -318,7 +336,7 @@ function renderGoalsChart(flights) {
 
     const newHtml = '<option value="">כל הגיחות</option>' +
         Array.from(namesSet).map(name => `<option value="${name}" ${name === currentSelectedName ? 'selected' : ''}>${name}</option>`).join('');
-    
+
     if (selector.innerHTML !== newHtml) {
         selector.innerHTML = newHtml;
     }
@@ -366,16 +384,73 @@ function renderGoalsChart(flights) {
     });
 }
 
+
+window.goalsManager.populateWeeksFromAdmin = function () {
+    const weekSelect = document.getElementById('goals-week-select');
+    const periodSelect = document.getElementById('goals-period-select');
+    if (!weekSelect || !periodSelect || !window.planningSettings) return;
+
+    const activePeriod = periodSelect.value;
+    const config = window.planningSettings.periodConfigs?.[activePeriod];
+
+    weekSelect.innerHTML = '<option value="ALL">כל השבועות</option>';
+
+    if (config?.weeks) {
+        for (let i = 1; i <= config.weeks; i++) {
+            weekSelect.innerHTML += `<option value="${i}">שבוע ${i}</option>`;
+        }
+    }
+};
+
+window.goalsManager.populateWeekSelect = function () {
+    const weekSelect = document.getElementById('goals-week-select');
+    const periodSelect = document.getElementById('goals-period-select');
+    if (!weekSelect || !periodSelect) return;
+
+    const selectedPeriod = periodSelect.value;
+    const currentVal = weekSelect.value;
+
+    // איסוף כל השבועות הקיימים לגיחות בתקופה שנבחרה
+    const weeksSet = new Set();
+
+    (window.savedFlights || []).forEach(f => {
+        // סינון לפי תקופה
+        const fPeriod = window.getPeriodName(f.date);
+        if (selectedPeriod === "ALL" || fPeriod === selectedPeriod) {
+            // שימוש בשדה week מהנתונים (שראינו שהוא קיים)
+            if (f.week) {
+                weeksSet.add(Number(f.week));
+            }
+        }
+    });
+
+    // ניקוי ואכלוס מחדש
+    weekSelect.innerHTML = '<option value="ALL">כל השבועות</option>';
+
+    // מיון מספרי
+    Array.from(weeksSet).sort((a, b) => a - b).forEach(w => {
+        weekSelect.innerHTML += `<option value="${w}">שבוע ${w}</option>`;
+    });
+
+    // החזרת הבחירה הקודמת אם קיימת
+    if (currentVal && (currentVal === "ALL" || weeksSet.has(Number(currentVal)))) {
+        weekSelect.value = currentVal;
+    }
+};
+
 function renderMetricsUtilizationChart(flights) {
     const id = 'chart-metrics-utilization';
     const ctx = document.getElementById(id);
     const selector = document.getElementById('stats-metric-selector');
     if (!ctx || !selector) return;
 
+    console.log("DEBUG: Rendering Metrics Chart. Flights count:", flights.length);
+
     destroyChartIfExists('metrics', id);
 
     const metricsData = {};
     flights.forEach(f => {
+        // וודאי שאנחנו מחפשים בשדה הנכון - המדדים נמצאים בתוך f.data['מדדי ביצוע']
         const selectedMetrics = Array.isArray(f.data?.['מדדי ביצוע']) ? f.data['מדדי ביצוע'] : [];
         selectedMetrics.forEach(m => {
             if (m && m.main && m.value) {
@@ -384,6 +459,8 @@ function renderMetricsUtilizationChart(flights) {
             }
         });
     });
+
+    console.log("DEBUG: Metrics Data keys:", Object.keys(metricsData));
 
     const currentSelected = selector.value;
     const newHtml = Object.keys(metricsData).map(m =>
@@ -395,7 +472,7 @@ function renderMetricsUtilizationChart(flights) {
     }
 
     const activeMetric = selector.value;
-    
+
     if (!activeMetric || !metricsData[activeMetric]) return;
 
     const subLabels = Object.keys(metricsData[activeMetric]);
@@ -432,10 +509,13 @@ function renderMetricsUtilizationChart(flights) {
 }
 
 function destroyChartIfExists(key, canvasId) {
+    // השמדה דרך המשתנה הגלובלי שלנו
     if (chartInstances[key]) {
         chartInstances[key].destroy();
         chartInstances[key] = null;
     }
+
+    // השמדה דרך ה-Registry של Chart.js (זה החלק החשוב שמונע את השגיאה)
     const existingChart = Chart.getChart(canvasId);
     if (existingChart) {
         existingChart.destroy();

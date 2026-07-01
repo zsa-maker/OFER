@@ -84,6 +84,13 @@ export async function showFormStep2(flightStatus, flightData = null) {
             await loadPersonnelLists().catch(e => console.warn("List load skipped:", e));
         }
         await loadGoalsAndSystems().catch(e => console.warn("Goals load skipped:", e));
+
+        // --- תוספת: טעינת נתוני האוכלוסיות והשיוכים באופן אוטומטי לטופס ---
+        if (typeof window.loadPopulationsForAdmin === 'function') {
+            await window.loadPopulationsForAdmin().catch(e => console.warn("Populations load skipped:", e));
+        }
+        // -------------------------------------------------------------
+
         window.goalConfigurations = goalConfigurations;
         window.systemClassifications = systemClassifications;
     } catch (e) {
@@ -431,6 +438,10 @@ function attachEventListeners() {
         typeSelect.onchange = () => {
             if (typeSelect.value === 'אחר') typeOther.classList.remove('hidden');
             else typeOther.classList.add('hidden');
+
+            // קריאה לפונקציית הסינון החדשה שהוספנו
+            filterFlightNamesByType(typeSelect.value);
+
             checkAndPopulateGoals();
             const remarksContainer = document.getElementById('general-remarks-container');
             if (remarksContainer) {
@@ -443,9 +454,80 @@ function attachEventListeners() {
         };
     }
     if (nameInput) nameInput.onchange = checkAndPopulateGoals;
+    const dateInput = document.getElementById('flight-date');
+    if (dateInput) {
+        dateInput.onchange = async (e) => {
+            const date = new Date(e.target.value);
+            const period = window.getPeriodName(date); // פונקציה קיימת ב-adminManager
+
+            if (period) {
+                console.log("תקופה זוהתה:", period);
+                const periodData = await window.fetchPopulationsForPeriod(period);
+
+                if (periodData) {
+                    // 1. עדכון הטייסים (PILOTS)
+                    const pilotNames = window.getAllPilotsFromPopulations(periodData);
+                    updateDropdown('pilot-right', pilotNames);
+                    updateDropdown('pilot-left', pilotNames);
+
+                    // 2. עדכון הגיחות (FLIGHT NAMES) - יתעדכן אוטומטית ע"י filterFlightNamesByType
+                    // רק צריך לעדכן את המשתנה הגלובלי שהפונקציה משתמשת בו
+                    window.pilotPopulations = periodData;
+
+                    // הפעלת פילטר הגיחות מחדש לפי סוג הגיחה הנוכחי
+                    const typeSelect = document.getElementById('flight-type-select');
+                    if (typeSelect) filterFlightNamesByType(typeSelect.value);
+
+                    showToast(`הנתונים עודכנו לתקופה ${period}`, 'blue');
+                }
+            }
+        };
+    }
+}
+
+function updateDropdown(elementId, items) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const currentVal = el.value;
+    el.innerHTML = '<option value="" disabled selected>בחר...</option>' + 
+                   items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
+    if (items.includes(currentVal)) el.value = currentVal;
 }
 
 export { attachEventListeners };
+
+// פונקציית הסינון צריכה לשבת כאן - מחוץ לפונקציה attachEventListeners אבל ללא בלוק ה-if שמפעיל אותה
+function filterFlightNamesByType(selectedType) {
+    const nameSelect = document.getElementById('flight-name');
+    if (!nameSelect) return;
+
+    const currentVal = nameSelect.value;
+    nameSelect.innerHTML = '<option value="" disabled selected>בחר...</option>';
+
+    const allFlightNames = window.personnelLists?.flightNames || [];
+    let allowedNames = allFlightNames;
+
+    // משיכת ההגדרות מהאוכלוסייה הנוכחית במידה והן קיימות
+    if (selectedType && window.pilotPopulations?.flightTypeMapping?.[selectedType]) {
+        const mappedNames = window.pilotPopulations.flightTypeMapping[selectedType];
+        if (mappedNames.length > 0) {
+            allowedNames = mappedNames;
+        }
+    }
+
+    allowedNames.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        nameSelect.appendChild(opt);
+    });
+
+    if (currentVal && allowedNames.includes(currentVal)) {
+        nameSelect.value = currentVal;
+    } else {
+        nameSelect.value = ""; // איפוס במקרה שהערך הקודם לא חוקי לסוג הגיחה החדש
+    }
+}
 
 function populateDatalists() {
     const fill = (id, list, addNoneOption = false) => {
@@ -687,10 +769,10 @@ function collectMetricsData() {
     currentForm.data['מדדי ביצוע'] = selectedMetrics;
 }
 
-window.handleRemarkTypeChange = function(value) {
+window.handleRemarkTypeChange = function (value) {
     const factorWrapper = document.getElementById('remark-factor-wrapper');
     if (!factorWrapper) return;
-    
+
     if (value === 'מעטפת') {
         factorWrapper.classList.remove('hidden');
     } else {

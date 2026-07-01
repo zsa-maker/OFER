@@ -526,6 +526,36 @@
                     </div>
                 </div>
             </div>
+            <!-- תוספת לשיוך שמות גיחות לסוגי גיחות -->
+            <div class="border p-4 rounded-lg bg-gray-50 flex flex-col mt-6">
+                <h4 class="font-bold text-gray-800 mb-3 border-b pb-2">שיוך שמות גיחות לסוגי גיחות</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="flex flex-col">
+                        <label class="block text-sm font-bold mb-1 text-gray-700">בחר סוג גיחה להגדרה:</label>
+                        <select id="mapping-flight-type-select" onchange="window.renderFlightTypeMappingUI()"
+                            class="w-full border rounded p-2 text-sm mb-1 focus:ring-ofer-orange">
+                            <option value="" disabled selected>בחר סוג גיחה...</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mb-4">* סוגי הגיחה נשאבים אוטומטית מרשימת סוגי הגיחות.</p>
+
+                        <div id="all-mapped-types-summary"
+                            class="flex-grow space-y-2 overflow-y-auto max-h-64 p-2 bg-gray-100 rounded border"></div>
+                    </div>
+
+                    <div class="bg-white p-3 rounded shadow border-r-4 border-teal-400">
+                        <h5 class="font-bold text-teal-800 mb-2 text-sm" id="mapping-type-title">בחר סוג גיחה כדי לשייך
+                            שמות</h5>
+                        <input type="text" id="search-flight-type-mapping" oninput="window.renderFlightTypeMappingUI()"
+                            placeholder="חפש שם גיחה להוספה..." class="w-full border rounded p-1 text-xs mb-1">
+                        <div id="options-flight-type-mapping"
+                            class="border rounded p-1 h-32 overflow-y-auto mb-1 bg-gray-50 custom-scrollbar"></div>
+                        <button onclick="window.addFlightNamesToType()"
+                            class="w-full bg-teal-500 hover:bg-teal-600 transition text-white py-1 rounded text-xs font-bold">הוסף
+                            נבחרים</button>
+                        <ul id="selected-flights-for-type" class="space-y-1 mt-2"></ul>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

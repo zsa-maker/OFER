@@ -74,7 +74,36 @@ const missionDatabase = {
             selectAll.parentElement.style.visibility = 'visible';
             selectAll.onchange = (e) => this.toggleSelectAll(e.target.checked);
         }
+        const dbTypeFilter = document.getElementById('db-filter-type');
+        if (dbTypeFilter) {
+            dbTypeFilter.addEventListener('change', async (e) => {
+                const selectedType = e.target.value;
+                const flightNameFilter = document.getElementById('db-filter-flight-name');
 
+                if (!selectedType) {
+                    // אם נוקה סוג הגיחה, נחזיר את כל שמות הגיחות הקיימות בטבלה
+                    missionDatabase.populateSelect('db-filter-flight-name', 'שם גיחה', missionDatabase.currentFilteredData || missionDatabase.allData);
+                } else {
+                    // שאיבת התקופה הפעילה כרגע במסנן כדי למשוך את הגדרות המיפוי
+                    const activePeriod = document.getElementById('db-filter-period')?.value;
+                    let mappingData = [];
+
+                    if (activePeriod && window.firestoreFunctions && window.db) {
+                        const safePeriodName = activePeriod.replace(/\//g, '-');
+                        try {
+                            const popSnap = await window.firestoreFunctions.getDoc(window.firestoreFunctions.doc(window.db, "populations_by_period", safePeriodName));
+                            if (popSnap.exists() && popSnap.data().flightTypeMapping?.[selectedType]) {
+                                mappingData = popSnap.data().flightTypeMapping[selectedType];
+                            }
+                        } catch (err) { }
+                    }
+
+                    // עדכון הפילטר של שמות הגיחות עם המיפוי הרלוונטי (ואיחוד עם מה שכבר קיים בטבלה כדי לא להעלים נתוני עבר)
+                    missionDatabase.updateSpecificDropdown('db-filter-flight-name', mappingData, missionDatabase.currentFilteredData || missionDatabase.allData, 'שם גיחה');
+                }
+
+            });
+        }
         this.applyFilters();
     },
 
@@ -285,7 +314,7 @@ const missionDatabase = {
             filtersToUpdate.forEach(id => this.populateSelect(id, this.KEY_MAP[id], finalData));
         }
     },
-    updateDropdownsByPeriod: async function(periodName, finalData) {
+    updateDropdownsByPeriod: async function (periodName, finalData) {
         const safePeriodName = periodName.replace(/\//g, '-');
         let periodPopulations = null;
 
@@ -309,9 +338,9 @@ const missionDatabase = {
         if (periodPopulations) {
             // איסוף הגיחות מתוך "מיפוי גיחות"
             if (periodPopulations.flightMapping) {
-                [...(periodPopulations.flightMapping.students || []), 
-                 ...(periodPopulations.flightMapping.instructors || []), 
-                 ...(periodPopulations.flightMapping.conversion || [])].forEach(f => relevantFlights.add(f));
+                [...(periodPopulations.flightMapping.students || []),
+                ...(periodPopulations.flightMapping.instructors || []),
+                ...(periodPopulations.flightMapping.conversion || [])].forEach(f => relevantFlights.add(f));
             }
             // איסוף טייסים מקורסים וקבוצות הסבה
             if (periodPopulations.courses) {
@@ -330,18 +359,18 @@ const missionDatabase = {
         this.updateSpecificDropdown('db-filter-flight-name', Array.from(relevantFlights), finalData, 'שם גיחה');
         this.updateSpecificDropdown('db-filter-instructorFem', Array.from(relevantInstructors), finalData, 'מדריכה');
         this.updateSpecificDropdown('db-filter-pilot', Array.from(relevantPilots), finalData, 'pilot_calculated');
-        
+
         // שאר הפילטרים (תאריכים, מאמנים, סטטוס, שבועות) יתעדכנו על בסיס הגיחות בפועל של התקופה (finalData)
         ['db-filter-type', 'db-filter-simulator', 'db-filter-status', 'db-filter-date', 'db-filter-week'].forEach(id => {
             this.populateSelect(id, this.KEY_MAP[id], finalData);
         });
     },
 
-    updateSpecificDropdown: function(elementId, configuredItems, finalData, dataKey) {
+    updateSpecificDropdown: function (elementId, configuredItems, finalData, dataKey) {
         const select = document.getElementById(elementId);
         if (!select) return;
         const currentVal = select.value;
-        
+
         // מוסיפים גם נתונים שקיימים היסטורית בטבלה לתקופה זו (כדי שיהיה אפשר לסנן אותם גם אם הוסרו מהניהול)
         let actualValues = [];
         finalData.forEach(item => {
@@ -606,12 +635,12 @@ const missionDatabase = {
         document.body.removeChild(link);
     },
 
-   deleteSelected: async function () {
+    deleteSelected: async function () {
         if (this.selectedFlights.size === 0) return;
         if (!confirm(`האם למחוק ${this.selectedFlights.size} גיחות?`)) return;
 
         const { doc, deleteDoc, setDoc } = window.firestoreFunctions;
-        
+
         // יצירת גיבוי של הגיחות שעומדות להימחק
         const backupFlights = [];
         for (const id of this.selectedFlights) {
@@ -629,7 +658,7 @@ const missionDatabase = {
             for (const id of this.selectedFlights) {
                 await deleteDoc(doc(window.db, "flights", id));
             }
-            
+
             // פונקציית ביטול המחיקה
             const undoDelete = async () => {
                 import('../components/modals.js').then(m => m.showToast('משחזר גיחות...', 'blue'));
@@ -649,7 +678,7 @@ const missionDatabase = {
             };
 
             showToast("המחיקה הושלמה", "green", 3000, undoDelete);
-            
+
             this.selectedFlights.clear();
             this.updateBulkDeleteUI();
             if (window.fetchFlights) await window.fetchFlights();

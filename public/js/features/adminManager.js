@@ -62,7 +62,8 @@ export let pilotPopulations = {
         students: [],
         instructors: [],
         conversion: [] // <--- הוספת שדה למיפוי גיחות הסבה
-    }
+    },
+    flightTypeMapping: {}
 };
 
 let currentEditingDate = null;
@@ -101,8 +102,15 @@ export async function initAdminPage() {
         }
     }
 
+    // נוסיף את זה כדי שברגע שנטענו נתונים - ה-UI יתעדכן
+    window.addEventListener('personnelListsUpdated', () => {
+        if (typeof window.renderFlightTypeMappingUI === 'function') {
+            window.renderFlightTypeMappingUI();
+        }
+    });
     planningState.currentDate = new Date();
     loadPlanningData();
+    window.activePeriod = window.getPeriodName(new Date());
     switchAdminTab('planning');
 }
 
@@ -154,9 +162,42 @@ export function switchAdminTab(tabId) {
             if (periods.includes(currPeriod)) periodSelect.value = currPeriod;
         }
 
-        loadPopulationsForAdmin(); // במקום renderPopulations() ישיר
+        loadPopulationsForAdmin(); // במקום renderPopulations() ישי
+        if (typeof window.renderFlightTypeMappingUI === 'function') {
+            window.renderFlightTypeMappingUI();
+        }
     }
 }
+
+// פונקציה לשליפת נתונים ספציפיים לתקופה בלי לעבור עמוד
+export async function fetchPopulationsForPeriod(periodName) {
+    if (!window.firestoreFunctions || !window.db) return null;
+    const { doc, getDoc } = window.firestoreFunctions;
+    const safePeriodName = periodName.replace(/\//g, '-');
+    
+    try {
+        const snap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
+        return snap.exists() ? snap.data() : null;
+    } catch (e) {
+        console.error("Error fetching period data:", e);
+        return null;
+    }
+}
+
+// פונקציית עזר להוצאת כל הטייסים מהקבוצות של תקופה
+export function getAllPilotsFromPopulations(pops) {
+    if (!pops) return [];
+    let all = [];
+    if (pops.instructorGroups) pops.instructorGroups.forEach(g => all.push(...g.members));
+    if (pops.courses) pops.courses.forEach(c => all.push(...c.students));
+    if (pops.conversionGroups) pops.conversionGroups.forEach(g => all.push(...g.members));
+    return [...new Set(all)]; // מסיר כפילויות
+}
+
+// חשיפה ל-Window
+window.fetchPopulationsForPeriod = fetchPopulationsForPeriod;
+window.getAllPilotsFromPopulations = getAllPilotsFromPopulations;
+
 
 export async function loadGoalsAndSystems() {
     if (!window.firestoreFunctions || !window.db) return;
@@ -230,9 +271,9 @@ export async function loadPersonnelLists() {
 export async function syncFromExistingFlights() {
     if (!savedFlights || savedFlights.length === 0) { showToast("לא נמצאו גיחות במערכת לסנכרון.", "yellow"); return; }
     if (!confirm("פעולה זו תסרוק את כל הגיחות הקיימות ותוסיף שמות חסרים לרשימות. להמשיך?")) return;
-    
+
     let addedCount = 0;
-    
+
     // שימוש במערכים רגילים כדי שנוכל להפעיל את isDuplicate
     const lists = {
         instructorsFemale: personnelLists.instructorsFemale || [],
@@ -245,18 +286,18 @@ export async function syncFromExistingFlights() {
 
     savedFlights.forEach(flight => {
         const d = flight.data || {};
-        const add = (key, listKey) => { 
-            const val = d[key]; 
-            if (val && typeof val === 'string' && val.trim().length > 1) { 
+        const add = (key, listKey) => {
+            const val = d[key];
+            if (val && typeof val === 'string' && val.trim().length > 1) {
                 const cleanVal = val.trim();
                 // אם הערך לא קיים (מתעלם מגרשיים), נוסיף אותו
-                if (!isDuplicate(lists[listKey], cleanVal)) { 
-                    lists[listKey].push(cleanVal); 
-                    addedCount++; 
-                } 
-            } 
+                if (!isDuplicate(lists[listKey], cleanVal)) {
+                    lists[listKey].push(cleanVal);
+                    addedCount++;
+                }
+            }
         };
-        
+
         add('מדריכה', 'instructorsFemale'); add('instructor-name-1', 'instructorsFemale');
         add('טייס ימין', 'pilots'); add('טייס שמאל', 'pilots'); add('pilot-right', 'pilots'); add('pilot-left', 'pilots');
         add('מתצפת', 'observers'); add('observer', 'observers');
@@ -264,42 +305,42 @@ export async function syncFromExistingFlights() {
     });
 
     Object.keys(lists).forEach(key => { personnelLists[key] = lists[key].sort(); });
-    
-    if (addedCount > 0) { 
-        await savePersonnelLists(); 
-        renderAllLists(); 
-        showToast(`נוספו ${addedCount} ערכים חדשים!`, "green"); 
-    } else { 
-        showToast("הכל מעודכן. לא נמצאו ערכים חדשים.", "blue"); 
+
+    if (addedCount > 0) {
+        await savePersonnelLists();
+        renderAllLists();
+        showToast(`נוספו ${addedCount} ערכים חדשים!`, "green");
+    } else {
+        showToast("הכל מעודכן. לא נמצאו ערכים חדשים.", "blue");
     }
 }
 
 export async function updateListsFromImport(newNamesData) {
     if (personnelLists.pilots.length === 0) await loadPersonnelLists();
     let hasChanges = false;
-    
-    const mergeNames = (category, newNames) => { 
-        if (!newNames || newNames.length === 0) return; 
-        const currentList = personnelLists[category] || []; 
-        
-        newNames.forEach(name => { 
-            const cleanName = name.trim(); 
+
+    const mergeNames = (category, newNames) => {
+        if (!newNames || newNames.length === 0) return;
+        const currentList = personnelLists[category] || [];
+
+        newNames.forEach(name => {
+            const cleanName = name.trim();
             // שימוש בבדיקת כפילויות חכמה
-            if (cleanName && !isDuplicate(currentList, cleanName)) { 
-                currentList.push(cleanName); 
-                hasChanges = true; 
-            } 
-        }); 
-        personnelLists[category] = currentList.sort(); 
+            if (cleanName && !isDuplicate(currentList, cleanName)) {
+                currentList.push(cleanName);
+                hasChanges = true;
+            }
+        });
+        personnelLists[category] = currentList.sort();
     };
-    
-    mergeNames('instructorsFemale', newNamesData.instructorsFemale); 
+
+    mergeNames('instructorsFemale', newNamesData.instructorsFemale);
     mergeNames('pilots', newNamesData.pilots);
-    
-    if (hasChanges) { 
-        const { doc, setDoc } = window.firestoreFunctions; 
-        if (window.db) await setDoc(doc(window.db, "settings", "personnel"), personnelLists); 
-        renderAllLists(); 
+
+    if (hasChanges) {
+        const { doc, setDoc } = window.firestoreFunctions;
+        if (window.db) await setDoc(doc(window.db, "settings", "personnel"), personnelLists);
+        renderAllLists();
     }
 }
 
@@ -355,7 +396,7 @@ export async function addPerson(type) {
     if (!name) return showToast("נא להזין ערך.", "yellow");
 
     if (!personnelLists[type]) personnelLists[type] = [];
-    
+
     if (isDuplicate(personnelLists[type], name)) return showToast("הערך כבר קיים ברשימה.", "red");
 
     personnelLists[type].push(name);
@@ -387,7 +428,7 @@ window.addFromPersonnelModal = async () => {
         input.value = '';
         await savePersonnelLists(true);
         window.filterPersonnelModal();
-        window.renderList(currentModalType); 
+        window.renderList(currentModalType);
 
         const undoAddModal = async () => {
             personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== name);
@@ -406,7 +447,7 @@ window.addFromPersonnelModal = async () => {
 export async function removePerson(type, index) {
     const nameToRemove = personnelLists[type][index];
     if (confirm(`למחוק את "${nameToRemove}"?`)) {
-        
+
         // גיבוי לטובת Undo
         const originalIndex = index;
 
@@ -422,7 +463,7 @@ export async function removePerson(type, index) {
             import('../components/modals.js').then(m => m.showToast(`המחיקה בוטלה, "${nameToRemove}" הוחזר.`, "blue"));
         };
 
-        import('../components/modals.js').then(m => 
+        import('../components/modals.js').then(m =>
             m.showToast(`נמחק ונשמר: ${nameToRemove}`, "green", 3000, undoRemove)
         );
     }
@@ -433,21 +474,21 @@ export async function editPerson(type, index) {
     const newName = prompt("ערוך ערך:", oldName);
 
     if (newName && newName.trim() && newName !== oldName) {
-        const finalNewName = newName.trim(); 
+        const finalNewName = newName.trim();
         const listWithoutCurrent = personnelLists[type].filter((_, i) => i !== index);
 
         if (isDuplicate(listWithoutCurrent, finalNewName)) {
             import('../components/modals.js').then(m => m.showToast("השם כבר קיים ברשימה.", "red"));
             return;
         }
-        
+
         personnelLists[type][index] = finalNewName;
         // המיון (.sort()) הוסר כדי לא לפגוע בסדר הגרירה!
         window.renderList(type);
         await savePersonnelLists(true);
-        
+
         // 2. סריקה ועדכון השם בכל הגיחות הקיימות במסד הנתונים
-       if (window.firestoreFunctions && window.db && window.savedFlights) {
+        if (window.firestoreFunctions && window.db && window.savedFlights) {
             import('../components/modals.js').then(m => m.showToast("מעדכן גיחות קיימות... נא להמתין", "blue"));
 
             try {
@@ -1317,11 +1358,11 @@ window.openAdvancedPersonnel = (type, label) => {
 
 window.filterPersonnelModal = () => {
     const rawSearchTerm = document.getElementById('personnel-search-input').value.toLowerCase();
-    
+
     // פונקציית עזר לניקוי תווים מיוחדים מהחיפוש - כך "יט 1" ימצא גם את "י"ט 1"
     const cleanString = (str) => typeof str === 'string' ? str.replace(/['"״׳]/g, '').trim() : '';
     const searchTerm = cleanString(rawSearchTerm);
-    
+
     const container = document.getElementById('personnel-modal-list-container');
     const items = personnelLists[currentModalType] || [];
 
@@ -1361,7 +1402,7 @@ window.filterPersonnelModal = () => {
 window.initMergePersonnel = async (indexOrOldName) => {
     let oldName = indexOrOldName;
     let originalIndex = -1;
-    
+
     // זיהוי אם קיבלנו אינדקס בטוח (מספר) ושליפת השם והאינדקס המדויקים
     if (typeof indexOrOldName === 'number') {
         originalIndex = indexOrOldName;
@@ -1372,7 +1413,7 @@ window.initMergePersonnel = async (indexOrOldName) => {
 
     // תיקון: סינון לפי האינדקס בלבד כדי להבטיח ששמות כפולים יופיעו ברשימה להמיזוג
     const availableNames = personnelLists[currentModalType].filter((n, idx) => idx !== originalIndex);
-    
+
     // ניקוי כפילויות ויזואליות ברשימת הבחירה עצמה בלבד
     const uniqueAvailableNames = [...new Set(availableNames)];
 
@@ -1431,7 +1472,7 @@ window.initMergePersonnel = async (indexOrOldName) => {
         try {
             const { doc, updateDoc } = window.firestoreFunctions;
             let count = 0;
-            const updatedFlightIds = []; 
+            const updatedFlightIds = [];
 
             const fieldMap = {
                 'instructorsFemale': ['מדריכה', 'instructor-name-1', 'מדריכה נוספת'],
@@ -1456,7 +1497,7 @@ window.initMergePersonnel = async (indexOrOldName) => {
 
                 if (changed) {
                     await updateDoc(doc(window.db, "flights", flight.id), { data: flight.data });
-                    updatedFlightIds.push(flight.id); 
+                    updatedFlightIds.push(flight.id);
                     count++;
                 }
             }
@@ -1467,7 +1508,7 @@ window.initMergePersonnel = async (indexOrOldName) => {
             } else {
                 personnelLists[currentModalType] = personnelLists[currentModalType].filter(n => n !== oldName);
             }
-            
+
             await savePersonnelLists(true);
 
             const undoMerge = async () => {
@@ -1527,7 +1568,7 @@ function getAllAssignedPilots() {
 // ==========================================
 window.draggedPopItem = null;
 
-window.onDragStartPop = function(e) {
+window.onDragStartPop = function (e) {
     const li = e.currentTarget;
     window.draggedPopItem = {
         type: li.dataset.type,
@@ -1536,14 +1577,14 @@ window.onDragStartPop = function(e) {
     };
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", li.dataset.midx);
-    
+
     setTimeout(() => li.classList.add('opacity-40', 'bg-gray-200', 'border-gray-400'), 0);
 };
 
-window.onDragOverPop = function(e) {
+window.onDragOverPop = function (e) {
     e.preventDefault();
     const li = e.currentTarget;
-    
+
     // מאפשרים גרירה רק בתוך אותה הקבוצה
     if (!window.draggedPopItem || window.draggedPopItem.type !== li.dataset.type || window.draggedPopItem.gidx !== parseInt(li.dataset.gidx)) return;
 
@@ -1564,12 +1605,12 @@ window.onDragOverPop = function(e) {
     }
 };
 
-window.onDragLeavePop = function(e) {
+window.onDragLeavePop = function (e) {
     const li = e.currentTarget;
     li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
 };
 
-window.onDropPop = async function(e) {
+window.onDropPop = async function (e) {
     e.preventDefault();
     const li = e.currentTarget;
     li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
@@ -1613,7 +1654,7 @@ window.onDropPop = async function(e) {
     await window.savePopulations(true);
 };
 
-window.onDragEndPop = function(e) {
+window.onDragEndPop = function (e) {
     e.currentTarget.classList.remove('opacity-40', 'bg-gray-200', 'border-gray-400');
     document.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-b-2', 'border-blue-500'));
     window.draggedPopItem = null;
@@ -2013,18 +2054,18 @@ window.filterFlightMappingList = () => {
 // ==========================================
 window.draggedMappingItem = null;
 
-window.onDragStartMapping = function(e, cat, index) {
+window.onDragStartMapping = function (e, cat, index) {
     window.draggedMappingItem = { cat, index };
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", index);
-    
+
     setTimeout(() => e.target.classList.add('opacity-40', 'bg-purple-100', 'border-purple-300'), 0);
 };
 
-window.onDragOverMapping = function(e, cat) {
+window.onDragOverMapping = function (e, cat) {
     e.preventDefault();
     const li = e.currentTarget;
-    
+
     // מניעת גרירה בין קטגוריות שונות (למשל מגיחות חניכים לגיחות מדריכים)
     if (!window.draggedMappingItem || window.draggedMappingItem.cat !== cat) return;
 
@@ -2045,11 +2086,11 @@ window.onDragOverMapping = function(e, cat) {
     }
 };
 
-window.onDragLeaveMapping = function(e) {
+window.onDragLeaveMapping = function (e) {
     e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-purple-500');
 };
 
-window.onDropMapping = async function(e, cat, dropIndex) {
+window.onDropMapping = async function (e, cat, dropIndex) {
     e.preventDefault();
     const li = e.currentTarget;
     li.classList.remove('border-t-2', 'border-b-2', 'border-purple-500');
@@ -2075,22 +2116,22 @@ window.onDropMapping = async function(e, cat, dropIndex) {
     await window.savePopulations(true);
 };
 
-window.onDragEndMapping = function(e) {
+window.onDragEndMapping = function (e) {
     e.currentTarget.classList.remove('opacity-40', 'bg-purple-100', 'border-purple-300');
     document.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-b-2', 'border-purple-500'));
     window.draggedMappingItem = null;
 };
 
- // פונקציית עזר לחיפוש וסינון גיחות - מבטיחה שגיחה שנבחרה תיעלם מהרשימה
+// פונקציית עזר לחיפוש וסינון גיחות - מבטיחה שגיחה שנבחרה תיעלם מהרשימה
 window.renderFlightMappingUI = () => {
     const categories = ['students', 'instructors', 'conversion'];
     const allFlightNames = personnelLists.flightNames || [];
     const mapping = pilotPopulations.flightMapping || { students: [], instructors: [], conversion: [] };
-    
+
     // תיקון: הבטחת הכללת קטגוריית ההסבה בחישוב הגיחות שכבר סווגו
     const allMapped = [
-        ...(mapping.students || []), 
-        ...(mapping.instructors || []), 
+        ...(mapping.students || []),
+        ...(mapping.instructors || []),
         ...(mapping.conversion || [])
     ];
 
@@ -2189,10 +2230,18 @@ function getAllMappedFlightNames() {
 }
 
 export async function loadPopulationsForAdmin() {
+    let selectedPeriod = '';
     const periodSelect = document.getElementById('admin-population-period');
-    if (!periodSelect || !periodSelect.value) return;
 
-    const selectedPeriod = periodSelect.value;
+    // אם אנחנו במסך מנהל ויש ערך - ניקח אותו. אחרת ניקח אוטומטית את התקופה של היום
+    if (periodSelect && periodSelect.value) {
+        selectedPeriod = periodSelect.value;
+    } else {
+        selectedPeriod = window.getPeriodName(new Date());
+    }
+
+    if (!selectedPeriod) return; // מונע קריסה אם אין שום תקופה
+
     const safePeriodName = selectedPeriod.replace(/\//g, '-');
 
     if (window.firestoreFunctions && window.db) {
@@ -2236,7 +2285,8 @@ export async function loadPopulationsForAdmin() {
                     // 3. Fallback אחרון: מבנה ריק לחלוטין
                     window.pilotPopulations = {
                         instructorGroups: [], courses: [], conversionGroups: [],
-                        flightMapping: { students: [], instructors: [], conversion: [] }
+                        flightMapping: { students: [], instructors: [], conversion: [] },
+                        flightTypeMapping: {} // <--- הוסיפי את השורה הזו כאן
                     };
                 }
             }
@@ -2244,6 +2294,11 @@ export async function loadPopulationsForAdmin() {
             // וידוא שהאובייקט המקומי בקובץ מתעדכן בדיוק לאובייקט החדש שיצרנו (למניעת באגים בתצוגה)
             if (typeof pilotPopulations !== 'undefined') {
                 Object.assign(pilotPopulations, JSON.parse(JSON.stringify(window.pilotPopulations)));
+            }
+
+            // הוספת שורת הרינדור כאן מוודאת שזה קורה מיד בסיום הטעינה:
+            if (typeof window.renderFlightTypeMappingUI === 'function') {
+                window.renderFlightTypeMappingUI();
             }
 
             renderPopulations();
@@ -2320,6 +2375,135 @@ window.renderAllLists = function () {
     Object.keys(personnelLists).forEach(type => window.renderList(type));
 };
 
+window.renderFlightTypeMappingUI = () => {
+    const typeSelect = document.getElementById('mapping-flight-type-select');
+    const searchInput = document.getElementById('search-flight-type-mapping');
+    const optionsContainer = document.getElementById('options-flight-type-mapping');
+    const selectedList = document.getElementById('selected-flights-for-type');
+    const title = document.getElementById('mapping-type-title');
+
+    if (!typeSelect) return;
+
+    // 1. שמירת הערך הנבחר כרגע (כדי לא לאבד אותו בריענון)
+    const currentSelectedVal = typeSelect.value;
+
+    // 2. אכלוס מחדש של ה-Dropdown מתוך personnelLists
+    typeSelect.innerHTML = '<option value="" disabled selected>בחר סוג גיחה...</option>';
+
+    // מוודאים שיש נתונים, אם לא - משאירים ריק ומחכים לאירוע עדכון
+    const types = window.personnelLists?.flightTypes || [];
+    types.forEach(type => {
+        const opt = document.createElement('option');
+        opt.value = type;
+        opt.textContent = type;
+        typeSelect.appendChild(opt);
+    });
+
+    // 3. החזרת הבחירה
+    if (currentSelectedVal) {
+        typeSelect.value = currentSelectedVal;
+    }
+
+    // אם אין רכיבי UI נוספים כרגע (כי לא נבחר סוג), אין מה להמשיך
+    if (!optionsContainer || !selectedList) return;
+    const selectedType = typeSelect.value;
+    if (!selectedType) {
+        optionsContainer.innerHTML = '<div class="text-gray-400 text-[10px] text-center p-2">בחר סוג גיחה תחילה</div>';
+        selectedList.innerHTML = '';
+        return;
+    }
+
+    title.textContent = `שמות גיחות משויכים ל: ${selectedType}`;
+
+    // וידוא קיום אובייקט במשתנה המקומי הנשמר ישירות ל-Firestore
+    if (!pilotPopulations.flightTypeMapping) pilotPopulations.flightTypeMapping = {};
+    if (!pilotPopulations.flightTypeMapping[selectedType]) pilotPopulations.flightTypeMapping[selectedType] = [];
+
+    const mappedNames = pilotPopulations.flightTypeMapping[selectedType];
+    const allFlightNames = window.personnelLists?.flightNames || [];
+    const searchVal = searchInput ? searchInput.value.toLowerCase() : "";
+
+    // רינדור אפשרויות זמינות (שלא נבחרו עדיין ומתאימות לחיפוש)
+    const available = allFlightNames.filter(name =>
+        !mappedNames.includes(name) && name.toLowerCase().includes(searchVal)
+    );
+
+    optionsContainer.innerHTML = available.map(name => `
+        <label class="flex items-center space-x-2 space-x-reverse text-xs hover:bg-gray-100 p-1 cursor-pointer">
+            <input type="checkbox" class="type-mapping-cb" value="${name.replace(/"/g, '&quot;')}">
+            <span>${name}</span>
+        </label>
+    `).join('') || '<div class="text-gray-400 text-[10px] text-center p-2">אין שמות גיחות זמינים</div>';
+
+    // רינדור שמות שנבחרו
+    selectedList.innerHTML = mappedNames.map((name, idx) => `
+        <li class="flex justify-between items-center text-xs bg-teal-50 p-1 rounded border mb-1 border-transparent hover:border-teal-300">
+            <span class="font-medium text-gray-800 truncate mr-1">${name}</span>
+            <button onclick="window.removeFlightNameFromType('${selectedType}', ${idx})" class="text-red-400 hover:text-red-600 font-bold px-2 z-10">×</button>
+        </li>
+    `).join('');
+
+    // רינדור תצוגה מסכמת של כל הקבוצות שנוצרו
+    const summaryContainer = document.getElementById('all-mapped-types-summary');
+    if (summaryContainer) {
+        let summaryHtml = '<h5 class="font-bold text-gray-700 mb-2 border-b pb-1">סוגי גיחות עם שיוכים:</h5>';
+        const mappingObj = pilotPopulations.flightTypeMapping || {};
+        let hasAnyMapping = false;
+
+        for (const [fType, fNames] of Object.entries(mappingObj)) {
+            if (fNames && fNames.length > 0) {
+                hasAnyMapping = true;
+                summaryHtml += `
+                    <div class="bg-white p-2 border rounded shadow-sm mb-2">
+                        <div class="font-bold text-teal-700 text-sm mb-1">${fType} <span class="text-xs text-gray-500">(${fNames.length} גיחות)</span></div>
+                        <div class="flex flex-wrap gap-1">
+                            ${fNames.map(n => `<span class="bg-teal-50 text-teal-800 text-[10px] px-2 py-1 rounded border border-teal-200">${n}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        if (!hasAnyMapping) {
+            summaryHtml += '<div class="text-xs text-gray-400 italic">טרם נוצרו שיוכים למערכת.</div>';
+        }
+
+        summaryContainer.innerHTML = summaryHtml;
+    }
+};
+
+window.addFlightNamesToType = async () => {
+    const selectedType = document.getElementById('mapping-flight-type-select').value;
+    if (!selectedType) return;
+
+    const checkboxes = document.querySelectorAll('.type-mapping-cb:checked');
+    let changesMade = false;
+
+    if (!pilotPopulations.flightTypeMapping) pilotPopulations.flightTypeMapping = {};
+    if (!pilotPopulations.flightTypeMapping[selectedType]) pilotPopulations.flightTypeMapping[selectedType] = [];
+
+    checkboxes.forEach(cb => {
+        if (!pilotPopulations.flightTypeMapping[selectedType].includes(cb.value)) {
+            pilotPopulations.flightTypeMapping[selectedType].push(cb.value);
+            changesMade = true;
+        }
+    });
+
+    if (changesMade) {
+        document.getElementById('search-flight-type-mapping').value = "";
+        window.renderFlightTypeMappingUI();
+        await window.savePopulations(true); // מבצע שמירה מסודרת ל-Firestore
+    }
+};
+
+window.removeFlightNameFromType = async (selectedType, idx) => {
+    if (pilotPopulations?.flightTypeMapping?.[selectedType]) {
+        pilotPopulations.flightTypeMapping[selectedType].splice(idx, 1);
+        window.renderFlightTypeMappingUI();
+        await window.savePopulations(true); // שמירה אוטומטית לאחר מחיקה
+    }
+};
+
 let currentPeriodCoursesCache = null; // מטמון כדי למנוע טעינות מיותרות מול השרת
 
 // פונקציית פתיחה וסגירה של תת-הרשימות (אקורדיון)
@@ -2342,28 +2526,28 @@ window.togglePilotAccordion = (id) => {
 // ==========================================
 window.draggedItemInfo = null;
 
-window.onDragStartItem = function(e, type, originalIndex) {
+window.onDragStartItem = function (e, type, originalIndex) {
     window.draggedItemInfo = { type, index: originalIndex };
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", originalIndex); 
-    
+    e.dataTransfer.setData("text/plain", originalIndex);
+
     // עיצוב אלמנט נגרר כדי שיבלוט
     setTimeout(() => {
         e.target.classList.add('opacity-40', 'bg-blue-50', 'border-blue-300');
     }, 0);
 };
 
-window.onDragOverItem = function(e) {
+window.onDragOverItem = function (e) {
     e.preventDefault(); // חובה לאפשר Drop
     e.dataTransfer.dropEffect = "move";
-    
+
     const li = e.target.closest('li');
     if (li && window.draggedItemInfo) {
         const dragIndex = window.draggedItemInfo.index;
         const dropIndex = parseInt(li.getAttribute('data-index'));
-        
+
         li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
-        
+
         if (dragIndex !== dropIndex) {
             const rect = li.getBoundingClientRect();
             const relY = e.clientY - rect.top;
@@ -2377,12 +2561,12 @@ window.onDragOverItem = function(e) {
     }
 };
 
-window.onDragLeaveItem = function(e) {
+window.onDragLeaveItem = function (e) {
     const li = e.target.closest('li');
     if (li) li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
 };
 
-window.onDropItem = async function(e, type, dropIndex) {
+window.onDropItem = async function (e, type, dropIndex) {
     e.preventDefault();
     const li = e.target.closest('li');
     if (li) li.classList.remove('border-t-2', 'border-b-2', 'border-blue-500');
@@ -2412,13 +2596,13 @@ window.onDropItem = async function(e, type, dropIndex) {
     list.splice(finalDropIndex, 0, movedItem);
 
     window.draggedItemInfo = null;
-    
+
     // רינדור מחדש ושמירה מיידית ב-Firestore
     window.renderList(type);
     await window.savePersonnelLists(true);
 };
 
-window.onDragEndItem = function(e) {
+window.onDragEndItem = function (e) {
     e.target.classList.remove('opacity-40', 'bg-blue-50', 'border-blue-300');
     document.querySelectorAll('li').forEach(el => el.classList.remove('border-t-2', 'border-b-2', 'border-blue-500'));
     window.draggedItemInfo = null;
@@ -2445,10 +2629,10 @@ window.renderList = async function (type) {
     const filtered = items.filter(item => cleanString(item.toLowerCase()).includes(searchTerm));
 
     listContainer.innerHTML = '';
-    
+
     // הזרקת כפתור מיון אלפבתי אם עדיין לא קיים (מאפשר למיין כפתור מתי שרוצים)
     if (!document.getElementById(`sort-btn-${type}`)) {
-        const headerDiv = listContainer.parentElement; 
+        const headerDiv = listContainer.parentElement;
         if (headerDiv) {
             const sortBtn = document.createElement('button');
             sortBtn.id = `sort-btn-${type}`;
@@ -2464,21 +2648,21 @@ window.renderList = async function (type) {
             listContainer.parentNode.insertBefore(sortBtn, listContainer);
         }
     }
-    
-    if (filtered.length === 0) { 
-        listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים.</li>`; 
-        return; 
+
+    if (filtered.length === 0) {
+        listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים.</li>`;
+        return;
     }
 
     filtered.forEach((item) => {
         const li = document.createElement('li');
-        const originalIndex = items.indexOf(item); 
-        
+        const originalIndex = items.indexOf(item);
+
         // הוספת תמיכה בגרירה ל-CSS ולאלמנט
         li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200 cursor-grab transition-all duration-150";
         li.setAttribute('draggable', 'true');
         li.setAttribute('data-index', originalIndex);
-        
+
         // צימוד אירועי גרירה
         li.ondragstart = (e) => window.onDragStartItem(e, type, originalIndex);
         li.ondragover = (e) => window.onDragOverItem(e);
@@ -2486,7 +2670,7 @@ window.renderList = async function (type) {
         li.ondrop = (e) => window.onDropItem(e, type, originalIndex);
         li.ondragend = (e) => window.onDragEndItem(e);
 
-        const safeTitle = item.replace(/"/g, '&quot;'); 
+        const safeTitle = item.replace(/"/g, '&quot;');
 
         // pointer-events-none בתוכן הפנימי מונע קפיצות ו"רעידות" בזמן גרירה מעל הטקסט
         li.innerHTML = `
@@ -2558,7 +2742,7 @@ async function renderPilotsWithAccordion() {
 
         sortedPilots.forEach(item => {
             const mainIndex = allPilots.indexOf(item);
-            
+
             // הגדרת עיצוב טקסט אם החניך מופסק
             const isInactive = inactiveArray.includes(item);
             const textStyle = isInactive ? 'text-gray-400 line-through' : 'text-gray-800';
@@ -2583,10 +2767,10 @@ async function renderPilotsWithAccordion() {
     currentCourses.forEach((c, idx) => {
         const inactiveList = c.inactiveStudents || []; // שליפת רשימת המופסקים של הקורס
         finalHtml += renderGroup(
-            `קורס: ${c.name}`, 
-            courseMapping[c.name], 
-            `acc-course-${idx}`, 
-            false, 
+            `קורס: ${c.name}`,
+            courseMapping[c.name],
+            `acc-course-${idx}`,
+            false,
             'bg-orange-100 text-orange-900 border-b border-orange-200',
             inactiveList
         );
@@ -3259,3 +3443,8 @@ window.editPeriodConfigRow = window.editPeriodConfigRow;
 window.deletePeriodConfigRow = window.deletePeriodConfigRow;
 window.openNewPeriodForm = window.openNewPeriodForm;
 window.closePeriodForm = window.closePeriodForm;
+window.addFlightNamesToType = window.addFlightNamesToType;
+window.removeFlightNameFromType = window.removeFlightNameFromType;
+window.renderFlightTypeMappingUI = window.renderFlightTypeMappingUI;
+window.renderPopulations = window.renderPopulations;
+window.getPeriodName = getPeriodName;

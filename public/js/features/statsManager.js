@@ -35,6 +35,24 @@ let cachedPlanningData = null;
 let currentMainCardId = 'stats-card-planning';
 let instructorsChartMode = 'hours'; // יכול להיות 'hours' או 'flights'
 
+async function getActivePeriodData() {
+    // משיכה ישירה מההגדרות של עמוד המנהל
+    const settings = window.planningSettings;
+    if (!settings || !settings.periodConfigs) return null;
+
+    const today = new Date();
+    // מציאת התקופה הנוכחית לפי תאריכים מוגדרים במנהל
+    const currentPeriod = Object.keys(settings.periodConfigs).find(pName => {
+        const conf = settings.periodConfigs[pName];
+        return today >= new Date(conf.startDate) && today <= new Date(conf.endDate);
+    });
+
+    return {
+        name: currentPeriod,
+        config: settings.periodConfigs[currentPeriod]
+    };
+}
+
 export async function renderStatsDashboard() {
     initFiltersUI();
     cachedPlanningData = await fetchPlanningData();
@@ -317,19 +335,24 @@ async function getPopDataForPeriod(selectedPeriod) {
     let popData = window.pilotPopulations;
     let periodToFetch = selectedPeriod;
 
-    // חישוב עצמאי ובטוח של התקופה הנוכחית אם לא נבחרה תקופה ספציפית
+    // חישוב התקופה הנוכחית דרך הגדרות המנהל במקום חישוב מתמטי נוקשה
     if (!periodToFetch || periodToFetch === "ALL") {
-        const d = new Date();
-        let year = d.getFullYear();
-        const month = d.getMonth();
-        if (month === 11) {
-            year++;
-            periodToFetch = `1/${year.toString().slice(-2)}`;
+        if (typeof window.getPeriodName === 'function') {
+            // מביא את התקופה המדויקת לפי הגדרות המנהל (planningSettings)
+            periodToFetch = window.getPeriodName(new Date());
         } else {
-            periodToFetch = `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
+            // גיבוי אחרון בלבד (אם הפונקציה טרם נטענה)
+            const d = new Date();
+            let year = d.getFullYear();
+            const month = d.getMonth();
+            if (month === 11) {
+                year++;
+                periodToFetch = `1/${year.toString().slice(-2)}`;
+            } else {
+                periodToFetch = `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
+            }
         }
     }
-
     // ניסיון משיכה מהשרת לפי התקופה הספציפית
     if (periodToFetch && window.firestoreFunctions && window.db) {
         try {
@@ -487,54 +510,67 @@ function renderCancellationReasonsChart(flights) {
     if (!ctx) return;
     destroyChartIfExists('cancellation', id);
 
-    const cancelledFlights = flights.filter(f => getFlightStatus(f) === 'cancelled');
-    const counts = countByKey(cancelledFlights, f => f.data?.['סיבת ביטול'] || 'לא צוינה סיבה');
+    // 1. נסנן רק את הגיחות שבוטלו (עבור כל הגרף)
+    const allCancelledFlights = flights.filter(f => getFlightStatus(f) === 'cancelled');
 
-    // איסוף פירוט לתקלות טכניות בלבד
-    const techBreakdown = {};
-    cancelledFlights.forEach(f => {
-        const reason = f.data?.['סיבת ביטול'] || 'לא צוינה סיבה';
-        if (reason.includes('טכני')) {
-            // * הערה: שנה את המפתח 'סיווג טכני' לאיך שזה מוגדר אצלך בדאטה *
-            const subReason = f.data?.['סיווג טכני'] || f.data?.['פירוט ביטול'] || 'ללא סיווג נוסף';
-            techBreakdown[subReason] = (techBreakdown[subReason] || 0) + 1;
+    // 2. נספור את כל סיבות הביטול עבור הגרף
+    const counts = countByKey(allCancelledFlights, f => f.data?.['סיבת ביטול'] || 'לא צוינה סיבה');
+
+    // 3. הכנת מפת תקלות (עבור הפירוט ב-Tooltip)
+    const flightIdToFaults = {};
+    Object.values(window.unifiedFaultsDatabase || {}).forEach(fault => {
+        if (fault.sourceFlights && Array.isArray(fault.sourceFlights)) {
+            fault.sourceFlights.forEach(fId => {
+                if (!flightIdToFaults[fId]) flightIdToFaults[fId] = [];
+                flightIdToFaults[fId].push(fault);
+            });
         }
     });
 
-    const bgColors = [
-        '#f0c5c5', '#af7c7c', '#701f1f', '#fa0101', '#835757',
-        '#3b0202', '#f78383', '#f3eeee', '#3d2828', '#FFCDD2',
-        '#690a3e', '#c45959', '#554906', '#32336d'
-    ];
+    // 4. הגדרת הצבעים והגרף
+    const bgColors = ['#f0c5c5', '#af7c7c', '#701f1f', '#fa0101', '#835757', '#3b0202'];
 
     chartInstances.cancellation = new Chart(ctx, {
-        type: 'pie', plugins: [ChartDataLabels],
-        data: { labels: Object.keys(counts), datasets: [{ data: Object.values(counts), backgroundColor: bgColors }] },
+        type: 'pie',
+        data: {
+            labels: Object.keys(counts),
+            datasets: [{ data: Object.values(counts), backgroundColor: bgColors }]
+        },
         options: {
             responsive: true, maintainAspectRatio: false,
             plugins: {
                 tooltip: {
                     callbacks: {
                         afterBody: (tooltipItems) => {
-                            const item = tooltipItems[0];
-                            // בדיקה האם העכבר מרחף מעל גזרה של סיבה טכנית
-                            if (item.label.includes('טכני')) {
-                                let extra = ['','📌 פירוט תקלות טכניות:'];
-                                Object.entries(techBreakdown).forEach(([k, v]) => {
-                                    extra.push(`  • ${k}: ${v}`);
+                            const label = tooltipItems[0].label;
+
+                            // התנאי החדש: הצג פירוט רק אם הלייבל מכיל "טכני"
+                            if (label.includes('טכני')) {
+                                const techFlights = allCancelledFlights.filter(f =>
+                                    f.data?.['סיבת ביטול']?.includes('טכני')
+                                );
+
+                                const techBreakdown = {};
+                                techFlights.forEach(f => {
+                                    const fId = f.id || f.flightId;
+                                    const faults = [...(flightIdToFaults[fId] || []), ...(f.faults || [])];
+                                    faults.forEach(fault => {
+                                        const sys = fault.systemClassification || fault.classification || 'ללא סיווג';
+                                        techBreakdown[sys] = (techBreakdown[sys] || 0) + 1;
+                                    });
                                 });
-                                return extra;
+
+                                if (Object.keys(techBreakdown).length > 0) {
+                                    let extra = ['', '📌 פירוט תקלות במערכות:'];
+                                    Object.entries(techBreakdown).forEach(([sys, count]) => {
+                                        extra.push(`  • ${sys}: ${count}`);
+                                    });
+                                    return extra;
+                                }
                             }
+                            // אם לא "טכני", לא מחזירים כלום (או הודעה כללית)
                             return [];
                         }
-                    }
-                },
-                datalabels: {
-                    color: '#3f3f3fff', font: { weight: 'bold' },
-                    formatter: (value, ctx) => {
-                        if (!showAsPercent) return value;
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        return ((value / total) * 100).toFixed(1) + "%";
                     }
                 }
             }
@@ -603,7 +639,7 @@ function renderInstructorsChart(flights) {
             datasets: [{ label: labelText, data: dataArr, backgroundColor: '#8B5CF6' }]
         },
         options: {
-            responsive: true, 
+            responsive: true,
             maintainAspectRatio: false,
             onClick: () => {
                 // החלפת מצב ורינדור מחדש בלחיצה
@@ -698,13 +734,14 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     executedFlights.forEach(f => {
         if (!f.date) return;
         const dStr = getLocalDStr(f.date);
-        if (dateFilterPredicate(createLocalMidnight(dStr))) {
-            const status = getFlightStatus(f);
-            if ((status === 'full') || (status === 'partial' && f.data['נדרש ביצוע חוזר'] !== 'כן')) {
-                allDates.add(dStr);
-                if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
-                dailyData[dStr].actual++;
-            }
+        // שימוש בבדיקת תקינות גיחה אחידה (ללא פילטרים כפולים שגורמים לחוסר התאמה)
+        const status = getFlightStatus(f);
+
+        // סופר כל גיחה שלא בוטלה (כדי לתאם לגרף סטטוס ביצוע)
+        if (status === 'full' || status === 'partial') {
+            allDates.add(dStr);
+            if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
+            dailyData[dStr].actual++;
         }
     });
 
@@ -857,16 +894,23 @@ function countByKey(items, keyExtractor) {
     }, {});
 }
 
-function getWeekOfPeriod(date, planning) {
-    const currSun = new Date(date);
-    currSun.setDate(currSun.getDate() - currSun.getDay());
-    currSun.setHours(0, 0, 0, 0);
-    const pStart = planning?.periodCurrStart ? new Date(planning.periodCurrStart) : null;
-    if (!pStart) return 1;
-    const pStartSun = new Date(pStart);
-    pStartSun.setDate(pStartSun.getDate() - pStartSun.getDay());
-    pStartSun.setHours(0, 0, 0, 0);
-    return Math.floor(Math.round((currSun - pStartSun) / (1000 * 60 * 60 * 24)) / 7) + 1;
+function getWeekOfPeriod(date, planningData) {
+    if (!planningData || !planningData.periodConfigs) return 1;
+
+    // 1. זהוי התקופה של התאריך הנתון
+    const periodName = window.getPeriodName(date); // שימוש בפונקציה הגלובלית שכבר קיימת
+    const config = planningData.periodConfigs[periodName];
+
+    if (!config || !config.startDate) return 1; // Fallback
+
+    const pStart = new Date(config.startDate);
+    const dateObj = new Date(date);
+
+    // 2. חישוב ההפרש מהתחלת התקופה הספציפית
+    const diffTime = Math.abs(dateObj - pStart);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return Math.floor(diffDays / 7) + 1;
 }
 
 function populateWeekDropdown() {
@@ -1074,7 +1118,7 @@ function initFiltersUI() {
 
             const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
 
-           const filtered = (window.savedFlights || []).filter(f => {
+            const filtered = (window.savedFlights || []).filter(f => {
                 const fData = f.data || {};
                 const pilotsInFlight = [
                     fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
@@ -1307,6 +1351,12 @@ window.statsManager.updateGoalsSubPops = async function () {
     await window.statsManager.refreshGoalsAndMetrics();
 };
 
+window.statsManager.ensureDataLoaded = async function() {
+    if (!cachedPlanningData) {
+        cachedPlanningData = await fetchPlanningData();
+    }
+};
+
 window.statsManager.refreshGoalsAndMetrics = async function () {
     const type = document.getElementById('goals-pop-type')?.value;
     const subPopName = document.getElementById('goals-sub-pop')?.value.trim().replace(/["']/g, '"') || "ALL";
@@ -1352,7 +1402,7 @@ window.statsManager.refreshGoalsAndMetrics = async function () {
             else if (type === 'conversion') groups = popData.conversionGroups || [];
             else groups = popData.courses || [];
 
-const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName.trim().replace(/["']/g, '"');
+            const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName.trim().replace(/["']/g, '"');
 
             let relevantPilots = [];
             if (cleanSubPopName === "ALL" || cleanSubPopName === "") {
