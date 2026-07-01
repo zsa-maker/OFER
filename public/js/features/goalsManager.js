@@ -69,6 +69,7 @@ async function getPopDataForPeriod(selectedPeriod) {
 
 // 1. אתחול מסך היעדים
 window.goalsManager.initGoalsScreen = async function () {
+    // --- אכלוס רשימת סוגי גיחות ---
     const selectType = document.getElementById('goals-filter-flight-type');
     if (selectType) {
         const typesSet = new Set();
@@ -87,16 +88,37 @@ window.goalsManager.initGoalsScreen = async function () {
         }
     }
 
+    // --- אכלוס רשימת התקופות מתוך עמוד הניהול ---
     const periodSelect = document.getElementById('goals-period-select');
-    const weekSelect = document.getElementById('goals-week-select');
+    if (periodSelect) {
+        if (window.planningSettings && window.planningSettings.periodConfigs) {
+             const periods = Object.keys(window.planningSettings.periodConfigs).sort((a, b) => {
+                const [pA, yA] = a.split('/').map(Number);
+                const [pB, yB] = b.split('/').map(Number);
+                return (yA + pA / 10) - (yB + pB / 10);
+            });
+            
+            periodSelect.innerHTML = '<option value="ALL">כל התקופות</option>' + 
+                                     periods.map(p => `<option value="${p}">${p}</option>`).join('');
 
-    if (periodSelect && !periodSelect.dataset.listenerAttached) {
-        periodSelect.addEventListener('change', () => {
-            window.goalsManager.updateGoalsSubPops();
-        });
-        periodSelect.dataset.listenerAttached = "true";
+            // בחירת התקופה הנוכחית כברירת מחדל
+            if (window.getPeriodName) {
+                const currPeriod = window.getPeriodName(new Date());
+                if (periods.includes(currPeriod)) {
+                    periodSelect.value = currPeriod;
+                }
+            }
+        }
+
+        if (!periodSelect.dataset.listenerAttached) {
+            periodSelect.addEventListener('change', () => {
+                window.goalsManager.updateGoalsSubPops();
+            });
+            periodSelect.dataset.listenerAttached = "true";
+        }
     }
 
+    const weekSelect = document.getElementById('goals-week-select');
     if (weekSelect && !weekSelect.dataset.listenerAttached) {
         weekSelect.addEventListener('change', window.goalsManager.refreshGoalsAndMetrics);
         weekSelect.dataset.listenerAttached = "true";
@@ -264,8 +286,7 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
                 filtered = filtered.filter(f => {
                     const fData = f.data || {};
                     const pilotsInFlight = [
-                        fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left'],
-                        fData['מדריך'], fData['מדריכה'], fData['instructor-main'], fData['instructor-name-1']
+                        fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
                     ].map(p => p?.toString().trim()).filter(Boolean);
 
                     return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));

@@ -72,7 +72,7 @@ export async function renderStatsDashboard() {
     if (selectedFlightType) {
         finalFlights = finalFlights.filter(f => f.data && f.data['סוג גיחה'] === selectedFlightType);
     }
-    
+
     currentFilteredFlights = finalFlights;
 
     const exportBtn = document.getElementById('export-report-btn');
@@ -1074,11 +1074,10 @@ function initFiltersUI() {
 
             const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
 
-            const filtered = (window.savedFlights || []).filter(f => {
+           const filtered = (window.savedFlights || []).filter(f => {
                 const fData = f.data || {};
                 const pilotsInFlight = [
-                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left'],
-                    fData['מדריך'], fData['מדריכה'], fData['instructor-main'], fData['instructor-name-1']
+                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
                 ].map(p => p?.toString().trim()).filter(Boolean);
 
                 return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
@@ -1380,8 +1379,7 @@ const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName.trim().replace
             filtered = filtered.filter(f => {
                 const fData = f.data || {};
                 const pilotsInFlight = [
-                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left'],
-                    fData['מדריך'], fData['מדריכה'], fData['instructor-main'], fData['instructor-name-1']
+                    fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
                 ].map(p => p?.toString().trim()).filter(Boolean);
 
                 return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));

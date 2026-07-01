@@ -373,6 +373,22 @@ const missionDatabase = {
     },
 
     /**
+     * ניקוי כל הסינונים ורענון הטבלה
+     */
+    clearFilters: function () {
+        // מעבר על כל מזהי הפילטרים ואיפוסם
+        Object.keys(this.KEY_MAP).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.value = ""; // איפוס הערך ל"הכל"
+            }
+        });
+
+        // הפעלת הסינון מחדש (כעת יציג את כל הנתונים ויעדכן את הדרופדאונים)
+        this.applyFilters();
+    },
+
+    /**
      * רינדור הטבלה ל-HTML
      */
     renderTable: function (data) {
