@@ -411,17 +411,23 @@ function getDateFilterPredicate() {
     }
 
     if (filterType === 'week') {
+        const selectedPeriod = document.getElementById('stats-period-select')?.value;
         const elWeek = document.getElementById('stats-week-value');
         if (!elWeek) return () => false;
-        const selectedWeekNum = parseInt(elWeek.value);
+        const selectedWeekVal = elWeek.value;
+        
         return (date) => {
-            const pCurr = planning.periodCurrStart ? new Date(planning.periodCurrStart) : null;
-            const currSun = getStartSunday(date);
-            if (!pCurr) return false;
-            const relevantStartSun = getStartSunday(pCurr);
-            const diffDays = Math.round((currSun - relevantStartSun) / (1000 * 60 * 60 * 24));
-            const weekOfPeriod = Math.floor(diffDays / 7) + 1;
-            return weekOfPeriod === selectedWeekNum;
+            const periodName = window.getPeriodName ? window.getPeriodName(date) : getPeriodDisplay(date);
+            
+            // שלב א': סינון לפי התקופה שנבחרה
+            if (selectedPeriod && periodName !== selectedPeriod) return false;
+            
+            // שלב ב': סינון לפי השבוע שנבחר (במידה ולא נבחר "כל השבועות")
+            if (selectedWeekVal && selectedWeekVal !== "ALL") {
+                const weekOfPeriod = window.calculateWeekNumber ? window.calculateWeekNumber(date, periodName) : 1;
+                return weekOfPeriod === parseInt(selectedWeekVal);
+            }
+            return true;
         };
     }
 
@@ -895,29 +901,54 @@ function countByKey(items, keyExtractor) {
 }
 
 function getWeekOfPeriod(date, planningData) {
-    if (!planningData || !planningData.periodConfigs) return 1;
+    const periodName = window.getPeriodName(date);
+    const calculatedWeek = window.calculateWeekNumber(date, periodName);
+    return calculatedWeek ? calculatedWeek : 1; // 1 כברירת מחדל אם משהו חסר
+}
 
-    // 1. זהוי התקופה של התאריך הנתון
-    const periodName = window.getPeriodName(date); // שימוש בפונקציה הגלובלית שכבר קיימת
-    const config = planningData.periodConfigs[periodName];
+function populateStatsWeekSelect() {
+    const weekSelect = document.getElementById('stats-week-value');
+    const periodSelect = document.getElementById('stats-period-select');
+    if (!weekSelect || !periodSelect) return;
 
-    if (!config || !config.startDate) return 1; // Fallback
+    const selectedPeriod = periodSelect.value;
+    const currentVal = weekSelect.value;
+    const weeksSet = new Set();
 
-    const pStart = new Date(config.startDate);
-    const dateObj = new Date(date);
+    // סריקת הגיחות ואיסוף שבועות רלוונטיים לתקופה שנבחרה בלבד
+    (window.savedFlights || []).forEach(f => {
+        if (!f.date) return;
+        const fPeriod = window.getPeriodName ? window.getPeriodName(f.date) : getPeriodDisplay(f.date);
+        if (!selectedPeriod || fPeriod === selectedPeriod) {
+            const calcWeek = window.calculateWeekNumber ? window.calculateWeekNumber(f.date, fPeriod) : 1;
+            if (calcWeek) weeksSet.add(calcWeek);
+        }
+    });
 
-    // 2. חישוב ההפרש מהתחלת התקופה הספציפית
-    const diffTime = Math.abs(dateObj - pStart);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // ניקוי ואכלוס מחדש עם אופציית "כל השבועות" כברירת מחדל
+    weekSelect.innerHTML = '<option value="ALL">כל השבועות</option>';
+    Array.from(weeksSet).sort((a, b) => a - b).forEach(w => {
+        const option = document.createElement('option');
+        option.value = w;
+        option.textContent = `שבוע ${w}`;
+        weekSelect.appendChild(option);
+    });
 
-    return Math.floor(diffDays / 7) + 1;
+    // שמירה על הבחירה הקודמת במידה והיא עדיין רלוונטית
+    if (currentVal && (currentVal === "ALL" || weeksSet.has(parseInt(currentVal)))) {
+        weekSelect.value = currentVal;
+    } else {
+        weekSelect.value = "ALL";
+    }
 }
 
 function populateWeekDropdown() {
     const weekSelect = document.getElementById('stats-week-value');
     if (!weekSelect || weekSelect.options.length > 0) return;
     weekSelect.innerHTML = '';
-    for (let i = 1; i <= 54; i++) {
+
+    // שינינו את הלולאה מ-54 ל-26 (שבועות בתקופה)
+    for (let i = 1; i <= 26; i++) {
         const option = document.createElement('option');
         option.value = i;
         option.textContent = i;
@@ -954,6 +985,7 @@ function populateStatsPeriodSelect(flights) {
 
     if (currentVal && periods.has(currentVal)) select.value = currentVal;
     else if (sortedPeriods.length > 0) select.value = sortedPeriods[sortedPeriods.length - 1];
+    populateStatsWeekSelect();
 }
 
 function updateCrewFilterState() {
@@ -1030,11 +1062,23 @@ function initFiltersUI() {
     const elWeekYear = document.getElementById('stats-week-year');
     if (elWeekYear && !elWeekYear.value) elWeekYear.value = today.getFullYear();
     const elWeekVal = document.getElementById('stats-week-value');
-    if (elWeekVal) elWeekVal.value = getWeekNumber(today);
+    if (elWeekVal) {
+        // שימוש בפונקציה הגלובלית של התקופה במקום של השנה הכללית
+        const currentPeriod = window.getPeriodName ? window.getPeriodName(today) : null;
+        const weekNum = window.calculateWeekNumber ? window.calculateWeekNumber(today, currentPeriod) : 1;
+        elWeekVal.value = weekNum;
+    }
 
     const filterTypeSelect = document.getElementById('stats-filter-type');
     if (filterTypeSelect) {
         filterTypeSelect.addEventListener('change', (e) => toggleFilterInputs(e.target.value));
+    }
+
+    const periodSelect = document.getElementById('stats-period-select');
+    if (periodSelect) {
+        periodSelect.addEventListener('change', () => {
+            populateStatsWeekSelect();
+        });
     }
 
     Object.assign(window.statsManager, {
@@ -1150,8 +1194,17 @@ function initFiltersUI() {
 function toggleFilterInputs(type) {
     const groups = { 'period': 'filter-period-group', 'week': 'filter-week-group', 'range': 'filter-range-group' };
     Object.values(groups).forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-    const active = document.getElementById(groups[type]);
-    if (active) active.classList.remove('hidden');
+    
+    if (type === 'period') {
+        document.getElementById('filter-period-group')?.classList.remove('hidden');
+    } else if (type === 'week') {
+        // הצגת שתי התיבות יחד לטובת בחירה היררכית
+        document.getElementById('filter-period-group')?.classList.remove('hidden');
+        document.getElementById('filter-week-group')?.classList.remove('hidden');
+        populateStatsWeekSelect();
+    } else if (type === 'range') {
+        document.getElementById('filter-range-group')?.classList.remove('hidden');
+    }
 }
 
 function updateSimulatorFilterOptions(flights) {
@@ -1351,7 +1404,7 @@ window.statsManager.updateGoalsSubPops = async function () {
     await window.statsManager.refreshGoalsAndMetrics();
 };
 
-window.statsManager.ensureDataLoaded = async function() {
+window.statsManager.ensureDataLoaded = async function () {
     if (!cachedPlanningData) {
         cachedPlanningData = await fetchPlanningData();
     }

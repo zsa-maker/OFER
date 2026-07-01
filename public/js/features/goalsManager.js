@@ -1,11 +1,10 @@
-// public/js/features/goalsManager.js
-
 import { savedFlights } from '../core/global.js';
 
 window.goalsManager = window.goalsManager || {};
 
 window.goalsManager.initGoalsScreen = async function () {
-   if (typeof window.statsManager.ensureDataLoaded === 'function') {
+    // 1. ווידוא טעינת נתונים בסיסית מול השרת/מטמון
+    if (typeof window.statsManager?.ensureDataLoaded === 'function') {
         await window.statsManager.ensureDataLoaded();
     }
     
@@ -13,32 +12,13 @@ window.goalsManager.initGoalsScreen = async function () {
 
     const weekSelect = document.getElementById('goals-week-select');
     const periodSelect = document.getElementById('goals-period-select');
+    const typeSelect = document.getElementById('goals-filter-flight-type');
 
-    // 1. טעינה מלאה של האופציות קודם
+    // 2. אכלוס הרשימות מראש (חובה לעשות לפני הוספת מאזינים)
     await populateGoalsPeriodSelect();
+    window.goalsManager.populateFlightTypeSelect();
 
-    // 2. סנכרון התקופה הנוכחית
-    if (periodSelect) {
-        const currentPeriod = window.getPeriodName(new Date()).trim(); // הוספת trim ליתר ביטחון
-        
-        // בדיקה שהערך באמת קיים באופציות
-        const optionExists = [...periodSelect.options].some(o => o.value.trim() === currentPeriod);
-        
-        if (optionExists) {
-            periodSelect.value = currentPeriod;
-        } else {
-            // אם לא מצאנו את התקופה, נבחר "ALL"
-            periodSelect.value = 'ALL';
-        }
-
-        // 3. עדכון הוויזואלי וטריגר של הפעולה
-        // שימוש ב-setTimeout קצר כדי לתת ל-DOM "להירגע" ולהתעדכן
-        setTimeout(() => {
-            periodSelect.dispatchEvent(new Event('change'));
-            console.log("DEBUG: Selected period set to:", periodSelect.value);
-        }, 100);
-    }
-
+    // 3. הגדרת מאזינים (Event Listeners)
     if (periodSelect) {
         periodSelect.addEventListener('change', () => {
             const isAll = periodSelect.value === 'ALL';
@@ -52,29 +32,38 @@ window.goalsManager.initGoalsScreen = async function () {
         });
     }
 
-    // הוספת מאזין לבחירת שבוע
     if (weekSelect) {
         weekSelect.addEventListener('change', () => {
-            console.log("DEBUG: Week selected, refreshing...");
             window.goalsManager.refreshGoalsAndMetrics();
         });
     }
 
-    await populateGoalsPeriodSelect();
-    window.goalsManager.populateFlightTypeSelect();
-    const typeSelect = document.getElementById('goals-filter-flight-type');
     if (typeSelect) {
         typeSelect.addEventListener('change', () => {
             window.goalsManager.refreshGoalsAndMetrics();
         });
     }
 
-    // מצב התחלתי: להסתיר אם נבחר ALL כברירת מחדל
-    if (periodSelect?.value === 'ALL' && weekSelect) {
-        weekSelect.style.display = 'none';
-        const weekLabel = document.querySelector('label[for="goals-week-select"]');
-        if (weekLabel) weekLabel.style.display = 'none';
+    // 4. חישוב והגדרת התקופה הנוכחית
+    if (periodSelect) {
+        const currentPeriod = (window.getPeriodName ? window.getPeriodName(new Date()) : "").trim();
+        const optionExists = [...periodSelect.options].some(o => o.value.trim() === currentPeriod);
+        periodSelect.value = optionExists ? currentPeriod : 'ALL';
     }
+
+    // 5. אכלוס שבועות רלוונטיים
+    window.goalsManager.populateWeekSelect();
+
+    // 6. הטריגר ההתחלתי: משתמשים בהשהייה קלה (150ms) כדי לתת ל-HTML להירנדר
+    // ואז משגרים אירוע 'change' שמפעיל את שרשרת הרינדור בדיוק כאילו המשתמש ביצע סינון.
+    setTimeout(() => {
+        console.log("DEBUG: Triggering initial render...");
+        if (periodSelect) {
+            periodSelect.dispatchEvent(new Event('change'));
+        } else {
+            window.goalsManager.refreshGoalsAndMetrics();
+        }
+    }, 150);
 };
 
 let chartInstances = {
@@ -268,7 +257,9 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
         // 2. סינון שבוע
         if (selectedWeek && selectedWeek !== "ALL" && selectedWeek !== "") {
             filtered = filtered.filter(f => {
-                const flightWeek = f.week || window.goalsManager.getWeekNumber(f.date, selectedPeriod);
+                const fPeriod = window.getPeriodName ? window.getPeriodName(f.date) : f.period;
+                // מתעלמים מהמסד (f.week) ומחשבים על המקום
+                const flightWeek = window.calculateWeekNumber ? window.calculateWeekNumber(f.date, fPeriod) : f.week;
                 return String(flightWeek) === String(selectedWeek);
             });
         }
@@ -292,22 +283,10 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
 };
 // פונקציית עזר מאוחדת לחישוב מספר שבוע לפי תקופה
 window.goalsManager.getWeekNumber = function (dateVal, periodName) {
-    if (!window.planningSettings?.periodConfigs?.[periodName]) return null;
-
-    const config = window.planningSettings.periodConfigs[periodName];
-    const reportDate = new Date(dateVal);
-    const startDate = new Date(config.startDate);
-
-    // בדיקת תקינות תאריכים
-    if (isNaN(reportDate.getTime()) || isNaN(startDate.getTime())) return null;
-
-    const diffDays = Math.floor((reportDate - startDate) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return null;
-
-    const weekNum = Math.floor(diffDays / 7) + 1;
-
-    // הגבלה למספר השבועות המוגדר בתקופה (בדרך כלל 26)
-    return weekNum;
+    if (window.calculateWeekNumber) {
+        return window.calculateWeekNumber(dateVal, periodName);
+    }
+    return null;
 };
 
 
@@ -318,17 +297,19 @@ function safeDate(dateVal) {
 }
 
 function renderGoalsChart(flights) {
-
     const id = 'chart-goals-status';
-    // מוודאים שהאלמנט קיים לפני שממשיכים
     const ctx = document.getElementById(id);
-    if (!ctx) return;
-
-    // קריאה לפונקציה המתוקנת
-    destroyChartIfExists('goals', id);
     const selector = document.getElementById('stats-goal-flight-selector');
+    
+    // הגנת קריסה: אם אין קנבס או שאין סלקטור, לא להמשיך!
+    if (!ctx || !selector) {
+        console.warn("DEBUG: renderGoalsChart missing canvas or selector. Aborting.");
+        return;
+    }
 
-    const currentSelectedName = selector.value;
+    destroyChartIfExists('goals', id);
+
+    const currentSelectedName = selector.value || "";
     const namesSet = new Set();
     flights.forEach(f => {
         if (f.data?.['שם גיחה']) namesSet.add(f.data['שם גיחה']);
@@ -355,6 +336,7 @@ function renderGoalsChart(flights) {
         }
     });
 
+    // המשך בניית הגרף (Chart.js)...
     chartInstances.goals = new Chart(ctx, {
         type: 'pie',
         plugins: [ChartDataLabels],
@@ -409,17 +391,15 @@ window.goalsManager.populateWeekSelect = function () {
 
     const selectedPeriod = periodSelect.value;
     const currentVal = weekSelect.value;
-
-    // איסוף כל השבועות הקיימים לגיחות בתקופה שנבחרה
     const weeksSet = new Set();
 
     (window.savedFlights || []).forEach(f => {
-        // סינון לפי תקופה
-        const fPeriod = window.getPeriodName(f.date);
+        const fPeriod = window.getPeriodName ? window.getPeriodName(f.date) : f.period;
         if (selectedPeriod === "ALL" || fPeriod === selectedPeriod) {
-            // שימוש בשדה week מהנתונים (שראינו שהוא קיים)
-            if (f.week) {
-                weeksSet.add(Number(f.week));
+            // התעלמות מהשדה הישן במסד הנתונים, חישוב בזמן אמת!
+            const calcWeek = window.calculateWeekNumber ? window.calculateWeekNumber(f.date, fPeriod) : Number(f.week);
+            if (calcWeek) {
+                weeksSet.add(calcWeek);
             }
         }
     });
@@ -427,12 +407,10 @@ window.goalsManager.populateWeekSelect = function () {
     // ניקוי ואכלוס מחדש
     weekSelect.innerHTML = '<option value="ALL">כל השבועות</option>';
 
-    // מיון מספרי
     Array.from(weeksSet).sort((a, b) => a - b).forEach(w => {
         weekSelect.innerHTML += `<option value="${w}">שבוע ${w}</option>`;
     });
 
-    // החזרת הבחירה הקודמת אם קיימת
     if (currentVal && (currentVal === "ALL" || weeksSet.has(Number(currentVal)))) {
         weekSelect.value = currentVal;
     }

@@ -128,8 +128,33 @@ export function populateSystemSelect(selectElementId, selectedValue = '') {
     });
 }
 
+window.calculateWeekNumber = function(dateStr, periodName) {
+    if (!window.planningSettings || !window.planningSettings.periodConfigs || !periodName) return null;
+    
+    const config = window.planningSettings.periodConfigs[periodName];
+    if (!config || !config.startDate) return null; // אם המנהל לא הגדיר תאריך, נחזיר null
+
+    // פונקציית עזר ליישור תאריך ליום ראשון של אותו שבוע (כמו באקסל)
+    const getStartSunday = (d) => {
+        const s = new Date(d);
+        s.setHours(0, 0, 0, 0);
+        s.setDate(s.getDate() - s.getDay());
+        return s;
+    };
+
+    const flightSunday = getStartSunday(dateStr);
+    const startSunday = getStartSunday(config.startDate);
+
+    // חישוב הפרש השבועות מיום ראשון ליום ראשון
+    const diffDays = Math.round((flightSunday - startSunday) / (1000 * 60 * 60 * 24));
+    const weekNum = Math.floor(diffDays / 7) + 1;
+    
+    return Math.max(1, weekNum); // מוודא שלא יחזיר שבוע 0 או שלילי
+};
+
 // חשיפה לחלון
 window.getWeekNumber = getWeekNumber;
 window.getPeriodNumber = getPeriodNumber;
 window.populateSystemSelect = populateSystemSelect;
-window.getPeriodDisplay = getPeriodDisplay
+window.getPeriodDisplay = getPeriodDisplay;
+window.calculateWeekNumber = window.calculateWeekNumber;

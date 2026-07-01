@@ -147,11 +147,9 @@ function updateFlightPeriodAndWeek(dateString) {
 
     if (periodInput) periodInput.value = periodName || "לא בטווח";
 
-    if (weekInput && relevantStart) {
-        const diffTime = dateObj.getTime() - relevantStart.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        const weekNum = Math.floor(diffDays / 7) + 1;
-        weekInput.value = weekNum > 0 ? weekNum : "-";
+    if (weekInput && periodName) {
+        const weekNum = window.calculateWeekNumber(dateObj, periodName);
+        weekInput.value = (weekNum && weekNum > 0) ? weekNum : "-";
     }
 }
 

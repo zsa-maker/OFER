@@ -489,8 +489,8 @@ function updateDropdown(elementId, items) {
     const el = document.getElementById(elementId);
     if (!el) return;
     const currentVal = el.value;
-    el.innerHTML = '<option value="" disabled selected>בחר...</option>' + 
-                   items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
+    el.innerHTML = '<option value="" disabled selected>בחר...</option>' +
+        items.map(i => `<option value="${i.replace(/"/g, '&quot;')}">${i}</option>`).join('');
     if (items.includes(currentVal)) el.value = currentVal;
 }
 
@@ -686,8 +686,14 @@ export async function saveFlightForm(skipValidation = false) {
     currentForm.data['סוג'] = currentForm.trainingType || 'GENERIC_FLIGHT';
     const d = new Date(currentForm.data['תאריך']);
     currentForm.date = currentForm.data['תאריך'];
-    currentForm.week = getWeekNumber(d);
-    currentForm.period = getPeriodNumber(d);
+
+    // משיכת שם התקופה מהפונקציה של המנהל (למשל: "1/26")
+    const periodName = window.getPeriodName ? window.getPeriodName(d) : getPeriodNumber(d);
+    currentForm.period = periodName;
+
+    // חישוב מדויק של השבוע לפי הגדרת תאריך ההתחלה של המנהל
+    const calculatedWeek = window.calculateWeekNumber ? window.calculateWeekNumber(d, periodName) : getWeekNumber(d);
+    currentForm.week = calculatedWeek || 1;
 
     try {
         const { collection, addDoc, updateDoc, doc } = window.firestoreFunctions;
