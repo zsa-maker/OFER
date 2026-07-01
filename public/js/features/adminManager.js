@@ -174,7 +174,7 @@ export async function fetchPopulationsForPeriod(periodName) {
     if (!window.firestoreFunctions || !window.db) return null;
     const { doc, getDoc } = window.firestoreFunctions;
     const safePeriodName = periodName.replace(/\//g, '-');
-    
+
     try {
         const snap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
         return snap.exists() ? snap.data() : null;
@@ -350,16 +350,35 @@ function renderAllLists() {
 }
 
 function renderList(type) {
-    const listContainer = document.getElementById(`list-${type}`); if (!listContainer) return; listContainer.innerHTML = ''; const items = personnelLists[type] || [];
-    if (items.length === 0) { listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים ברשימה.</li>`; return; }
+    const listContainer = document.getElementById(`list-${type}`);
+    if (!listContainer) return;
+
+    const items = personnelLists[type] || [];
+
+    // עדכון מונה בראש הרשימה
+    const header = document.getElementById(`header-${type}-count`);
+    if (header) header.textContent = `(${items.length})`;
+
+    listContainer.innerHTML = '';
+    if (items.length === 0) {
+        listContainer.innerHTML = `<li class="text-gray-400 text-sm italic text-center py-2">אין ערכים ברשימה.</li>`;
+        return;
+    }
+
     items.forEach((item, index) => {
         const li = document.createElement('li');
         li.className = "flex justify-between items-center bg-gray-50 p-2 rounded hover:bg-gray-100 border border-gray-200";
 
-        // יצירת מחרוזת בטוחה שלא תשבור את ה-HTML
-        const safeItem = item.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-
-        li.innerHTML = `<span class="font-medium text-gray-800 truncate flex-grow ml-2" title="${safeItem}">${item}</span><div class="flex gap-1 shrink-0"><button onclick="window.editPerson('${type}', ${index})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button><button onclick="window.removePerson('${type}', ${index})" class="text-red-500 hover:text-red-700 p-1">🗑️</button></div>`;
+        // הוספת המספור ${index + 1} לפני שם הפריט
+        li.innerHTML = `
+            <div class="flex items-center flex-grow">
+                <span class="text-xs text-gray-400 w-6">${index + 1}.</span>
+                <span class="font-medium text-gray-800 truncate" title="${item}">${item}</span>
+            </div>
+            <div class="flex gap-1 shrink-0">
+                <button onclick="window.editPerson('${type}', ${index})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
+                <button onclick="window.removePerson('${type}', ${index})" class="text-red-500 hover:text-red-700 p-1">🗑️</button>
+            </div>`;
         listContainer.appendChild(li);
     });
 }
@@ -1674,14 +1693,13 @@ export function renderPopulations() {
     instructorContainer.innerHTML = pilotPopulations.instructorGroups.map((group, gIdx) => {
         const searchId = `search-instr-group-${gIdx}`;
         const searchVal = document.getElementById(searchId)?.value.toLowerCase() || "";
-        const availableForGroup = allPilots.filter(p => !assignedPilots.includes(p) && p.toLowerCase().includes(searchVal));
+        const availableForGroup = allPilots.filter(p => p.toLowerCase().includes(searchVal));
 
         return `
-        <div class="bg-white p-3 rounded shadow border-r-4 border-blue-400 mb-3">
+       <div class="bg-white p-3 rounded shadow border-r-4 border-blue-400 mb-3">
             <div class="flex justify-between items-center mb-2">
-               <input type="text" value="${group.name.replace(/"/g, '&quot;')}" onchange="window.updateGroupName('instructor', ${gIdx}, this.value)" 
-       class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-blue-800">
-                <button onclick="window.removeGroup('instructor', ${gIdx})" class="text-red-500 text-xs">מחק</button>
+               <span class="font-bold text-sm text-blue-800">${group.name} (${group.members.length})</span>
+               <button onclick="window.removeGroup('instructor', ${gIdx})" class="text-red-500 text-xs">מחק</button>
             </div>
             <div class="mb-2 relative">
                <input type="text" id="${searchId}" oninput="window.renderPopulations()" 
@@ -1704,6 +1722,7 @@ export function renderPopulations() {
                         ondragstart="window.onDragStartPop(event)" ondragover="window.onDragOverPop(event)" ondragleave="window.onDragLeavePop(event)" ondrop="window.onDropPop(event)" ondragend="window.onDragEndPop(event)"
                         class="flex justify-between items-center text-xs bg-blue-50 p-1 rounded cursor-grab transition-all duration-150 border border-transparent hover:border-gray-300">
                         <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                        <span class="text-xs text-gray-400 mr-1 w-5">${mIdx + 1}.</span>
                             <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
                             <span class="font-medium text-gray-800 truncate">${m}</span>
                         </div>
@@ -1718,12 +1737,12 @@ export function renderPopulations() {
     coursesContainer.innerHTML = pilotPopulations.courses.map((course, cIdx) => {
         const searchId = `search-course-${cIdx}`;
         const searchVal = document.getElementById(searchId)?.value.toLowerCase() || "";
-        const availableForCourse = allPilots.filter(p => !assignedPilots.includes(p) && p.toLowerCase().includes(searchVal));
+        const availableForCourse = allPilots.filter(p => p.toLowerCase().includes(searchVal));
 
         return `
         <div class="bg-white p-3 rounded shadow border-r-4 border-orange-400 mb-3">
             <div class="flex justify-between items-center mb-2">
-                <input type="text" value="${course.name}" onchange="window.updateGroupName('course', ${cIdx}, this.value)" 
+                <input type="text" value="${course.name} (${course.students.length})" onchange="window.updateGroupName('course', ${cIdx}, this.value)" 
                        class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-orange-800">
                 <button onclick="window.removeGroup('course', ${cIdx})" class="text-red-500 text-xs">מחק</button>
             </div>
@@ -1753,6 +1772,7 @@ export function renderPopulations() {
                         ondragstart="window.onDragStartPop(event)" ondragover="window.onDragOverPop(event)" ondragleave="window.onDragLeavePop(event)" ondrop="window.onDropPop(event)" ondragend="window.onDragEndPop(event)"
                         class="flex justify-between items-center text-xs ${bgClass} p-1 rounded cursor-grab transition-all duration-150 border border-transparent hover:border-gray-300">
                         <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                        <span class="text-xs text-gray-400 mr-1 w-5">${sIdx + 1}.</span>
                             <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
                             <span class="${textClass} font-medium truncate">${s}</span>
                         </div>
@@ -1776,12 +1796,12 @@ export function renderPopulations() {
         conversionContainer.innerHTML = pilotPopulations.conversionGroups.map((group, gIdx) => {
             const searchId = `search-conv-group-${gIdx}`;
             const searchVal = document.getElementById(searchId)?.value.toLowerCase() || "";
-            const availableForGroup = allPilots.filter(p => !assignedPilots.includes(p) && p.toLowerCase().includes(searchVal));
+            const availableForGroup = allPilots.filter(p => p.toLowerCase().includes(searchVal));
 
             return `
             <div class="bg-white p-3 rounded shadow border-r-4 border-purple-400 mb-3">
                 <div class="flex justify-between items-center mb-2">
-                    <input type="text" value="${group.name.replace(/"/g, '&quot;')}" onchange="window.updateConversionGroupName(${gIdx}, this.value)" 
+                    <input type="text" value="${group.name.replace(/"/g, '&quot;')} (${group.members.length})" onchange="window.updateConversionGroupName(${gIdx}, this.value)" 
                            class="font-bold text-sm border-none p-0 focus:ring-0 w-2/3 text-purple-800">
                     <button onclick="window.removeConversionGroup(${gIdx})" class="text-red-500 text-xs">מחק</button>
                 </div>
@@ -1806,6 +1826,7 @@ export function renderPopulations() {
                             ondragstart="window.onDragStartPop(event)" ondragover="window.onDragOverPop(event)" ondragleave="window.onDragLeavePop(event)" ondrop="window.onDropPop(event)" ondragend="window.onDragEndPop(event)"
                             class="flex justify-between items-center text-xs bg-purple-50 p-1 rounded cursor-grab transition-all duration-150 border border-transparent hover:border-gray-300">
                             <div class="flex items-center flex-grow overflow-hidden pointer-events-none">
+                            <span class="text-xs text-gray-400 mr-1 w-5">${mIdx + 1}.</span>
                                 <span class="text-gray-400 mr-2 ml-1 text-sm">≡</span>
                                 <span class="font-medium text-gray-800 truncate">${m}</span>
                             </div>
