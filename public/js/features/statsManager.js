@@ -2,8 +2,8 @@
 
 import { savedFlights } from '../core/global.js';
 import { EXECUTION_STATUS_NOT_REPORTED } from './executionStatusManager.js';
-import { setPeriodDates, getPeriodNumber, getWeekNumber, getPeriodDisplay } from '../core/util.js';
 import { pilotPopulations } from './adminManager.js';
+import { setPeriodDates, getPeriodNumber, getWeekNumber, getPeriodDisplay, getEffectivePeriod } from '../core/util.js';
 
 window.statsManager = window.statsManager || {};
 
@@ -70,7 +70,7 @@ export async function renderStatsDashboard() {
 
     const timeFilteredFlights = allActiveFlights.filter(f => {
         if (!f.date) return false;
-        return dateFilterPredicate(new Date(f.date));
+        return dateFilterPredicate(f); // מעבירים את הגיחה כולה כדי להתחשב בדריסה
     });
 
     updateCrewFilterState();
@@ -388,63 +388,6 @@ async function getPopDataForPeriod(selectedPeriod) {
     }
 
     return popData || { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
-}
-
-function getDateFilterPredicate() {
-    const elFilterType = document.getElementById('stats-filter-type');
-    const filterType = elFilterType ? elFilterType.value : 'period';
-    const planning = cachedPlanningData || {};
-
-    const getStartSunday = (d) => {
-        const s = new Date(d);
-        s.setHours(0, 0, 0, 0);
-        s.setDate(s.getDate() - s.getDay());
-        return s;
-    };
-
-    if (filterType === 'period') {
-        const selectedVal = document.getElementById('stats-period-select')?.value;
-        if (!selectedVal) return () => false;
-        return (date) => {
-            return getPeriodDisplay(date) === selectedVal;
-        };
-    }
-
-    if (filterType === 'week') {
-        const selectedPeriod = document.getElementById('stats-period-select')?.value;
-        const elWeek = document.getElementById('stats-week-value');
-        if (!elWeek) return () => false;
-        const selectedWeekVal = elWeek.value;
-        
-        return (date) => {
-            const periodName = window.getPeriodName ? window.getPeriodName(date) : getPeriodDisplay(date);
-            
-            // שלב א': סינון לפי התקופה שנבחרה
-            if (selectedPeriod && periodName !== selectedPeriod) return false;
-            
-            // שלב ב': סינון לפי השבוע שנבחר (במידה ולא נבחר "כל השבועות")
-            if (selectedWeekVal && selectedWeekVal !== "ALL") {
-                const weekOfPeriod = window.calculateWeekNumber ? window.calculateWeekNumber(date, periodName) : 1;
-                return weekOfPeriod === parseInt(selectedWeekVal);
-            }
-            return true;
-        };
-    }
-
-    if (filterType === 'range') {
-        const startStr = document.getElementById('stats-date-start')?.value;
-        const endStr = document.getElementById('stats-date-end')?.value;
-        if (!startStr || !endStr) return () => true;
-        const startDate = new Date(startStr);
-        const endDate = new Date(endStr);
-        startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
-        return (date) => {
-            const d = new Date(date);
-            return d >= startDate && d <= endDate;
-        };
-    }
-    return () => true;
 }
 
 function filterFlightsByCrew(flights) {
@@ -963,16 +906,25 @@ function populateStatsPeriodSelect(flights) {
     const currentVal = select.value;
     const periods = new Set();
     flights.forEach(f => {
-        if (f.date) {
-            const display = getPeriodDisplay(f.date);
-            if (display) periods.add(display);
-        }
+        const display = getEffectivePeriod(f);
+        if (display) periods.add(display);
     });
 
+    // --- התיקון: מיון בטוח שממיר הכל לטקסט לפני שהוא מפצל, כדי שלא תהיה קריסה ---
     const sortedPeriods = Array.from(periods).sort((a, b) => {
-        const [pA, yA] = a.split('/');
-        const [pB, yB] = b.split('/');
-        return yA !== yB ? Number(yA) - Number(yB) : Number(pA) - Number(pB);
+        // המרה לטקסט מחריבה בעיות של מספרים נקיים
+        const strA = String(a || "");
+        const strB = String(b || "");
+        
+        const partsA = strA.split('/');
+        const partsB = strB.split('/');
+        
+        const pA = Number(partsA[0]) || 0;
+        const yA = Number(partsA[1]) || 0;
+        const pB = Number(partsB[0]) || 0;
+        const yB = Number(partsB[1]) || 0;
+        
+        return yA !== yB ? yA - yB : pA - pB;
     });
 
     select.innerHTML = '';
@@ -985,7 +937,58 @@ function populateStatsPeriodSelect(flights) {
 
     if (currentVal && periods.has(currentVal)) select.value = currentVal;
     else if (sortedPeriods.length > 0) select.value = sortedPeriods[sortedPeriods.length - 1];
+    
     populateStatsWeekSelect();
+}
+
+function getDateFilterPredicate() {
+    const elFilterType = document.getElementById('stats-filter-type');
+    const filterType = elFilterType ? elFilterType.value : 'period';
+
+    if (filterType === 'period') {
+        const selectedVal = document.getElementById('stats-period-select')?.value;
+        if (!selectedVal) return () => false;
+        return (item) => {
+            // שליפה חכמה: אם זה אובייקט גיחה נשתמש ב-Effective, אחרת רק תאריך
+            const fPeriod = (item && typeof item === 'object' && item.date) ? getEffectivePeriod(item) : getPeriodDisplay(item);
+            return fPeriod === selectedVal;
+        };
+    }
+
+    if (filterType === 'week') {
+        const selectedPeriod = document.getElementById('stats-period-select')?.value;
+        const elWeek = document.getElementById('stats-week-value');
+        if (!elWeek) return () => false;
+        const selectedWeekVal = elWeek.value;
+        
+        return (item) => {
+            const dateObj = (item && item.date) ? new Date(item.date) : new Date(item);
+            const fPeriod = (item && typeof item === 'object' && item.date) ? getEffectivePeriod(item) : (window.getPeriodName ? window.getPeriodName(dateObj) : getPeriodDisplay(dateObj));
+            
+            if (selectedPeriod && fPeriod !== selectedPeriod) return false;
+            
+            if (selectedWeekVal && selectedWeekVal !== "ALL") {
+                const weekOfPeriod = window.calculateWeekNumber ? window.calculateWeekNumber(dateObj, fPeriod) : 1;
+                return weekOfPeriod === parseInt(selectedWeekVal);
+            }
+            return true;
+        };
+    }
+
+    if (filterType === 'range') {
+        const startStr = document.getElementById('stats-date-start')?.value;
+        const endStr = document.getElementById('stats-date-end')?.value;
+        if (!startStr || !endStr) return () => true;
+        const startDate = new Date(startStr);
+        const endDate = new Date(endStr);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        return (item) => {
+            const d = new Date((item && item.date) ? item.date : item);
+            return d >= startDate && d <= endDate;
+        };
+    }
+    return () => true;
 }
 
 function updateCrewFilterState() {

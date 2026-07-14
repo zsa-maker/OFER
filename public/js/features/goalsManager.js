@@ -289,7 +289,6 @@ window.goalsManager.getWeekNumber = function (dateVal, periodName) {
     return null;
 };
 
-
 function safeDate(dateVal) {
     if (dateVal instanceof Date) return dateVal;
     const d = new Date(dateVal);

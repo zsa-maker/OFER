@@ -152,9 +152,28 @@ window.calculateWeekNumber = function(dateStr, periodName) {
     return Math.max(1, weekNum); // מוודא שלא יחזיר שבוע 0 או שלילי
 };
 
+/**
+ * פונקציה זו מחזירה את התקופה האפקטיבית של הגיחה.
+ * זו הפונקציה היחידה שצריך להשתמש בה בכל המערכת לצורך תצוגת תקופה.
+ */
+export function getEffectivePeriod(flight) {
+    if (!flight) return "";
+    
+    // 1. קודם נבדוק אם יש דריסה ידנית מפורשת
+    if (flight.manualPeriod && flight.manualPeriod !== 'auto') return flight.manualPeriod;
+    if (flight.data && flight.data.manualPeriod && flight.data.manualPeriod !== 'auto') return flight.data.manualPeriod;
+    
+    // 2. נבדוק אם יש שדה תקופה צרוב בגיחה והוא בפורמט החדש (מכיל קו נטוי, למשל "1/26")
+    if (flight.period && String(flight.period).includes('/')) return flight.period;
+    
+    // 3. אם מדובר בגיחה ישנה (שנשמרה כמספר 1 או 2) או שאין תקופה, נחשב אוטומטית לפי תאריך!
+    return getPeriodDisplay(flight.date);
+}
+
 // חשיפה לחלון
 window.getWeekNumber = getWeekNumber;
 window.getPeriodNumber = getPeriodNumber;
+window.getEffectivePeriod = getEffectivePeriod;
 window.populateSystemSelect = populateSystemSelect;
 window.getPeriodDisplay = getPeriodDisplay;
 window.calculateWeekNumber = window.calculateWeekNumber;

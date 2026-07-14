@@ -4,6 +4,7 @@ import { savedFlights, goalConfigurations, systemClassifications } from '../core
 import * as Global from '../core/global.js';
 
 export let metricConfigurations = [];
+
 // משתנה גלובלי לשמירת הרשימות בזיכרון
 export let personnelLists = {
     // instructorsMale: [],
@@ -209,17 +210,19 @@ export async function loadGoalsAndSystems() {
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // טעינת יעדים
-            Global.goalConfigurations.splice(0, Global.goalConfigurations.length, ...(data.goalConfigurations || []));
-            // טעינת מדדים (החלק החסר)
-            window.metricConfigurations = data.metricConfigurations || [];
 
+            // עדכון היעדים
+            Global.goalConfigurations.splice(0, Global.goalConfigurations.length, ...(data.goalConfigurations || []));
+
+            // 🔴 התיקון: סנכרון מלא של המשתנה הגלובלי כדי שהטבלה תראה אותו
+            window.metricConfigurations = data.metricConfigurations || [];
+            metricConfigurations.splice(0, metricConfigurations.length, ...window.metricConfigurations);
             // עדכון המערכות
             const systems = data.systemClassifications || {};
             for (const key in systems) { Global.systemClassifications[key] = systems[key]; }
 
             renderSystemList();
-            renderMetricsConfigTable(); // קריאה לרינדור הטבלה
+            renderMetricsConfigTable();
         }
     } catch (error) {
         console.error("Error loading advanced config:", error);
@@ -1353,11 +1356,15 @@ async function saveAdvancedConfig() {
     try {
         await setDoc(doc(window.db, "settings", "advanced_config"), {
             goalConfigurations: Global.goalConfigurations,
-            systemClassifications: Global.systemClassifications
-        });
+            systemClassifications: Global.systemClassifications,
+            // 🔴 התיקון: שמירת המשתנה הגלובלי שמכיל את המידע האמיתי
+            metricConfigurations: window.metricConfigurations || metricConfigurations
+        }, { merge: true });
+
+        console.log("Configuration saved successfully");
     } catch (e) {
         console.error("Save advanced config failed", e);
-        showToast("שגיאה בשמירה", "red");
+        showToast("שגיאה בשמירת הגדרות מתקדמות", "red");
     }
 }
 
@@ -3004,18 +3011,19 @@ window.saveMetricConfig = async () => {
     const { doc, setDoc } = window.firestoreFunctions;
 
     try {
-        // אנחנו שומרים את זה בתוך אובייקט ה-advanced_config הקיים כדי לא לדרוס הגדרות אחרות (כמו יעדים)
+        // 🔴 התיקון: שימוש ב-merge כדי לא לדרוס בטעות יעדים או מערכות
         await setDoc(doc(window.db, "settings", "advanced_config"), {
-            goalConfigurations: window.goalConfigurations || [],
-            systemClassifications: window.systemClassifications || {},
-            metricConfigurations: window.metricConfigurations // השדה החדש
-        });
+            metricConfigurations: window.metricConfigurations
+        }, { merge: true });
 
         showToast("הגדרות המדדים נשמרו בהצלחה!", "green");
 
         // ניקוי הטופס לאחר שמירה
         document.getElementById('metrics-editor-container').innerHTML = '';
         document.getElementById('metric-config-name').value = '';
+
+        // 🔴 התיקון: רינדור הטבלה כדי שהמדד החדש יופיע מיד על המסך
+        renderMetricsConfigTable();
 
     } catch (e) {
         console.error("Save metric config failed", e);
@@ -3045,17 +3053,16 @@ window.editMetricConfig = (index) => {
     document.getElementById('metric-config-type').scrollIntoView({ behavior: 'smooth', block: 'center' });
     showToast("המדדים נטענו לעריכה. בצע שינויים ולחץ על 'שמור מדדים'.", "blue");
 };
+
 window.deleteMetricConfig = async (index) => {
     if (confirm("האם אתה בטוח שברצונך למחוק הגדרת מדדים זו?")) {
         window.metricConfigurations.splice(index, 1);
 
-        // שמירה ל-Firestore
+        // 🔴 התיקון: שמירה בטוחה עם merge
         const { doc, setDoc } = window.firestoreFunctions;
         await setDoc(doc(window.db, "settings", "advanced_config"), {
-            goalConfigurations: window.goalConfigurations || [],
-            systemClassifications: window.systemClassifications || {},
             metricConfigurations: window.metricConfigurations
-        });
+        }, { merge: true });
 
         renderMetricsConfigTable();
         showToast("ההגדרה נמחקה", "green");

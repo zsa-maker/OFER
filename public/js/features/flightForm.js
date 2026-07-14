@@ -84,7 +84,18 @@ export async function showFormStep2(flightStatus, flightData = null) {
             await loadPersonnelLists().catch(e => console.warn("List load skipped:", e));
         }
         await loadGoalsAndSystems().catch(e => console.warn("Goals load skipped:", e));
-
+        if (!window.planningSettings && window.firestoreFunctions && window.db) {
+            try {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const snap = await getDoc(doc(window.db, "settings", "planning"));
+                if (snap.exists()) {
+                    window.planningSettings = snap.data();
+                }
+            } catch (err) {
+                console.warn("Planning settings load skipped:", err);
+            }
+        }
+        const currentManual = flightData?.data?.manualPeriod || null;
         // --- תוספת: טעינת נתוני האוכלוסיות והשיוכים באופן אוטומטי לטופס ---
         if (typeof window.loadPopulationsForAdmin === 'function') {
             await window.loadPopulationsForAdmin().catch(e => console.warn("Populations load skipped:", e));
@@ -93,6 +104,9 @@ export async function showFormStep2(flightStatus, flightData = null) {
 
         window.goalConfigurations = goalConfigurations;
         window.systemClassifications = systemClassifications;
+        
+        // >>> הקריאה החדשה, ממתינה בסבלנות לנתונים מהשרת:
+        await loadAndPopulatePeriods(currentManual);
     } catch (e) {
         console.warn("Initialization warning:", e);
     }
@@ -454,35 +468,78 @@ function attachEventListeners() {
         };
     }
     if (nameInput) nameInput.onchange = checkAndPopulateGoals;
+    
+    // --- פונקציית עזר לעדכון האוכלוסיות והגיחות לפי שם התקופה ---
+    const refreshPopulations = async (periodName) => {
+        if (!periodName || !window.fetchPopulationsForPeriod) return;
+        console.log("מושך אוכלוסיות עבור התקופה:", periodName);
+        
+        const periodData = await window.fetchPopulationsForPeriod(periodName);
+        if (periodData) {
+            // 1. עדכון הטייסים (PILOTS)
+            if (window.getAllPilotsFromPopulations) {
+                const pilotNames = window.getAllPilotsFromPopulations(periodData);
+                updateDropdown('pilot-right', pilotNames);
+                updateDropdown('pilot-left', pilotNames);
+            }
+
+            // 2. שמירת האוכלוסייה החדשה ועדכון סוגי הגיחות
+            window.pilotPopulations = periodData;
+            if (typeSelect) filterFlightNamesByType(typeSelect.value);
+
+            // הפעלת מודול ההודעות הקופצות
+            import('../components/modals.js').then(m => m.showToast(`הנתונים עודכנו לתקופה ${periodName}`, 'blue'));
+        }
+    };
+
     const dateInput = document.getElementById('flight-date');
+    
+    // 1. מאזין לשינוי תאריך (יעבוד רק אם לא בוצעה דריסה ידנית)
     if (dateInput) {
         dateInput.onchange = async (e) => {
+            // בודקים מה המצב הנוכחי של רשימת התקופות
+            const selects = document.querySelectorAll('[id="period-select"]');
+            const manualSelect = selects.length > 0 ? selects[0].value : 'auto';
+            
+            // אם המשתמש בחר תקופה ספציפית בעצמו, שינוי התאריך לא אמור לשנות את האוכלוסיות (דריסה פעילה)
+            if (manualSelect !== 'auto') {
+                console.log("דריסה ידנית פעילה - מתעלם משינוי התאריך לעדכון אוכלוסיות.");
+                return;
+            }
+
+            // אם על אוטומט, ממשיכים למשוך לפי התאריך
             const date = new Date(e.target.value);
-            const period = window.getPeriodName(date); // פונקציה קיימת ב-adminManager
-
+            const period = window.getPeriodName ? window.getPeriodName(date) : null;
             if (period) {
-                console.log("תקופה זוהתה:", period);
-                const periodData = await window.fetchPopulationsForPeriod(period);
-
-                if (periodData) {
-                    // 1. עדכון הטייסים (PILOTS)
-                    const pilotNames = window.getAllPilotsFromPopulations(periodData);
-                    updateDropdown('pilot-right', pilotNames);
-                    updateDropdown('pilot-left', pilotNames);
-
-                    // 2. עדכון הגיחות (FLIGHT NAMES) - יתעדכן אוטומטית ע"י filterFlightNamesByType
-                    // רק צריך לעדכן את המשתנה הגלובלי שהפונקציה משתמשת בו
-                    window.pilotPopulations = periodData;
-
-                    // הפעלת פילטר הגיחות מחדש לפי סוג הגיחה הנוכחי
-                    const typeSelect = document.getElementById('flight-type-select');
-                    if (typeSelect) filterFlightNamesByType(typeSelect.value);
-
-                    showToast(`הנתונים עודכנו לתקופה ${period}`, 'blue');
-                }
+                await refreshPopulations(period);
             }
         };
     }
+
+    // 2. מאזין לשינוי התקופה ברשימה הידנית (מפעיל את הדריסה)
+    const periodSelects = document.querySelectorAll('[id="period-select"]');
+    periodSelects.forEach(select => {
+        select.addEventListener('change', async (e) => {
+            const selectedVal = e.target.value;
+            console.log("נבחרה תקופה ידנית:", selectedVal);
+            
+            // סנכרון הערך בכל הרשימות במסך (במידה ויש יותר מאחת)
+            periodSelects.forEach(s => { if (s !== e.target) s.value = selectedVal; });
+
+            if (selectedVal === 'auto') {
+                // חזרה למצב "מחושב אוטומטית" - נמשוך מחדש את האוכלוסיות לפי התאריך שבטופס
+                const dateVal = dateInput ? dateInput.value : null;
+                if (dateVal) {
+                    const date = new Date(dateVal);
+                    const period = window.getPeriodName ? window.getPeriodName(date) : null;
+                    if (period) await refreshPopulations(period);
+                }
+            } else {
+                // דריסה ידנית - נמשוך את האוכלוסיות בהתאם לתקופה שהמשתמש בחר
+                await refreshPopulations(selectedVal);
+            }
+        });
+    });
 }
 
 function updateDropdown(elementId, items) {
@@ -687,12 +744,26 @@ export async function saveFlightForm(skipValidation = false) {
     const d = new Date(currentForm.data['תאריך']);
     currentForm.date = currentForm.data['תאריך'];
 
-    // משיכת שם התקופה מהפונקציה של המנהל (למשל: "1/26")
-    const periodName = window.getPeriodName ? window.getPeriodName(d) : getPeriodNumber(d);
-    currentForm.period = periodName;
+    // --- התיקון: הגדרה ושמירה ישירה של התקופה כדי למנוע קריסות ולעדכן את טבלאות המעקב ---
+    let finalPeriod = null;
+    let selects = document.querySelectorAll('[id="period-select"]');
+    let manualVal = selects.length > 0 ? selects[0].value : 'auto';
 
-    // חישוב מדויק של השבוע לפי הגדרת תאריך ההתחלה של המנהל
-    const calculatedWeek = window.calculateWeekNumber ? window.calculateWeekNumber(d, periodName) : getWeekNumber(d);
+    if (manualVal !== 'auto') {
+        // המשתמש בחר תקופה באופן ידני
+        finalPeriod = manualVal;
+        currentForm.data.manualPeriod = finalPeriod;
+    } else {
+        // חישוב אוטומטי לפי התאריך (ברירת מחדל)
+        delete currentForm.data.manualPeriod;
+        finalPeriod = window.getPeriodName ? window.getPeriodName(d) : getPeriodNumber(d);
+    }
+    
+    // זהירות! שורת מפתח - מעדכנת את השדה הראשי עליו טבלת המעקבים מסתמכת
+    currentForm.period = finalPeriod;
+
+    // חישוב מדויק של השבוע
+    const calculatedWeek = window.calculateWeekNumber ? window.calculateWeekNumber(d, finalPeriod) : getWeekNumber(d);
     currentForm.week = calculatedWeek || 1;
 
     try {
@@ -700,10 +771,11 @@ export async function saveFlightForm(skipValidation = false) {
         let statusToSet = currentForm.executionStatus;
         if (currentReportMode === 'full' || currentReportMode === 'partial') statusToSet = 'בוצעה';
         if (currentReportMode === 'cancel') statusToSet = 'בוטלה';
-        if (currentReportMode === 'not_reported') statusToSet = 'טרם דווחה'; // הוספת הסטטוס החדש
+        if (currentReportMode === 'not_reported') statusToSet = 'טרם דווחה';
 
         const dataToSave = { ...currentForm, executionStatus: statusToSet, timestamp: window.getServerTimestamp() };
 
+        // עדכון המסמך ב-Firebase
         if (currentForm.flightId) {
             const docRef = doc(collection(window.db, "flights"), currentForm.flightId);
             delete dataToSave.flightId;
@@ -712,13 +784,108 @@ export async function saveFlightForm(skipValidation = false) {
             const newDoc = await addDoc(collection(window.db, "flights"), dataToSave);
             currentForm.flightId = newDoc.id;
         }
-        showToast('הגיחה נשמרה!', 'green');
+        
+        showToast('הגיחה נשמרה בהצלחה!', 'green');
+        
+        // משיכת הגיחות מחדש וסנכרון כדי לעדכן מיד את טבלאות המעקבים
         await fetchFlights();
         showScreen('flight-form-screen');
     } catch (e) {
-        console.error('Error saving:', e);
+        console.error('Error saving flight:', e);
         showToast('שגיאה בשמירה.', 'red');
     }
+}
+
+async function loadAndPopulatePeriods(manualValue) {
+    console.log("--- מתחיל טעינת רשימת תקופות ---");
+    
+    // הפעם נחפש את *כל* האלמנטים שיש להם את ה-ID הזה
+    let selects = document.querySelectorAll('[id="period-select"]');
+
+    // 1. המתנה לאלמנטים שיופיעו ב-DOM
+    if (selects.length === 0) {
+        console.log("ממתין להופעת הרשימות במסך...");
+        await new Promise(resolve => {
+            let timePassed = 0;
+            const interval = setInterval(() => {
+                timePassed += 50;
+                selects = document.querySelectorAll('[id="period-select"]');
+                if (selects.length > 0) { clearInterval(interval); resolve(); }
+                else if (timePassed >= 2000) { clearInterval(interval); resolve(); }
+            }, 50);
+        });
+    }
+
+    if (selects.length === 0) {
+        console.error("שגיאה קריטית: השדה period-select לא נמצא ב-HTML.");
+        return;
+    }
+
+    console.log(`נמצאו ${selects.length} אלמנטים של רשימת תקופות במסך.`);
+
+    // 2. חיווי ויזואלי למשתמש (בכל הרשימות)
+    selects.forEach(select => {
+        select.innerHTML = '<option value="auto">טוען תקופות מהשרת...</option>';
+    });
+
+    // 3. שליפת הנתונים מהמסד
+    let configs = {};
+    if (window.firestoreFunctions && window.db) {
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const snap = await getDoc(doc(window.db, "settings", "planning"));
+            
+            if (snap.exists()) {
+                const data = snap.data();
+                window.planningSettings = data;
+                configs = data.periodConfigs || {};
+            } else {
+                configs = window.planningSettings?.periodConfigs || {};
+            }
+        } catch (e) {
+            console.error("שגיאה במשיכת נתונים:", e);
+            configs = window.planningSettings?.periodConfigs || {};
+        }
+    } else {
+        configs = window.planningSettings?.periodConfigs || {};
+    }
+
+    // 4. מיון התקופות (מהחדש לישן)
+    const periods = Object.keys(configs).sort((a, b) => {
+        const partsA = a.split('/').map(Number);
+        const partsB = b.split('/').map(Number);
+        const pA = isNaN(partsA[0]) ? 0 : partsA[0];
+        const yA = isNaN(partsA[1]) ? 0 : partsA[1];
+        const pB = isNaN(partsB[0]) ? 0 : partsB[0];
+        const yB = isNaN(partsB[1]) ? 0 : partsB[1];
+        return (yB + pB / 10) - (yA + pA / 10); 
+    });
+
+    // 5. הזרקה לתוך *כל* רשימות ה-HTML שנמצאו
+    selects.forEach((select, index) => {
+        select.innerHTML = ''; // ניקוי ה"טוען..."
+        
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = 'auto';
+        defaultOpt.textContent = 'מחושב אוטומטית (לפי תאריך)';
+        select.appendChild(defaultOpt);
+
+        periods.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p;
+            select.appendChild(opt);
+        });
+
+        // 6. קביעת הערך הנבחר
+        if (manualValue && periods.includes(manualValue)) {
+            select.value = manualValue;
+        } else {
+            select.value = 'auto';
+        }
+    });
+
+    console.log(`התקופות הוזרקו בהצלחה ל-${selects.length} רשימות בטופס.`);
 }
 
 // עדכון פונקציית הרינדור

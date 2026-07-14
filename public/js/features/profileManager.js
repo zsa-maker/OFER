@@ -1,8 +1,8 @@
-// public/js/features/profileManager.js
-
 import { personnelLists, loadGoalsAndSystems, loadPersonnelLists } from './adminManager.js';
 import { fetchFlights } from '../core/global.js';
 import { showToast } from '../components/modals.js';
+import { getEffectivePeriod } from '../core/util.js'; 
+
 
 let profileChart = null;
 let currentPilotFlights = [];
@@ -126,13 +126,13 @@ window.profileManager.updateMatrix = function () {
 
     const allFlights = window.savedFlights || [];
     const filteredFlights = allFlights.filter(f => {
-        // תיקון: גיחות מנהל משתמשות בתקופה השמורה, גיחות רגילות מחושבות דינמית לפי תאריך
-        const rawPeriod = f.isAdminAdded ? f.period : getFlightPeriodName(f.date, plan);
+        // שימוש בפונקציה החכמה שתופסת גם דריסות וגם אישורים ידניים
+        const rawPeriod = getEffectivePeriod(f);
         const periodOfFlight = String(rawPeriod || '').trim();
 
         const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
         const isNotCancelled = f.executionStatus !== 'בוטלה';
-        const isNotPending = f.executionStatus !== 'טרם דווחה'; // סינון גיחות פתוחות
+        const isNotPending = f.executionStatus !== 'טרם דווחה'; 
         return isSamePeriod && isNotCancelled && isNotPending;
     });
 
@@ -301,7 +301,7 @@ function updatePilotProfile(pilotName) {
 
         // סינון לפי תקופה אם לא נבחר "הכל"
         if (selectedPeriod !== 'all') {
-            const rawPeriod = f.isAdminAdded ? f.period : getFlightPeriodName(f.date, plan);
+            const rawPeriod = getEffectivePeriod(f);
             const periodOfFlight = String(rawPeriod || '').trim();
             if (periodOfFlight !== selectedPeriod) return false;
         }
@@ -420,8 +420,8 @@ async function populatePeriodSelector() {
 
     const allFlights = window.savedFlights || [];
     allFlights.forEach(f => {
-        const p = f.isAdminAdded ? f.period : window.getPeriodName(f.date);
-        if (p) periodsSet.add(p.trim());
+        const p = getEffectivePeriod(f);
+        if (p) periodsSet.add(String(p).trim());
     });
 
     const periods = Array.from(periodsSet).sort((a, b) => {
@@ -785,8 +785,8 @@ window.profileManager.generateInstructorsReport = async function () {
         const allFlights = window.savedFlights || [];
 
         const periodFlights = allFlights.filter(f => {
-            // תיקון: גיחות מנהל משתמשות בתקופה השמורה, גיחות רגילות מחושבות דינמית לפי תאריך
-            const rawPeriod = f.isAdminAdded ? f.period : getFlightPeriodName(f.date, plan);
+            // שימוש בפונקציה המרכזית החכמה
+            const rawPeriod = getEffectivePeriod(f);
             const periodOfFlight = String(rawPeriod || '').trim();
 
             const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
