@@ -7,6 +7,7 @@ const missionDatabase = {
     allData: [],
     selectedFlights: new Set(),
     selectionMode: false,
+    populationsCache: {},
 
     // מיפוי בין ה-ID של הפילטר ב-HTML לשדה בנתונים או לערך מחושב
     KEY_MAP: {
@@ -44,14 +45,17 @@ const missionDatabase = {
         if (adminControls) adminControls.style.display = isAdmin ? 'flex' : 'none';
 
         if (window.firestoreFunctions && window.db) {
-            try {
-                const { doc, getDoc } = window.firestoreFunctions;
-                const snap = await getDoc(doc(window.db, "settings", "planning"));
-                if (snap.exists()) {
-                    window.planningSettings = snap.data();
+            // בדיקה האם ההגדרות כבר נטענו
+            if (!window.planningSettings) {
+                try {
+                    const { doc, getDoc } = window.firestoreFunctions;
+                    const snap = await getDoc(doc(window.db, "settings", "planning"));
+                    if (snap.exists()) {
+                        window.planningSettings = snap.data();
+                    }
+                } catch (e) {
+                    console.error("Failed to load planning settings", e);
                 }
-            } catch (e) {
-                console.error("Failed to load planning settings", e);
             }
         }
 
@@ -88,14 +92,30 @@ const missionDatabase = {
                     const activePeriod = document.getElementById('db-filter-period')?.value;
                     let mappingData = [];
 
+                    // בתוך המאזין של db-filter-type
                     if (activePeriod && window.firestoreFunctions && window.db) {
                         const safePeriodName = activePeriod.replace(/\//g, '-');
-                        try {
-                            const popSnap = await window.firestoreFunctions.getDoc(window.firestoreFunctions.doc(window.db, "populations_by_period", safePeriodName));
-                            if (popSnap.exists() && popSnap.data().flightTypeMapping?.[selectedType]) {
-                                mappingData = popSnap.data().flightTypeMapping[selectedType];
+                        let mappingData = [];
+
+                        // בדיקה האם המידע כבר קיים בזיכרון המקומי
+                        if (missionDatabase.populationsCache[safePeriodName]) {
+                            if (missionDatabase.populationsCache[safePeriodName].flightTypeMapping?.[selectedType]) {
+                                mappingData = missionDatabase.populationsCache[safePeriodName].flightTypeMapping[selectedType];
                             }
-                        } catch (err) { }
+                        } else {
+                            // ביצוע קריאה ל-Firestore רק אם המידע לא קיים
+                            try {
+                                const popSnap = await window.firestoreFunctions.getDoc(window.firestoreFunctions.doc(window.db, "populations_by_period", safePeriodName));
+                                if (popSnap.exists()) {
+                                    const data = popSnap.data();
+                                    missionDatabase.populationsCache[safePeriodName] = data; // שמירה ב-Cache לפעמים הבאות
+
+                                    if (data.flightTypeMapping?.[selectedType]) {
+                                        mappingData = data.flightTypeMapping[selectedType];
+                                    }
+                                }
+                            } catch (err) { console.error(err); }
+                        }
                     }
 
                     // עדכון הפילטר של שמות הגיחות עם המיפוי הרלוונטי (ואיחוד עם מה שכבר קיים בטבלה כדי לא להעלים נתוני עבר)
@@ -318,13 +338,17 @@ const missionDatabase = {
         const safePeriodName = periodName.replace(/\//g, '-');
         let periodPopulations = null;
 
-        // שאיבת הגדרות האוכלוסיות והגיחות של התקופה הספציפית מהשרת
-        if (window.firestoreFunctions && window.db) {
+        // שימוש ב-Cache המקומי שיצרנו קודם
+        if (this.populationsCache[safePeriodName]) {
+            periodPopulations = this.populationsCache[safePeriodName];
+        }
+        else if (window.firestoreFunctions && window.db) {
             try {
                 const { doc, getDoc } = window.firestoreFunctions;
                 const popSnap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
                 if (popSnap.exists()) {
                     periodPopulations = popSnap.data();
+                    this.populationsCache[safePeriodName] = periodPopulations; // שמירה ב-Cache
                 }
             } catch (e) {
                 console.error("Error fetching populations for dropdowns", e);
