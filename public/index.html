@@ -143,7 +143,7 @@
             mainScript.type = 'module';
             mainScript.innerHTML = `
                 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-                import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc } 
+                import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc,query, where } 
                     from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
                 
                 // הגדרות Firebase
@@ -162,7 +162,7 @@
                 window.getServerTimestamp = serverTimestamp;
                 
                 // חשיפת פונקציות גלובליות לשימוש בקבצים אחרים
-                window.firestoreFunctions = { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc };
+                window.firestoreFunctions = { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc, query, where };
 
                 // טעינת המודולים של האפליקציה
                 import { initializeAuth } from './js/auth/auth.js';

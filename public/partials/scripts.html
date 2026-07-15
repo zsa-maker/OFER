@@ -3,7 +3,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-analytics.js";
     import {
-        getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc
+        getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc, query, where
     } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
     // 2. *** קוד אתחול Firebase (חובה להסיר את ההערה ולשים את הקוד האמיתי) ***
@@ -26,7 +26,7 @@ const firebaseConfig = {
 
     // *** חשיפת הפונקציות הגלובליות לשימוש בקבצים המודולריים ***
     window.firestoreFunctions = {
-        getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc
+        getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc, query, where
     };
     // ------------------------------------------------------------------
 

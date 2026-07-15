@@ -133,6 +133,7 @@ export async function importFlightsFromExcel(file) {
                 period: getPeriodNumber(flightDate),
                 timestamp: serverTimestamp(),
                 trainingType: 'GENERIC_FLIGHT',
+                isImported: true
             };
 
             flightsToSave.push(flightRecord);

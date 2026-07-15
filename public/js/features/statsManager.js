@@ -641,6 +641,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (!lastFlightDate || d > lastFlightDate) lastFlightDate = d;
     });
 
+    // 1. תכנון מקורי - מגיע בצורה נקייה ויציבה אך ורק מעמוד המנהל
     if (!selectedFlightType && planningData?.originalPlans) {
         Object.entries(planningData.originalPlans).forEach(([dStr, count]) => {
             if (dateFilterPredicate(createLocalMidnight(dStr))) {
@@ -651,12 +652,19 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         });
     }
 
+   // 2. תכנון עדכני - סופר את כל הגיחות במאגר חוץ מאלו שסווגו כ"ידניות"
     const dbCounts = {};
     savedFlights.forEach(f => {
         if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
-        const dStr = getLocalDStr(f.date);
-        dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
-    });
+        
+        // כאן אנחנו מחסירים רק גיחות שסומנו במפורש כ-ManualEntry
+        const isManual = f.isManualEntry === true;
+        
+        if (!isManual) {
+            const dStr = getLocalDStr(f.date);
+            dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
+        }
+    }); 
 
     const calendarDates = planningData?.dailyPlans ? Object.keys(planningData.dailyPlans) : [];
     const allRelevantDates = new Set([...Object.keys(dbCounts), ...calendarDates]);
@@ -683,10 +691,8 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     executedFlights.forEach(f => {
         if (!f.date) return;
         const dStr = getLocalDStr(f.date);
-        // שימוש בבדיקת תקינות גיחה אחידה (ללא פילטרים כפולים שגורמים לחוסר התאמה)
         const status = getFlightStatus(f);
 
-        // סופר כל גיחה שלא בוטלה (כדי לתאם לגרף סטטוס ביצוע)
         if (status === 'full' || status === 'partial') {
             allDates.add(dStr);
             if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
@@ -915,15 +921,15 @@ function populateStatsPeriodSelect(flights) {
         // המרה לטקסט מחריבה בעיות של מספרים נקיים
         const strA = String(a || "");
         const strB = String(b || "");
-        
+
         const partsA = strA.split('/');
         const partsB = strB.split('/');
-        
+
         const pA = Number(partsA[0]) || 0;
         const yA = Number(partsA[1]) || 0;
         const pB = Number(partsB[0]) || 0;
         const yB = Number(partsB[1]) || 0;
-        
+
         return yA !== yB ? yA - yB : pA - pB;
     });
 
@@ -937,7 +943,7 @@ function populateStatsPeriodSelect(flights) {
 
     if (currentVal && periods.has(currentVal)) select.value = currentVal;
     else if (sortedPeriods.length > 0) select.value = sortedPeriods[sortedPeriods.length - 1];
-    
+
     populateStatsWeekSelect();
 }
 
@@ -960,13 +966,13 @@ function getDateFilterPredicate() {
         const elWeek = document.getElementById('stats-week-value');
         if (!elWeek) return () => false;
         const selectedWeekVal = elWeek.value;
-        
+
         return (item) => {
             const dateObj = (item && item.date) ? new Date(item.date) : new Date(item);
             const fPeriod = (item && typeof item === 'object' && item.date) ? getEffectivePeriod(item) : (window.getPeriodName ? window.getPeriodName(dateObj) : getPeriodDisplay(dateObj));
-            
+
             if (selectedPeriod && fPeriod !== selectedPeriod) return false;
-            
+
             if (selectedWeekVal && selectedWeekVal !== "ALL") {
                 const weekOfPeriod = window.calculateWeekNumber ? window.calculateWeekNumber(dateObj, fPeriod) : 1;
                 return weekOfPeriod === parseInt(selectedWeekVal);
@@ -1197,7 +1203,7 @@ function initFiltersUI() {
 function toggleFilterInputs(type) {
     const groups = { 'period': 'filter-period-group', 'week': 'filter-week-group', 'range': 'filter-range-group' };
     Object.values(groups).forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-    
+
     if (type === 'period') {
         document.getElementById('filter-period-group')?.classList.remove('hidden');
     } else if (type === 'week') {

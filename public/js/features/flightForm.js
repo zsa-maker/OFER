@@ -773,7 +773,7 @@ export async function saveFlightForm(skipValidation = false) {
         if (currentReportMode === 'cancel') statusToSet = 'בוטלה';
         if (currentReportMode === 'not_reported') statusToSet = 'טרם דווחה';
 
-        const dataToSave = { ...currentForm, executionStatus: statusToSet, timestamp: window.getServerTimestamp() };
+        const dataToSave = { ...currentForm, executionStatus: statusToSet, timestamp: window.getServerTimestamp(), isManualEntry: !currentForm.isImported};
 
         // עדכון המסמך ב-Firebase
         if (currentForm.flightId) {

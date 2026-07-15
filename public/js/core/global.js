@@ -9,22 +9,24 @@ import { loadPersonnelLists, loadGoalsAndSystems } from '../features/adminManage
 
 // --- משתנים גלובליים (EXPORTS) ---
 export const trainingTemplates = {
-    'GENERIC_FLIGHT': {
-        goals: [],
-        step2: [],
-        step3: []
-    }
+    'GENERIC_FLIGHT': { goals: [], step2: [], step3: [] }
 };
+
+let lastFetchTime = 0;
+let lastPendingFetchTime = 0; // מטמון נפרד עבור גיחות פתוחות בלבד
+const FETCH_COOLDOWN = 1000 * 60 * 5; // 5 minutes in milliseconds
 
 export const simulatorFaults = {};
 
 let isPendingSelectionMode = false;
 let pendingSelectedSet = new Set();
 
+// הערה: נשמרה הטרמינולוגיה "גיחה מופרעת" בהתאם לבקשתך ההיסטורית
 export const flightTypes = ['גיחה רגילה', 'גיחה מופרעת', 'ביטול גיחה'];
 
 // משתנים גלובליים דינמיים
 export let savedFlights = [];
+export let pendingFlights = []; // הוספנו מערך ייעודי כדי לחסוך קריאות
 export let currentForm = {};
 export let currentViewFlight = null;
 export let currentScreen = 'flight-form-screen';
@@ -36,8 +38,8 @@ export let goalConfigurations = [];
 
 window.pilotPopulations = { instructorGroups: [], courses: [], flightMapping: { students: [], instructors: [] } };
 
-// *** חשיפה קריטית ל-Window למניעת שגיאות undefined במודולים אחרים ***
 window.savedFlights = savedFlights;
+window.pendingFlights = pendingFlights;
 window.currentForm = currentForm;
 window.unifiedFaultsDatabase = unifiedFaultsDatabase;
 window.faultResolutionStatus = faultResolutionStatus;
@@ -46,22 +48,70 @@ window.trainingTemplates = trainingTemplates;
 window.systemClassifications = systemClassifications;
 window.goalConfigurations = goalConfigurations;
 
-// ******************************************************
-// פונקציות ליבה
-// ******************************************************
-
 export function setCurrentViewFlight(flight) {
     currentViewFlight = flight;
 }
 
 /**
- * פונקציה מרכזית לטעינת כל הנתונים מ-Firebase וסנכרון המערכת
+ * [פונקציה חדשה וחסכונית]
+ * טעינה אך ורק של גיחות הממתינות לדיווח באמצעות שאילתת where.
+ * חוסך טעינה של אלפי גיחות היסטוריות כשנכנסים למסך הראשי!
  */
-export async function fetchFlights() {
-    if (!window.currentUsername) return;
-    if (typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') return;
+export async function fetchPendingFlights(forceRefresh = false) {
+    if (!window.currentUsername || typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') return;
 
-    const { getDocs, collection } = window.firestoreFunctions;
+    const now = Date.now();
+
+    // CACHE CHECK לגיחות הממתינות
+    if (!forceRefresh && pendingFlights.length > 0 && (now - lastPendingFetchTime < FETCH_COOLDOWN)) {
+        renderFlightTable();
+        return;
+    }
+
+    const { getDocs, collection, query, where } = window.firestoreFunctions;
+
+    try {
+        // מביאים רק גיחות שהסטטוס שלהן מצריך טיפול!
+        const q = query(
+            collection(window.db, "flights"),
+            where("executionStatus", "==", "טרם דווחה")
+        );
+
+        const snapshot = await getDocs(q);
+        const flights = snapshot.docs.map(doc => {
+            const flight = doc.data();
+            flight.id = doc.id;
+            return flight;
+        });
+
+        pendingFlights.length = 0;
+        pendingFlights.push(...flights);
+        window.pendingFlights = pendingFlights;
+
+        lastPendingFetchTime = now;
+        renderFlightTable();
+    } catch (error) {
+        console.error('Error fetching pending flights:', error);
+        showToast('שגיאה בסנכרון הגיחות הממתינות', 'red');
+    }
+}
+
+/**
+ * פונקציה היסטורית לטעינת כל הנתונים מ-Firebase למסכי המאגר והסטטיסטיקה
+ * שודרגה לשלוף רק את השנה האחרונה כדי למנוע Over-fetching!
+ */
+export async function fetchFlights(forceRefresh = false) {
+    if (!window.currentUsername || typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') return;
+
+    const now = Date.now();
+
+    if (!forceRefresh && savedFlights.length > 0 && (now - lastFetchTime < FETCH_COOLDOWN)) {
+        console.log("Using cached data. Skipping Firebase read.");
+        refreshCurrentScreen();
+        return;
+    }
+
+    const { getDocs, collection, query, where } = window.firestoreFunctions;
 
     try {
         await Promise.all([
@@ -86,13 +136,22 @@ export async function fetchFlights() {
             });
         } catch (e) { console.warn("Error loading fault resolutions:", e); }
 
-        const snapshot = await getDocs(collection(window.db, "flights"));
+        // ייעול: שליפת גיחות רק מהשנה האחרונה (מוריד משמעותית את כמות המסמכים הנקראתים בסטטיסטיקות)
+        const limitDate = new Date();
+        limitDate.setMonth(limitDate.getMonth() - 12);
+        const dateStrLimit = limitDate.toISOString().split('T')[0];
+
+        const flightsQuery = query(
+            collection(window.db, "flights"),
+            where("date", ">=", dateStrLimit)
+        );
+
+        const snapshot = await getDocs(flightsQuery);
         const flights = snapshot.docs.map(doc => {
             const flight = doc.data();
             flight.id = doc.id;
             const dStr = flight.data?.['תאריך'];
             const tStr = flight.data?.['שעת התחלה'];
-            // חישוב Timestamp למיון
             flight.flightStartTimestamp = (dStr && tStr) ? new Date(`${dStr}T${tStr}:00`).getTime() : 0;
             return flight;
         });
@@ -101,9 +160,10 @@ export async function fetchFlights() {
         savedFlights.push(...flights);
         window.savedFlights = savedFlights;
 
-        if (window.processFaultsData) {
-            window.processFaultsData();
-        }
+        lastFetchTime = now;
+
+        if (window.processFaultsData) window.processFaultsData();
+
         if (currentScreen === 'fault-database-screen') {
             const { initFaultDatabase } = await import('../features/faultManager.js');
             initFaultDatabase();
@@ -116,19 +176,21 @@ export async function fetchFlights() {
     }
 }
 
-// Add to your main fetch function
+// שודרג לשאילתות ולשימוש במסנן זמן
 export async function fetchAllData() {
-    const { collection, getDocs } = window.firestoreFunctions;
+    const { collection, getDocs, query, where } = window.firestoreFunctions;
 
-    // 1. Fetch Flights (Existing)
-    const flightSnap = await getDocs(collection(window.db, "flights"));
+    const limitDate = new Date();
+    limitDate.setMonth(limitDate.getMonth() - 12);
+
+    const qFlights = query(collection(window.db, "flights"), where("date", ">=", limitDate.toISOString().split('T')[0]));
+    const flightSnap = await getDocs(qFlights);
     window.savedFlights = flightSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // 2. NEW: Fetch Standalone Faults
-    const standaloneSnap = await getDocs(collection(window.db, "standalone_faults"));
+    const qFaults = query(collection(window.db, "standalone_faults"), where("timestamp", ">=", limitDate.getTime()));
+    const standaloneSnap = await getDocs(qFaults);
     window.standaloneFaults = standaloneSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // 3. Process the combined data
     processFaultsData();
 }
 
@@ -143,7 +205,7 @@ function refreshCurrentScreen() {
     else if (currentScreen === 'flight-form-screen') renderFlightTable();
 }
 
-export function showScreen(screenId) {
+export async function showScreen(screenId) {
     if (!window.currentUsername) {
         document.getElementById('login-screen').classList.remove('hidden');
         return;
@@ -175,13 +237,20 @@ export function showScreen(screenId) {
 
     currentScreen = screenId;
 
+    // --- ליבת הייעול בניווט המסכים ---
     if (screenId === 'flight-form-screen') {
         populateFilters(screenId);
-        fetchFlights().then(renderFlightTable);
-    } else if (screenId === 'home-screen') {
-        fetchFlights();
+        // טוען רק את הגיחות הקלות שטרם דווחו!
+        fetchPendingFlights();
     } else {
+        // טוען את ההיסטוריה עבור המסכים הגדולים שמצריכים אותה
         fetchFlights();
+    }
+
+    if (screenId === 'fault-database-screen') {
+        if (!window.standaloneFaults || window.standaloneFaults.length === 0) {
+            await fetchStandaloneFaults();
+        }
     }
 }
 
@@ -235,37 +304,34 @@ export function renderFlightTable() {
     document.getElementById('pending-admin-controls')?.classList.toggle('hidden', !isAdmin);
     document.querySelector('.pending-select-col')?.classList.toggle('hidden', !isPendingSelectionMode);
 
-    const pendingFlights = (window.savedFlights || []).filter(f =>
-        f.executionStatus === 'טרם דווחה' || !f.executionStatus
-    );
+    // מעכשיו משתמשים במערך הייעודי pendingFlights שמסונן כבר מהשרת
+    const flightsToRender = window.pendingFlights || [];
 
     // מיון כרונולוגי: מהישן (תאריך קטן) לחדש (תאריך גדול)
-    pendingFlights.sort((a, b) => {
-        // 1. מיון לפי תאריך (ישן לחדש)
+    flightsToRender.sort((a, b) => {
         const dateA = new Date(a.date || (a.data && a.data['תאריך']) || 0).getTime();
         const dateB = new Date(b.date || (b.data && b.data['תאריך']) || 0).getTime();
 
-        if (dateA !== dateB) {
-            return dateA - dateB;
-        }
+        if (dateA !== dateB) return dateA - dateB;
 
-        // 2. אם התאריכים זהים, מיון לפי שעה
-        const timeA = (a.data && a.data['שעת התחלה']) || '23:59'; // שעות חסרות יופיעו בסוף היום
+        const timeA = (a.data && a.data['שעת התחלה']) || '23:59';
         const timeB = (b.data && b.data['שעת התחלה']) || '23:59';
         return timeA.localeCompare(timeB);
     });
-    if (pendingFlights.length === 0) {
+
+    if (flightsToRender.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-gray-500">אין גיחות הממתינות לדיווח.</td></tr>';
         return;
     }
 
-    tableBody.innerHTML = pendingFlights.map((flight, index) => {
+    tableBody.innerHTML = flightsToRender.map((flight, index) => {
         const d = flight.data || {};
         const isChecked = pendingSelectedSet.has(flight.id);
 
+        // במקרה והמשתמש בוחר גיחה ממתינה, נשלוף אותה מהמערך הממתין
         return `
             <tr class="cursor-pointer hover:bg-ofer-primary-50 transition border-b" 
-                onclick="window.showFormStep2(null, window.savedFlights.find(f => f.id === '${flight.id}'))">
+                onclick="window.showFormStep2(null, window.pendingFlights.find(f => f.id === '${flight.id}'))">
                 
                 <td class="px-4 py-4 text-center ${isPendingSelectionMode ? '' : 'hidden'}" onclick="event.stopPropagation()">
                     <input type="checkbox" class="pending-flight-checkbox" data-id="${flight.id}" 
@@ -342,7 +408,8 @@ window.deletePendingSelected = async function () {
         pendingSelectedSet.clear();
         isPendingSelectionMode = false;
         window.togglePendingAdminMode();
-        await fetchFlights();
+        // ייעול: ריענון מאולץ של הגיחות הממתינות בלבד
+        await fetchPendingFlights(true);
     } catch (e) {
         console.error(e);
         showToast('שגיאה במחיקה', 'red');
