@@ -616,6 +616,8 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
 
     const filterType = document.getElementById('stats-filter-type')?.value;
     const isPeriodMode = filterType === 'period';
+    const isWeekMode = filterType === 'week';
+    const selectedWeekVal = document.getElementById('stats-week-value')?.value; 
     const selectedFlightType = document.getElementById('filter-flight-type')?.value;
 
     const dailyData = {};
@@ -641,25 +643,30 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (!lastFlightDate || d > lastFlightDate) lastFlightDate = d;
     });
 
-    // 1. תכנון מקורי - מגיע בצורה נקייה ויציבה אך ורק מעמוד המנהל
-    if (!selectedFlightType && planningData?.originalPlans) {
-        Object.entries(planningData.originalPlans).forEach(([dStr, count]) => {
+    // 1. תכנון מקורי - שואב ישירות מעמוד המנהל
+    if (!selectedFlightType && planningData?.dailyPlans) {
+        Object.entries(planningData.dailyPlans).forEach(([dStr, dataVal]) => {
             if (dateFilterPredicate(createLocalMidnight(dStr))) {
                 allDates.add(dStr);
                 if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
-                dailyData[dStr].planned = Number(count) || 0;
+                
+                let count = 0;
+                if (typeof dataVal === 'object' && dataVal !== null) {
+                    count = dataVal.count !== undefined ? dataVal.count : 0;
+                } else {
+                    count = Number(dataVal) || 0;
+                }
+                dailyData[dStr].planned = count;
             }
         });
     }
 
-   // 2. תכנון עדכני - סופר את כל הגיחות במאגר חוץ מאלו שסווגו כ"ידניות"
+    // 2. תכנון עדכני 
     const dbCounts = {};
     savedFlights.forEach(f => {
         if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
         
-        // כאן אנחנו מחסירים רק גיחות שסומנו במפורש כ-ManualEntry
         const isManual = f.isManualEntry === true;
-        
         if (!isManual) {
             const dStr = getLocalDStr(f.date);
             dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
@@ -688,12 +695,15 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         }
     });
 
+    // 3. ביצוע בפועל - גיחות שסומנו כבוצעו או מופרעות (ללא צורך בביצוע נוסף)
     executedFlights.forEach(f => {
         if (!f.date) return;
-        const dStr = getLocalDStr(f.date);
         const status = getFlightStatus(f);
+        const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
 
-        if (status === 'full' || status === 'partial') {
+        // תנאי מדויק: בוצעו במלואן או מופרעות שלא דורשות ביצוע חוזר
+        if (status === 'full' || (status === 'partial' && !needsRepeat)) {
+            const dStr = getLocalDStr(f.date);
             allDates.add(dStr);
             if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
             dailyData[dStr].actual++;
@@ -704,6 +714,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     let labels, seriesPlanned, seriesCurrent, seriesActual;
 
     if (isPeriodMode) {
+        // מצב תקופה: מציג 26 שבועות בצורה מצטברת
         labels = Array.from({ length: 26 }, (_, i) => `שבוע ${i + 1}`);
         seriesPlanned = new Array(26).fill(0);
         seriesCurrent = new Array(26).fill(0);
@@ -724,7 +735,14 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
             seriesCurrent[i] += seriesCurrent[i - 1];
             seriesActual[i] += seriesActual[i - 1];
         }
+    } else if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL") {
+        // מצב שבוע ספציפי: מציג פירוט לפי ימים בתוך אותו השבוע בלבד (ללא צבירה שגויה)
+        labels = sortedDates.map(d => d.split('-').reverse().slice(0, 2).join('/'));
+        seriesPlanned = sortedDates.map(d => dailyData[d].planned);
+        seriesCurrent = sortedDates.map(d => dailyData[d].current);
+        seriesActual = sortedDates.map(d => dailyData[d].actual);
     } else {
+        // ברירת מחדל יומית / טווח תאריכים
         labels = sortedDates.map(d => d.split('-').reverse().slice(0, 2).join('/'));
         seriesPlanned = sortedDates.map(d => dailyData[d].planned);
         seriesCurrent = sortedDates.map(d => dailyData[d].current);

@@ -443,7 +443,12 @@ const missionDatabase = {
                         ${this.selectedFlights.has(row.id) ? 'checked' : ''} 
                         onchange="missionDatabase.toggleFlightSelection('${row.id}')">
                  </td>` :
-                `<td class="hidden"></td>`; // מוסתר אם המצב כבוי
+                `<td class="hidden"></td>`;
+
+            // סימון ויזואלי לגיחות שהוספו ידנית
+            const manualBadge = row.isManualEntry 
+                ? `<span class="mr-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title="נוסף ידנית">✏️ ידני</span>` 
+                : '';
 
             tr.innerHTML = `
                 ${checkboxCell}
@@ -452,7 +457,9 @@ const missionDatabase = {
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">${row.data?.['שעת התחלה'] || '---'}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${row.data?.['שעת סיום'] || '---'}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${this.getValue(row, 'סוג גיחה')}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${this.getValue(row, 'שם גיחה')}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    ${this.getValue(row, 'שם גיחה')} ${manualBadge}
+                </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${this.getValue(row, 'מדריכה')}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${displayDate}</td>
             `;
