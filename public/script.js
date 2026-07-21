@@ -25,102 +25,133 @@ let unifiedFaultsDatabase = {};
 // *** עדכון: מאגר סטטוס טיפול בתקלות (עתה נטען מ-Firebase) ***
 let faultResolutionStatus = {}; // מאותחל כריק - ייטען מ-Firebase
 
+// Replace fetchFlights in script.js with a real-time listener
+let unsubFlights = null;
+
+function subscribeToFlights(period) {
+    if (unsubFlights) unsubFlights(); // Unsubscribe from previous listener
+
+    const { collection, query, where, onSnapshot } = window.firestoreFunctions;
+    const q = query(
+        collection(window.db, "flights"),
+        where("period", "==", period) // ONLY fetch current period
+    );
+
+    unsubFlights = onSnapshot(q, (snapshot) => {
+        // This fires instantly on load, and then ONLY updates locally when data changes.
+        // If a flight is added, it costs 1 read, not N reads.
+        const flights = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+
+        // Format dates as you currently do...
+        window.savedFlights = formatFlightDates(flights);
+
+        processFaultsData();
+
+        // Only re-render the screen currently in view
+        if (currentScreen === 'mission-database-screen') renderFlightTable();
+        if (currentScreen === 'stats-screen') window.statsManager.renderStatsDashboard();
+    });
+}
 
 // ******************************************************
 // פונקציית טעינת גיחות (מעודכן: טוען סטטוסים ראשון)
 // ******************************************************
-async function fetchFlights() {
-    // *** הגנה: קורא את currentUsername מהאובייקט הגלובלי (שמוגדר ב-auth.js) ***
+window.unsubFlights = null;
+window.currentSubscribedPeriod = null;
+
+async function fetchFlights(targetPeriod = null) {
     if (!window.currentUsername) return;
+    if (typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') return;
 
-    // השתמש/י ב-window.db שהוגדר ב-index.html
-    if (typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') {
-        console.error('Firebase DB/Functions are not initialized (fetchFlights).');
-        if (savedFlights.length > 0) {
-            showToast('שגיאה בטעינת הנתונים: Firebase לא מאותחל.', 'red');
+    const { collection, getDocs, query, where, onSnapshot } = window.firestoreFunctions;
+
+    // 1. Load fault resolutions ONCE if they haven't been loaded yet
+    if (Object.keys(faultResolutionStatus).length === 0) {
+        try {
+            const resSnapshot = await getDocs(collection(window.db, "fault_resolutions"));
+            resSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                let resolutionTs = (data.timestamp && typeof data.timestamp.toMillis === 'function')
+                    ? data.timestamp.toMillis()
+                    : (data.timestamp || Date.now());
+
+                faultResolutionStatus[data.faultKey] = {
+                    isResolved: true,
+                    date: data.date,
+                    time: data.time,
+                    resolutionTimestamp: resolutionTs
+                };
+            });
+        } catch (error) {
+            console.error('שגיאה בטעינת סטטוסי הטיפול:', error);
         }
-        return;
     }
 
-    // משיכת הפונקציות הגלובליות שנחשפו ב-index.html
-    const { getDocs, collection } = window.firestoreFunctions;
-
-    // *** חדש: טעינת סטטוסי הטיפול (Fault Resolutions) מ-Firebase ***
-    try {
-        const resolutionCollection = collection(window.db, "fault_resolutions");
-        const resSnapshot = await getDocs(resolutionCollection);
-
-        // בונה את אובייקט faultResolutionStatus מהמסמכים ב-Firebase
-        faultResolutionStatus = {};
-        resSnapshot.docs.forEach(doc => {
-            const data = doc.data();
-
-            // *** תיקון השגיאה: בודק אם data.timestamp הוא אובייקט Timestamp (עם toMillis) או מספר ***
-            let resolutionTs;
-            if (data.timestamp && typeof data.timestamp.toMillis === 'function') {
-                resolutionTs = data.timestamp.toMillis();
-            } else if (data.timestamp) {
-                resolutionTs = data.timestamp; // זה כבר מספר
-            } else {
-                resolutionTs = Date.now();
-            }
-
-            // משתמשים במפתח התקלה כאינדקס. הוספת resolutionTimestamp
-            faultResolutionStatus[data.faultKey] = {
-                isResolved: true,
-                date: data.date,
-                time: data.time,
-                resolutionTimestamp: resolutionTs // המרת Timestamp ל-ms
-            };
-        });
-    } catch (error) {
-        console.error('שגיאה בטעינת סטטוסי הטיפול מ-Firebase:', error);
-        // נמשיך עם faultResolutionStatus כפי שהוא (ריק) במקרה של שגיאה
+    // 2. Determine target period (Default to current period if none requested)
+    if (!targetPeriod) {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+        // Adjust the month logic based on your 1st/2nd period definitions
+        const periodNum = (currentMonth >= 0 && currentMonth <= 5) ? 1 : 2;
+        targetPeriod = `${periodNum}/${String(currentYear).slice(-2)}`;
     }
-    // ******************************************************
 
-    try {
-        const flightsCollection = collection(window.db, "flights");
-        const snapshot = await getDocs(flightsCollection);
+    // 3. Prevent redundant subscriptions to the same period
+    if (window.currentSubscribedPeriod === targetPeriod && window.unsubFlights) return;
 
+    // 4. Cleanup old listener before subscribing to a new one
+    if (window.unsubFlights) {
+        window.unsubFlights();
+    }
+
+    window.currentSubscribedPeriod = targetPeriod;
+
+    // 5. Establish Real-Time Listener scoped to the target period
+    const q = query(
+        collection(window.db, "flights"),
+        where("period", "==", targetPeriod)
+    );
+
+    window.unsubFlights = onSnapshot(q, (snapshot) => {
         const flights = snapshot.docs.map(doc => {
             const flight = doc.data();
 
-            // המערכת שומרת את התאריך כמחרוזת (YYYY-MM-DD) או כ-Timestamp
             if (flight.date && typeof flight.date === 'string') {
-                // לגיחות חדשות שנשמרו כמחרוזת
                 flight.date = new Date(flight.date);
             } else if (flight.date && flight.date.toDate) {
-                // לגיחות ישנות שנשמרו כ-Firebase Timestamp (אם יש)
                 flight.date = flight.date.toDate();
             }
 
-            // נשמור את זמן ההתחלה המדויק
             const dateStr = flight.data['תאריך'];
             const timeStr = flight.data['שעת התחלה'];
             if (dateStr && timeStr) {
-                // מניח שהתאריך הוא בפורמט YYYY-MM-DD
-                const isoDateTimeStr = `${dateStr}T${timeStr}:00`;
-                flight.flightStartTimestamp = new Date(isoDateTimeStr).getTime();
+                flight.flightStartTimestamp = new Date(`${dateStr}T${timeStr}:00`).getTime();
             } else if (flight.date) {
-                // אם אין שעה, נשתמש רק בתאריך שנטען לעיל
                 flight.flightStartTimestamp = flight.date.getTime();
             }
 
             flight.id = doc.id;
-
             return flight;
         });
 
         savedFlights = flights;
-        processFaultsData(); // *** עדכון: עיבוד נתוני התקלות משתמש כעת בסטטוסים מ-Firebase ***
-        renderFlightTable();
-    } catch (error) {
-        console.error('שגיאה קריטית בטעינת הגיחות מ-Firebase:', error);
-        showToast('שגיאה בטעינת הנתונים.', 'red');
-    }
-}
+        processFaultsData();
 
+        // 6. Automatically push UI updates to the active screen
+        if (currentScreen === 'mission-database-screen' && window.missionDatabase) {
+            window.missionDatabase.init(savedFlights);
+        } else if (currentScreen === 'stats-screen' && window.statsManager) {
+            window.statsManager.renderStatsDashboard();
+        } else if (currentScreen === 'fault-database-screen') {
+            renderFaultDatabaseTable();
+        } else {
+            renderFlightTable();
+        }
+    }, (error) => {
+        console.error('Firebase Listener Error:', error);
+    });
+}
 /**
  * מוחק את כל המסמכים מאוסף "flights".
  */
@@ -1568,11 +1599,6 @@ async function saveFaultResolutionStatus(faultKey) {
         showToast('התקלה סומנה כטופלה בהצלחה ושונתה במחשבים אחרים!', 'green');
         hideAllModals();
 
-        // טעינה מחדש של הגיחות כדי לעדכן את רשימת התקלות הפתוחות לטופס
-        fetchFlights().then(() => {
-            renderFaultDatabaseTable(); // מרנדר מחדש את טבלת מאגר התקלות
-        });
-
     } catch (error) {
         console.error('שגיאה בשמירת סטטוס הטיפול ב-Firebase:', error);
         showToast('שגיאה בשמירת סטטוס הטיפול.', 'red');
@@ -1829,7 +1855,6 @@ async function saveEditedFlight() {
         showToast('הגיחה נשמרה ועדכנה בהצלחה!', 'green');
 
         hideAllModals();
-        await fetchFlights();
 
     } catch (error) {
         console.error('שגיאה בעדכון הגיחה:', error);
@@ -1905,9 +1930,12 @@ function initializeEventListeners() {
 
             if (target.id === 'period-select' && periodSelect && weekSelect) {
                 populateWeekOptions(periodSelect, weekSelect);
-                renderFlightTable();
+
+                // Trigger the listener to fetch the newly selected period
+                fetchFlights(periodSelect.value);
+
             } else if (target.id === 'week-select') {
-                renderFlightTable();
+                renderFlightTable(); // Week filtering happens locally in memory
             }
         });
     }

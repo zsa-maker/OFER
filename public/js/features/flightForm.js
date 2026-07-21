@@ -788,7 +788,6 @@ export async function saveFlightForm(skipValidation = false) {
         showToast('הגיחה נשמרה בהצלחה!', 'green');
         
         // משיכת הגיחות מחדש וסנכרון כדי לעדכן מיד את טבלאות המעקבים
-        await fetchFlights();
         showScreen('flight-form-screen');
     } catch (e) {
         console.error('Error saving flight:', e);

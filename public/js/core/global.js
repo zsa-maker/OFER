@@ -68,7 +68,7 @@ export async function fetchPendingFlights(forceRefresh = false) {
         return;
     }
 
-    const { getDocs, collection, query, where } = window.firestoreFunctions;
+    const { getDocs, collection, query, where , onSnapshot} = window.firestoreFunctions;
 
     try {
         // מביאים רק גיחות שהסטטוס שלהן מצריך טיפול!
@@ -111,7 +111,7 @@ export async function fetchFlights(forceRefresh = false) {
         return;
     }
 
-    const { getDocs, collection, query, where } = window.firestoreFunctions;
+    const { getDocs, collection, query, where, onSnapshot } = window.firestoreFunctions;
 
     try {
         await Promise.all([
@@ -178,7 +178,7 @@ export async function fetchFlights(forceRefresh = false) {
 
 // שודרג לשאילתות ולשימוש במסנן זמן
 export async function fetchAllData() {
-    const { collection, getDocs, query, where } = window.firestoreFunctions;
+    const { collection, getDocs, query, where, onSnapshot } = window.firestoreFunctions;
 
     const limitDate = new Date();
     limitDate.setMonth(limitDate.getMonth() - 12);
