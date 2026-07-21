@@ -313,6 +313,11 @@ export async function initFaultDatabase() {
     const simSelect = document.getElementById('fault-simulator-filter');
     if (!simSelect) return;
 
+    // הבטחת טעינת רשימות המנהל (סימולטורים) טרם האכלוס
+    if ((!window.personnelLists || !window.personnelLists.simulators) && typeof window.loadPersonnelLists === 'function') {
+        await window.loadPersonnelLists();
+    }
+
     if (!window.planningSettings && window.db) {
         const { doc, getDoc } = window.firestoreFunctions;
         try {
@@ -337,20 +342,18 @@ export async function initFaultDatabase() {
         sim.dataset.listenerAttached = "true";
     }
 
+    // תיקון: משיכת רשימת הסימולטורים מתוך ההגדרות של עמוד המנהל במקום ערכים קשיחים
     const sims = (window.personnelLists && window.personnelLists.simulators) ? window.personnelLists.simulators : [];
-    simSelect.innerHTML = `
-        <option value="ALL" selected>כל המאמנים</option>
-        <option value="FFS">FFS (כללי)</option>
-        <option value="VIPT">VIPT (כללי)</option>
-    `;
+    simSelect.innerHTML = '<option value="ALL" selected>כל המאמנים</option>' + 
+        sims.map(s => `<option value="${s}">${s}</option>`).join('');
 
     populateFaultPeriodFilter();
     populateFaultWeekFilter();
 
     // חובה להוסיף את השורה הזו כדי לשלוף את התקלות הידניות מהשרת!
     await fetchStandaloneFaults();
+    populateFaultPeriodFilter();
 }
-
 /**
  * עיבוד נתוני הגיחות ליצירת מאגר תקלות מאוחד
  */
