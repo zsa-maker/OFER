@@ -3097,44 +3097,95 @@ window.removeConversionGroup = (idx) => {
 };
 
 // פונקציה לשמירת/עדכון שורה של תקופה כולל תאריך ההתחלה שלה
+// שמירת התקופה (כולל נתוני חניכים, מזער ויעד)
 window.savePeriodConfigRow = async () => {
-    const periodNameInput = document.getElementById('admin-new-period-name');
-    const startDateInput = document.getElementById('admin-new-period-start');
-    const minInput = document.getElementById('admin-new-period-min');
-    const targetInput = document.getElementById('admin-new-period-target');
+    const name = document.getElementById('admin-new-period-name').value.trim();
+    const start = document.getElementById('admin-new-period-start').value;
+    const end = document.getElementById('admin-new-period-end').value; 
+    
+    // קריאת נתוני החניכים (חדש)
+    const nakaStudents = parseInt(document.getElementById('admin-new-period-naka-students')?.value) || 85;
+    const targetStudents = parseInt(document.getElementById('admin-new-period-target-students')?.value) || 0;
+    
+    // קריאת נתוני מזער ויעד כלליים (נשארים עבור עמוד הפרופילים)
+    const min = parseInt(document.getElementById('admin-new-period-min')?.value) || 0;
+    const target = parseInt(document.getElementById('admin-new-period-target')?.value) || 0;
 
-    if (!periodNameInput || !periodNameInput.value.trim()) {
-        alert("נא להזין שם תקופה תקין (למשל 1/26)");
+    if (!name || !start) {
+        alert("חובה להזין לפחות שם תקופה ותאריך תחילת תקופה תקינים.");
         return;
     }
-
-    const periodKey = periodNameInput.value.trim();
-    const startDate = startDateInput ? startDateInput.value : "";
 
     if (!window.planningSettings) window.planningSettings = {};
     if (!window.planningSettings.periodConfigs) window.planningSettings.periodConfigs = {};
 
-    // עדכון המבנה בזיכרון - שומרים את התאריך בפנים!
-    window.planningSettings.periodConfigs[periodKey] = {
-        minFlights: parseInt(minInput.value) || 0,
-        targetFlights: parseInt(targetInput.value) || 0,
-        startDate: startDate, // שמירת תאריך ההתחלה הספציפי של התקופה הזו
-        nakaValue: window.planningSettings.periodConfigs[periodKey]?.nakaValue || 85
+    window.planningSettings.periodConfigs[name] = {
+        startDate: start,
+        endDate: end || null, 
+        nakaStudents: nakaStudents, // נק"ע חניכים
+        targetStudents: targetStudents, // יעד חניכים
+        minFlights: min, // מזער כללי לתאימות
+        targetFlights: target, // יעד כללי לתאימות
+        min: min, // לתאימות לאחור
+        target: target // לתאימות לאחור
     };
 
-    // שמירה ל-Firebase Firestore
     if (window.firestoreFunctions && window.db) {
         const { doc, setDoc } = window.firestoreFunctions;
         try {
             await setDoc(doc(window.db, "settings", "planning"), window.planningSettings);
-            import('../components/modals.js').then(m => m.showToast(`תקופה ${periodKey} עודכנה בהצלחה!`, "green"));
-
-            // רענון התצוגה במסך הניהול ובדרופדאונים
-            if (typeof window.renderPlanningSettings === 'function') window.renderPlanningSettings();
+            import('../components/modals.js').then(m => m.showToast(`הגדרות תקופה ${name} נשמרו בהצלחה!`, "green"));
+            window.closePeriodForm();
+            window.renderPlanningSettings();
         } catch (e) {
-            console.error("Error saving period config:", e);
+            console.error(e);
         }
     }
+};
+
+window.editPeriodConfigRow = (pKey) => {
+    const configs = window.planningSettings?.periodConfigs || {};
+    const config = configs[pKey];
+    if (!config) return;
+
+    window.openNewPeriodForm();
+    document.getElementById('period-form-title').textContent = `עריכת תקופה: ${pKey}`;
+
+    document.getElementById('admin-new-period-name').value = pKey;
+    document.getElementById('admin-new-period-name').setAttribute('readonly', 'true');
+    document.getElementById('admin-new-period-name').classList.add('bg-gray-100');
+
+    document.getElementById('admin-new-period-start').value = config.startDate || '';
+    document.getElementById('admin-new-period-end').value = config.endDate || '';
+    
+    if(document.getElementById('admin-new-period-naka-students')) {
+        document.getElementById('admin-new-period-naka-students').value = config.nakaStudents !== undefined ? config.nakaStudents : 85;
+    }
+    if(document.getElementById('admin-new-period-target-students')) {
+        document.getElementById('admin-new-period-target-students').value = config.targetStudents !== undefined ? config.targetStudents : 0;
+    }
+    if(document.getElementById('admin-new-period-min')) {
+        document.getElementById('admin-new-period-min').value = config.minFlights !== undefined ? config.minFlights : (config.min || 0);
+    }
+    if(document.getElementById('admin-new-period-target')) {
+        document.getElementById('admin-new-period-target').value = config.targetFlights !== undefined ? config.targetFlights : (config.target || 0);
+    }
+
+    document.getElementById('period-form-container').scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+window.clearPeriodForm = () => {
+    document.getElementById('period-form-title').textContent = 'הגדרת תקופה חדשה';
+    document.getElementById('admin-new-period-name').value = '';
+    document.getElementById('admin-new-period-name').removeAttribute('readonly');
+    document.getElementById('admin-new-period-name').classList.remove('bg-gray-100');
+    document.getElementById('admin-new-period-start').value = '';
+    document.getElementById('admin-new-period-end').value = '';
+    
+    if(document.getElementById('admin-new-period-naka-students')) document.getElementById('admin-new-period-naka-students').value = '85';
+    if(document.getElementById('admin-new-period-target-students')) document.getElementById('admin-new-period-target-students').value = '';
+    if(document.getElementById('admin-new-period-min')) document.getElementById('admin-new-period-min').value = '';
+    if(document.getElementById('admin-new-period-target')) document.getElementById('admin-new-period-target').value = '';
 };
 
 
@@ -3159,58 +3210,15 @@ window.deletePeriodConfigRow = async (pKey) => {
     }
 };
 
-// עדכון פונקציית שמירת השורה כדי שתנקה את הטופס בסיום ותשמור על שמות שדות אחידים
-const originalSavePeriodConfigRow = window.savePeriodConfigRow;
-
 // תמיכה בפתיחת וסגירת טופס התקופות
 window.openNewPeriodForm = () => {
-    window.clearPeriodForm();
+    if(window.clearPeriodForm) window.clearPeriodForm();
     document.getElementById('period-form-container').classList.remove('hidden');
     document.getElementById('admin-new-period-name').focus();
 };
+
 window.closePeriodForm = () => {
     document.getElementById('period-form-container').classList.add('hidden');
-};
-
-// שמירת התקופה (כולל תאריך סיום)
-window.savePeriodConfigRow = async () => {
-    const name = document.getElementById('admin-new-period-name').value.trim();
-    const start = document.getElementById('admin-new-period-start').value;
-    const end = document.getElementById('admin-new-period-end').value; // הוספת תאריך סיום
-    const naka = parseInt(document.getElementById('admin-new-period-naka').value) || 85;
-    const min = parseInt(document.getElementById('admin-new-period-min').value) || 0;
-    const target = parseInt(document.getElementById('admin-new-period-target').value) || 0;
-
-    if (!name || !start) {
-        alert("חובה להזין לפחות שם תקופה ותאריך תחילת תקופה תקינים.");
-        return;
-    }
-
-    if (!window.planningSettings) window.planningSettings = {};
-    if (!window.planningSettings.periodConfigs) window.planningSettings.periodConfigs = {};
-
-    window.planningSettings.periodConfigs[name] = {
-        startDate: start,
-        endDate: end || null, // שומרים אם קיים
-        nakaValue: naka,
-        minFlights: min,
-        targetFlights: target,
-        naka: naka,
-        min: min,
-        target: target
-    };
-
-    if (window.firestoreFunctions && window.db) {
-        const { doc, setDoc } = window.firestoreFunctions;
-        try {
-            await setDoc(doc(window.db, "settings", "planning"), window.planningSettings);
-            import('../components/modals.js').then(m => m.showToast(`הגדרות תקופה ${name} נשמרו בהצלחה!`, "green"));
-            window.closePeriodForm();
-            window.renderPlanningSettings();
-        } catch (e) {
-            console.error(e);
-        }
-    }
 };
 
 // רינדור הטבלה והבאנר של התקופה הנוכחית
@@ -3294,41 +3302,6 @@ export function renderAllPeriodsTable() {
         tbody.appendChild(tr);
     });
 }
-
-// טעינת נתונים לעריכה
-window.editPeriodConfigRow = (pKey) => {
-    const configs = window.planningSettings?.periodConfigs || {};
-    const config = configs[pKey];
-    if (!config) return;
-
-    window.openNewPeriodForm();
-    document.getElementById('period-form-title').textContent = `עריכת תקופה: ${pKey}`;
-
-    document.getElementById('admin-new-period-name').value = pKey;
-    document.getElementById('admin-new-period-name').setAttribute('readonly', 'true');
-    document.getElementById('admin-new-period-name').classList.add('bg-gray-100');
-
-    document.getElementById('admin-new-period-start').value = config.startDate || '';
-    document.getElementById('admin-new-period-end').value = config.endDate || '';
-    document.getElementById('admin-new-period-naka').value = config.nakaValue !== undefined ? config.nakaValue : (config.naka || 85);
-    document.getElementById('admin-new-period-min').value = config.minFlights !== undefined ? config.minFlights : (config.min || 0);
-    document.getElementById('admin-new-period-target').value = config.targetFlights !== undefined ? config.targetFlights : (config.target || 0);
-
-    document.getElementById('period-form-container').scrollIntoView({ behavior: 'smooth', block: 'center' });
-};
-
-// ניקוי טופס
-window.clearPeriodForm = () => {
-    document.getElementById('period-form-title').textContent = 'הגדרת תקופה חדשה';
-    document.getElementById('admin-new-period-name').value = '';
-    document.getElementById('admin-new-period-name').removeAttribute('readonly');
-    document.getElementById('admin-new-period-name').classList.remove('bg-gray-100');
-    document.getElementById('admin-new-period-start').value = '';
-    document.getElementById('admin-new-period-end').value = '';
-    document.getElementById('admin-new-period-naka').value = '85';
-    document.getElementById('admin-new-period-min').value = '';
-    document.getElementById('admin-new-period-target').value = '';
-};
 
 // שיפור פונקציית הזיהוי כך שתתחשב בתאריך סיום (אם הוזן)
 window.getPeriodName = (dateInput) => {

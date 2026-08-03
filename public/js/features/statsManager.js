@@ -617,7 +617,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     const filterType = document.getElementById('stats-filter-type')?.value;
     const isPeriodMode = filterType === 'period';
     const isWeekMode = filterType === 'week';
-    const selectedWeekVal = document.getElementById('stats-week-value')?.value; 
+    const selectedWeekVal = document.getElementById('stats-week-value')?.value;
     const selectedFlightType = document.getElementById('filter-flight-type')?.value;
 
     const dailyData = {};
@@ -649,7 +649,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
             if (dateFilterPredicate(createLocalMidnight(dStr))) {
                 allDates.add(dStr);
                 if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
-                
+
                 let count = 0;
                 if (typeof dataVal === 'object' && dataVal !== null) {
                     count = dataVal.count !== undefined ? dataVal.count : 0;
@@ -661,17 +661,18 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         });
     }
 
-    // 2. תכנון עדכני 
+// 2. תכנון עדכני 
     const dbCounts = {};
     savedFlights.forEach(f => {
         if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
-        
-        const isManual = f.isManualEntry === true;
-        if (!isManual) {
+
+        // מחיקה מוחלטת של ההתחשבות באופן ההזנה. 
+        // בודקים נטו אם הגיחה הוגדרה במפורש כ-"לא מתוכננת".
+        if (f.isUnplanned !== true) {
             const dStr = getLocalDStr(f.date);
             dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
         }
-    }); 
+    });
 
     const calendarDates = planningData?.dailyPlans ? Object.keys(planningData.dailyPlans) : [];
     const allRelevantDates = new Set([...Object.keys(dbCounts), ...calendarDates]);
@@ -761,6 +762,53 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
 
     datasets.push({ label: 'ביצוע בפועל', data: seriesActual, borderColor: '#4BC0C0', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1 });
 
+  // -- 1. סינון וספירת גיחות חניכים בפועל מהמאגר --
+    let actualTraineeFlights = 0;
+    executedFlights.forEach(f => {
+        if (!f.date) return;
+        const status = getFlightStatus(f);
+        const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
+        // זיהוי גיחת חניך
+        const isTrainee = f.data?.['סוג גיחה'] === 'חניכים';
+
+        if (status === 'full' || (status === 'partial' && !needsRepeat)) {
+            if (isTrainee) actualTraineeFlights++;
+        }
+    });
+
+    // -- 2. שליפת ההגדרות לחניכים של התקופה --
+    const currentPeriod = document.getElementById('stats-period-select')?.value || window.getPeriodName(new Date());
+    const pConfig = planningData?.periodConfigs?.[currentPeriod] || {};
+    const nakaStudents = pConfig.nakaStudents || 0;
+    const targetStudents = pConfig.targetStudents || 0;
+
+    // -- 3. חישובים לנרמול (ממוצע רצוי) --
+    let totalWeeks = 26; // ברירת מחדל של אורך תקופה בחיל
+    let currentWeekNum = 1;
+
+    if (pConfig.startDate && pConfig.endDate) {
+        const sDate = new Date(pConfig.startDate);
+        const eDate = new Date(pConfig.endDate);
+        totalWeeks = Math.max(1, Math.ceil((eDate - sDate) / (1000 * 60 * 60 * 24 * 7)));
+    }
+
+    if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL") {
+        currentWeekNum = parseInt(selectedWeekVal);
+    } else {
+        // מציאת השבוע הנוכחי יחסית לתחילת התקופה
+        const today = new Date();
+        const start = pConfig.startDate ? new Date(pConfig.startDate) : new Date(today.getFullYear(), 0, 1);
+        const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+        currentWeekNum = Math.max(1, Math.floor(diffDays / 7) + 1);
+        if (currentWeekNum > totalWeeks) currentWeekNum = totalWeeks;
+    }
+
+    // נרמול התקדמות - בכל שבוע מוסיפים יחס שווה מתוך היעד התקופתי
+    const weeklyTarget = totalWeeks > 0 ? (targetStudents / totalWeeks) : 0;
+    const normalizedTarget = (weeklyTarget * currentWeekNum).toFixed(1);
+    const adherence = normalizedTarget > 0 ? ((actualTraineeFlights / normalizedTarget) * 100).toFixed(1) : 0;
+
+    // -- 4. בניית הגרף (עם כיתוב מותאם ב-Tooltip רק לחניכים) --
     chartInstances.planning = new Chart(ctx, {
         type: 'line', data: { labels, datasets },
         options: {
@@ -769,22 +817,23 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
                 tooltip: {
                     callbacks: {
                         footer: (tooltipItems) => {
-                            const currentPlanItem = tooltipItems.find(i => i.dataset.label.includes('עדכני') || i.dataset.label.includes('במאגר'));
-                            const actualItem = tooltipItems.find(i => i.dataset.label.includes('בפועל'));
-                            if (!currentPlanItem || !actualItem) return '';
-                            const currentPlan = currentPlanItem.raw || 0;
-                            const actual = actualItem.raw || 0;
-                            if (currentPlan === 0) return '';
                             return '\n-----------------------\n' +
-                                `אחוז נק"ע מוגדר: ${nakaPercent}%\nיעד נק"ע (גיחות): ${(currentPlan * (nakaPercent / 100)).toFixed(1)}\n` +
-                                `עמידה ביחס לתכנון: ${((actual / currentPlan) * 100).toFixed(1)}%\n`;
+                                `📌 נתוני חניכים (מצטבר לשבוע ${currentWeekNum}):\n` +
+                                `נק"ע חניכים מוגדר: ${nakaStudents}%\n` +
+                                `יעד גיחות (תקופתי): ${targetStudents}\n` +
+                                `ביצוע חניכים בפועל: ${actualTraineeFlights}\n` +
+                                `ממוצע רצוי מנורמל: ${normalizedTarget}\n` +
+                                `עמידה ביחס לתכנון: ${adherence}%`;
                         }
                     },
-                    bodyFont: { size: 13 }, footerFont: { size: 12, weight: 'bold' }, footerColor: '#fbbf24', padding: 10
+                    bodyFont: { size: 13 }, footerFont: { size: 13, weight: 'bold' }, footerColor: '#fbbf24', padding: 10
                 }
             }
         }
     });
+
+    // -- 5. מחיקת אלמנט הקוביות הישן (למקרה שהוא עדיין קיים ב-DOM) --
+    document.getElementById('stats-planning-summary')?.remove();
 }
 
 function renderSimulatorsUsageChart(flights) {

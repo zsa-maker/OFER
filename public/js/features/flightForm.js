@@ -184,8 +184,14 @@ export async function showFormStep2(flightStatus, flightData = null) {
         checkAndPopulateGoals();
     }
 
-    const faultSection = formStep2.querySelector('#fault-reporting-section');
+ const faultSection = formStep2.querySelector('#fault-reporting-section');
     if (faultSection) faultSection.classList.remove('hidden');
+
+    // טעינת מצב גיחה לא מתוכננת מתוך הנתונים (אם קיימים)
+    const unplannedCheckbox = document.getElementById('unplanned-flight-checkbox');
+    if (unplannedCheckbox) {
+        unplannedCheckbox.checked = (flightData && flightData.isUnplanned === true);
+    }
 
     setupReportMode(flightStatus, flightData);
     clearFieldHighlight();
@@ -397,16 +403,18 @@ export function setReportMode(mode) {
         saveButton.classList.add('bg-gray-600', 'hover:bg-gray-700');
     }
 
+    // הוספת הצבע הסגול (purple) לטבעת הסימון של גיחה לא מתוכננת
     document.querySelectorAll('.flight-report-status-btn').forEach(btn => {
-        btn.classList.remove('ring-4', 'ring-offset-2', 'ring-red-500', 'ring-ofer-light-orange', 'ring-green-600');
+        btn.classList.remove('ring-4', 'ring-offset-2', 'ring-red-500', 'ring-ofer-light-orange', 'ring-green-600', 'ring-purple-500');
         if (btn.dataset.reportStatus === mode) {
-            let color = mode === 'cancel' ? 'ring-red-500' : (mode === 'partial' ? 'ring-ofer-light-orange' : 'ring-green-600');
+            let color = mode === 'cancel' ? 'ring-red-500' : (mode === 'partial' ? 'ring-ofer-light-orange' : (mode === 'unplanned' ? 'ring-purple-500' : 'ring-green-600'));
             btn.classList.add('ring-4', 'ring-offset-2', color);
         }
     });
 
     if (saveButton) {
-        saveButton.classList.remove('bg-green-600', 'hover:bg-green-700', 'bg-ofer-light-orange', 'hover:bg-ofer-orange', 'bg-red-500', 'hover:bg-red-600', 'bg-ofer-primary-500', 'hover:bg-ofer-primary-600');
+        saveButton.classList.remove('bg-green-600', 'hover:bg-green-700', 'bg-ofer-light-orange', 'hover:bg-ofer-orange', 'bg-red-500', 'hover:bg-red-600', 'bg-ofer-primary-500', 'hover:bg-ofer-primary-600', 'bg-purple-500', 'hover:bg-purple-600');
+        
         if (mode === 'full') {
             saveButton.textContent = 'דווח גיחה';
             saveButton.classList.add('bg-green-600', 'hover:bg-green-700');
@@ -416,6 +424,10 @@ export function setReportMode(mode) {
         } else if (mode === 'cancel') {
             saveButton.textContent = 'אשר ביטול גיחה';
             saveButton.classList.add('bg-red-500', 'hover:bg-red-600');
+        } else if (mode === 'unplanned') {
+            // הגדרת הטקסט והצבע לכפתור השמירה במצב לא מתוכנן
+            saveButton.textContent = 'דווח גיחה לא מתוכננת';
+            saveButton.classList.add('bg-purple-500', 'hover:bg-purple-600');
         } else {
             saveButton.textContent = 'דווח גיחה';
             saveButton.classList.add('bg-ofer-primary-500', 'hover:bg-ofer-primary-600');
@@ -724,9 +736,11 @@ export async function handleReportFlight() {
             currentForm.data['נדרש ביצוע חוזר'] = 'לא';
         }
         currentForm.data['סוג ביצוע'] = 'מופרעת';
-    } else if (currentReportMode === 'full') {
+    } else if (currentReportMode === 'full' || currentReportMode === 'unplanned') {
+        // התייחסות לגיחה לא מתוכננת כאל ביצוע מלא
         currentForm.data['סוג ביצוע'] = 'מלא';
     }
+    
     if (!validateForm(false)) return;
     currentForm.executionStatus = EXECUTION_STATUS_REPORTED;
     await saveFlightForm(true);
@@ -750,16 +764,13 @@ export async function saveFlightForm(skipValidation = false) {
     let manualVal = selects.length > 0 ? selects[0].value : 'auto';
 
     if (manualVal !== 'auto') {
-        // המשתמש בחר תקופה באופן ידני
         finalPeriod = manualVal;
         currentForm.data.manualPeriod = finalPeriod;
     } else {
-        // חישוב אוטומטי לפי התאריך (ברירת מחדל)
         delete currentForm.data.manualPeriod;
         finalPeriod = window.getPeriodName ? window.getPeriodName(d) : getPeriodNumber(d);
     }
 
-    // זהירות! שורת מפתח - מעדכנת את השדה הראשי עליו טבלת המעקבים מסתמכת
     currentForm.period = finalPeriod;
 
     // חישוב מדויק של השבוע
@@ -768,19 +779,25 @@ export async function saveFlightForm(skipValidation = false) {
 
     try {
         const { collection, addDoc, updateDoc, doc } = window.firestoreFunctions;
-        let statusToSet = currentForm.executionStatus;
+let statusToSet = currentForm.executionStatus;
         if (currentReportMode === 'full' || currentReportMode === 'partial') statusToSet = 'בוצעה';
         if (currentReportMode === 'cancel') statusToSet = 'בוטלה';
         if (currentReportMode === 'not_reported') statusToSet = 'טרם דווחה';
 
-        const isStrictlyManual = !currentForm.isImported && !currentForm.isExcelUpload;
+        // קריאת הערך מהצ'קבוקס החדש בלבד (מחיקת התלות בייבוא אקסל)
+        const unplannedCheckbox = document.getElementById('unplanned-flight-checkbox');
+        const isUnplannedFlight = unplannedCheckbox ? unplannedCheckbox.checked : false;
 
         const dataToSave = {
             ...currentForm,
             executionStatus: statusToSet,
             timestamp: window.getServerTimestamp(),
-            isManualEntry: isStrictlyManual
+            isUnplanned: isUnplannedFlight // השדה היחיד שיקבע אם הגיחה תיספר בתכנון
         };
+        
+        // מחיקה מוחלטת של השדה הישן כדי שלא יופיעו חיוויים שגויים במערכת
+        delete dataToSave.isManualEntry;
+        
         // עדכון המסמך ב-Firebase
         if (currentForm.flightId) {
             const docRef = doc(collection(window.db, "flights"), currentForm.flightId);
@@ -791,7 +808,6 @@ export async function saveFlightForm(skipValidation = false) {
             currentForm.flightId = newDoc.id;
         }
  
-        
         showToast('הגיחה נשמרה בהצלחה!', 'green');
 
         // משיכת הגיחות מחדש וסנכרון כדי לעדכן מיד את טבלאות המעקבים
