@@ -454,6 +454,12 @@ async function populatePeriodSelector() {
         if (currentProfileVal) {
             profilePeriodSelect.value = currentProfileVal;
         }
+
+        // === התוספת הנדרשת כאן ===
+        if (!profilePeriodSelect.dataset.listenerAttached) {
+            profilePeriodSelect.addEventListener('change', window.profileManager.triggerPilotProfileUpdate);
+            profilePeriodSelect.dataset.listenerAttached = "true";
+        }
     }
 }
 
@@ -606,6 +612,12 @@ export async function initProfilePage() {
 
     if (window.savedFlights?.length === 0) await fetchFlights();
     await loadPersonnelLists();
+
+    // === התוספת הנדרשת: טעינת רשימת התקופות מיד בעליית העמוד ===
+    if (typeof populatePeriodSelector === 'function') {
+        await populatePeriodSelector();
+    }
+    // =========================================================
 
     const allPilots = (personnelLists.pilots || []).sort();
     pilotInput.oninput = (e) => {
