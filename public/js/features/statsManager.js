@@ -314,7 +314,17 @@ window.statsManager.refreshGoalsChart = () => {
 
 function getInstructorName(flight) {
     const d = flight.data || {};
-    return (d['מדריכה'] || d['instructor-name-1'] || '').trim();
+    const names = [];
+
+    // משיכת המדריכה הראשית
+    const main = (d['מדריכה'] || d['instructor-name-1'] || '').trim();
+    if (main && main !== 'ללא') names.push(main);
+
+    // משיכת המדריכה הנוספת
+    const additional = (d['מדריכה נוספת'] || d['instructor-name-2'] || '').trim();
+    if (additional && additional !== 'ללא') names.push(additional);
+
+    return names;
 }
 
 async function fetchPlanningData() {
@@ -394,10 +404,13 @@ function filterFlightsByCrew(flights) {
     const { instructorFem, instructorMale } = currentCrewFilters;
     return flights.filter(flight => {
         const d = flight.data || {};
-        const fFem = getInstructorName(flight);
+        const fFemArr = getInstructorName(flight); // שימוש במערך
         const fMale = (d['מדריך'] || '').trim();
-        const matchFem = instructorFem === "" || fFem === instructorFem;
+        
+        // הגיחה תקינה אם לא נבחרה מדריכה בסינון, או אם המדריכה שנבחרה נמצאת במערך
+        const matchFem = instructorFem === "" || fFemArr.includes(instructorFem);
         const matchMale = instructorMale === "" || fMale === instructorMale;
+        
         return matchFem && matchMale;
     });
 }
@@ -557,13 +570,13 @@ function renderInstructorsChart(flights) {
     const flightsByInstructor = {};
 
     flights.forEach(f => {
-        const name = getInstructorName(f);
-        if (!name || name === 'ללא' || f.data?.['שם גיחה'] === 'תרגול התנעה') return;
+        if (f.data?.['שם גיחה'] === 'תרגול התנעה') return;
+        
+        const names = getInstructorName(f);
+        if (names.length === 0) return; // אם אין אף מדריכה, דלג
 
-        // ספירת גיחות
-        flightsByInstructor[name] = (flightsByInstructor[name] || 0) + 1;
-
-        // ספירת שעות
+        // חישוב זמן הגיחה פעם אחת בלבד
+        let durationHours = 0;
         const start = f.data?.['שעת התחלה'];
         const end = f.data?.['שעת סיום'];
         if (start && end) {
@@ -572,8 +585,16 @@ function renderInstructorsChart(flights) {
             let sMins = h1 * 60 + m1;
             let eMins = h2 * 60 + m2;
             if (eMins < sMins) eMins += 1440;
-            hoursByInstructor[name] = (hoursByInstructor[name] || 0) + ((eMins - sMins) / 60);
+            durationHours = (eMins - sMins) / 60;
         }
+
+        // הוספת הגיחה והשעות לכל המדריכות שהיו בגיחה
+        names.forEach(name => {
+            flightsByInstructor[name] = (flightsByInstructor[name] || 0) + 1;
+            if (durationHours > 0) {
+                hoursByInstructor[name] = (hoursByInstructor[name] || 0) + durationHours;
+            }
+        });
     });
 
     const isHours = instructorsChartMode === 'hours';
@@ -606,7 +627,6 @@ function renderInstructorsChart(flights) {
         }
     });
 }
-
 
 function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilterPredicate) {
     const id = 'chart-planning-execution';
@@ -661,7 +681,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         });
     }
 
-// 2. תכנון עדכני 
+    // 2. תכנון עדכני 
     const dbCounts = {};
     savedFlights.forEach(f => {
         if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
@@ -762,7 +782,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
 
     datasets.push({ label: 'ביצוע בפועל', data: seriesActual, borderColor: '#4BC0C0', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1 });
 
-  // -- 1. סינון וספירת גיחות חניכים בפועל מהמאגר --
+    // -- 1. סינון וספירת גיחות חניכים בפועל מהמאגר --
     let actualTraineeFlights = 0;
     executedFlights.forEach(f => {
         if (!f.date) return;
