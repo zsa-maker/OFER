@@ -271,23 +271,12 @@ export function initializeAppEventListeners() {
 }
 
 async function loadGlobalSettings() {
-    if (!window.firestoreFunctions || !window.db) return;
-    const { doc, getDoc } = window.firestoreFunctions;
-
-    try {
-        const docRef = doc(window.db, "settings", "planning");
-        const snap = await getDoc(docRef);
-
-        if (snap.exists()) {
-            const data = snap.data();
-            const p1 = data.period1Start || data.periodStartDate;
-            const p2 = data.period2Start;
-
-            setPeriodDates(p1, p2);
-            console.log("Global settings loaded: Periods updated");
-        }
-    } catch (e) {
-        console.error("Error loading global settings:", e);
+    const data = await window.getPlanningSettings();
+    if (Object.keys(data).length > 0) {
+        const p1 = data.period1Start || data.periodStartDate;
+        const p2 = data.period2Start;
+        setPeriodDates(p1, p2);
+        console.log("Global settings loaded: Periods updated from cache");
     }
 }
 

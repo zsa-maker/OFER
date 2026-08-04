@@ -84,16 +84,8 @@ export async function showFormStep2(flightStatus, flightData = null) {
             await loadPersonnelLists().catch(e => console.warn("List load skipped:", e));
         }
         await loadGoalsAndSystems().catch(e => console.warn("Goals load skipped:", e));
-        if (!window.planningSettings && window.firestoreFunctions && window.db) {
-            try {
-                const { doc, getDoc } = window.firestoreFunctions;
-                const snap = await getDoc(doc(window.db, "settings", "planning"));
-                if (snap.exists()) {
-                    window.planningSettings = snap.data();
-                }
-            } catch (err) {
-                console.warn("Planning settings load skipped:", err);
-            }
+        if (!window.planningSettings) {
+            await window.getPlanningSettings();
         }
         const currentManual = flightData?.data?.manualPeriod || null;
         // --- תוספת: טעינת נתוני האוכלוסיות והשיוכים באופן אוטומטי לטופס ---
@@ -184,7 +176,7 @@ export async function showFormStep2(flightStatus, flightData = null) {
         checkAndPopulateGoals();
     }
 
- const faultSection = formStep2.querySelector('#fault-reporting-section');
+    const faultSection = formStep2.querySelector('#fault-reporting-section');
     if (faultSection) faultSection.classList.remove('hidden');
 
     // טעינת מצב גיחה לא מתוכננת מתוך הנתונים (אם קיימים)
@@ -414,7 +406,7 @@ export function setReportMode(mode) {
 
     if (saveButton) {
         saveButton.classList.remove('bg-green-600', 'hover:bg-green-700', 'bg-ofer-light-orange', 'hover:bg-ofer-orange', 'bg-red-500', 'hover:bg-red-600', 'bg-ofer-primary-500', 'hover:bg-ofer-primary-600', 'bg-purple-500', 'hover:bg-purple-600');
-        
+
         if (mode === 'full') {
             saveButton.textContent = 'דווח גיחה';
             saveButton.classList.add('bg-green-600', 'hover:bg-green-700');
@@ -740,7 +732,7 @@ export async function handleReportFlight() {
         // התייחסות לגיחה לא מתוכננת כאל ביצוע מלא
         currentForm.data['סוג ביצוע'] = 'מלא';
     }
-    
+
     if (!validateForm(false)) return;
     currentForm.executionStatus = EXECUTION_STATUS_REPORTED;
     await saveFlightForm(true);
@@ -779,7 +771,7 @@ export async function saveFlightForm(skipValidation = false) {
 
     try {
         const { collection, addDoc, updateDoc, doc } = window.firestoreFunctions;
-let statusToSet = currentForm.executionStatus;
+        let statusToSet = currentForm.executionStatus;
         if (currentReportMode === 'full' || currentReportMode === 'partial') statusToSet = 'בוצעה';
         if (currentReportMode === 'cancel') statusToSet = 'בוטלה';
         if (currentReportMode === 'not_reported') statusToSet = 'טרם דווחה';
@@ -794,10 +786,10 @@ let statusToSet = currentForm.executionStatus;
             timestamp: window.getServerTimestamp(),
             isUnplanned: isUnplannedFlight // השדה היחיד שיקבע אם הגיחה תיספר בתכנון
         };
-        
+
         // מחיקה מוחלטת של השדה הישן כדי שלא יופיעו חיוויים שגויים במערכת
         delete dataToSave.isManualEntry;
-        
+
         // עדכון המסמך ב-Firebase
         if (currentForm.flightId) {
             const docRef = doc(collection(window.db, "flights"), currentForm.flightId);
@@ -807,7 +799,7 @@ let statusToSet = currentForm.executionStatus;
             const newDoc = await addDoc(collection(window.db, "flights"), dataToSave);
             currentForm.flightId = newDoc.id;
         }
- 
+
         showToast('הגיחה נשמרה בהצלחה!', 'green');
 
         // משיכת הגיחות מחדש וסנכרון כדי לעדכן מיד את טבלאות המעקבים
@@ -852,22 +844,9 @@ async function loadAndPopulatePeriods(manualValue) {
 
     // 3. שליפת הנתונים מהמסד
     let configs = {};
-    if (window.firestoreFunctions && window.db) {
-        try {
-            const { doc, getDoc } = window.firestoreFunctions;
-            const snap = await getDoc(doc(window.db, "settings", "planning"));
-
-            if (snap.exists()) {
-                const data = snap.data();
-                window.planningSettings = data;
-                configs = data.periodConfigs || {};
-            } else {
-                configs = window.planningSettings?.periodConfigs || {};
-            }
-        } catch (e) {
-            console.error("שגיאה במשיכת נתונים:", e);
-            configs = window.planningSettings?.periodConfigs || {};
-        }
+    const data = await window.getPlanningSettings();
+    if (Object.keys(data).length > 0) {
+        configs = data.periodConfigs || {};
     } else {
         configs = window.planningSettings?.periodConfigs || {};
     }

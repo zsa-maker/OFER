@@ -415,3 +415,106 @@ window.deletePendingSelected = async function () {
         showToast('שגיאה במחיקה', 'red');
     }
 };
+
+// ==========================================
+// פונקציות מעטפת לניהול מטמון וחיסכון בקריאות Firestore
+// ==========================================
+
+export async function getPlanningSettings() {
+    if (window.planningSettings) return window.planningSettings;
+    if (!window.firestoreFunctions || !window.db) return {};
+    
+    try {
+        const { doc, getDoc } = window.firestoreFunctions;
+        const snap = await getDoc(doc(window.db, "settings", "planning"));
+        if (snap.exists()) {
+            window.planningSettings = snap.data();
+        }
+        return window.planningSettings || {};
+    } catch (e) {
+        console.error("Error fetching planning settings:", e);
+        return {};
+    }
+}
+
+export async function getPersonnelListsData() {
+    // בודק האם הרשימה כבר קיימת ולא ריקה
+    if (window.personnelLists && Object.keys(window.personnelLists).length > 0) return window.personnelLists;
+    if (!window.firestoreFunctions || !window.db) return {};
+    
+    try {
+        const { doc, getDoc } = window.firestoreFunctions;
+        const snap = await getDoc(doc(window.db, "settings", "personnel"));
+        if (snap.exists()) {
+            window.personnelLists = snap.data();
+        }
+        return window.personnelLists || {};
+    } catch (e) {
+        console.error("Error fetching personnel:", e);
+        return {};
+    }
+}
+
+export async function getAdvancedConfigData() {
+    if (!window.firestoreFunctions || !window.db) return null;
+    try {
+        const { doc, getDoc } = window.firestoreFunctions;
+        const snap = await getDoc(doc(window.db, "settings", "advanced_config"));
+        return snap.exists() ? snap.data() : null;
+    } catch (e) {
+        console.error("Error fetching advanced config:", e);
+        return null;
+    }
+}
+
+export async function getCachedPopulations(periodName) {
+    if (!periodName) return null;
+    const safePeriodName = periodName.replace(/\//g, '-');
+    const cacheKey = `pop_${safePeriodName}`;
+
+    // 1. חיפוש בזיכרון RAM (הכי מהיר)
+    if (window.populationsCache && window.populationsCache[safePeriodName]) {
+        return window.populationsCache[safePeriodName];
+    }
+    if (!window.populationsCache) window.populationsCache = {};
+
+    // 2. חיפוש ב-Session Storage (נשמר גם ברענון עמוד)
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+        const data = JSON.parse(stored);
+        window.populationsCache[safePeriodName] = data;
+        return data;
+    }
+
+    // 3. קריאה מהשרת (רק אם לא נמצא במטמון)
+    if (window.firestoreFunctions && window.db) {
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const popSnap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
+            
+            if (popSnap.exists()) {
+                const data = popSnap.data();
+                window.populationsCache[safePeriodName] = data;
+                sessionStorage.setItem(cacheKey, JSON.stringify(data));
+                return data;
+            } else {
+                // גיבוי למבנה הישן אם התקופה לא נמצאה
+                const oldSnap = await getDoc(doc(window.db, "settings", "populations"));
+                if (oldSnap.exists()) {
+                    const data = oldSnap.data();
+                    window.populationsCache[safePeriodName] = data;
+                    return data;
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching populations", e);
+        }
+    }
+    return null;
+}
+
+// חשיפה גלובלית לשימוש בקבצים ללא Import מפורש
+window.getPlanningSettings = getPlanningSettings;
+window.getPersonnelListsData = getPersonnelListsData;
+window.getAdvancedConfigData = getAdvancedConfigData;
+window.getCachedPopulations = getCachedPopulations;

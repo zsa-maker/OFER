@@ -99,20 +99,13 @@ async function getPopDataForPeriod(selectedPeriod) {
     }
 
     // ניסיון משיכה מהשרת לפי התקופה הספציפית
-    if (periodToFetch && window.firestoreFunctions && window.db) {
-        try {
-            const { doc, getDoc } = window.firestoreFunctions;
-            const safePeriodName = periodToFetch.replace(/\//g, '-');
-            const periodPopRef = doc(window.db, "populations_by_period", safePeriodName);
-            const periodPopSnap = await getDoc(periodPopRef);
-            if (periodPopSnap.exists()) {
-                popData = periodPopSnap.data();
-                return popData;
-            }
-        } catch (e) {
-            console.error("Firebase error loading period populations:", e);
-        }
+    if (periodToFetch) {
+    const fetchedData = await window.getCachedPopulations(periodToFetch);
+    if (fetchedData) {
+        popData = fetchedData;
+        window.pilotPopulations = popData;
     }
+}
 
     // גיבוי למאגר הכללי הישן
     if (!popData) {

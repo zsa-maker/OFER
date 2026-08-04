@@ -172,17 +172,7 @@ export function switchAdminTab(tabId) {
 
 // פונקציה לשליפת נתונים ספציפיים לתקופה בלי לעבור עמוד
 export async function fetchPopulationsForPeriod(periodName) {
-    if (!window.firestoreFunctions || !window.db) return null;
-    const { doc, getDoc } = window.firestoreFunctions;
-    const safePeriodName = periodName.replace(/\//g, '-');
-
-    try {
-        const snap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
-        return snap.exists() ? snap.data() : null;
-    } catch (e) {
-        console.error("Error fetching period data:", e);
-        return null;
-    }
+    return await window.getCachedPopulations(periodName);
 }
 
 // פונקציית עזר להוצאת כל הטייסים מהקבוצות של תקופה
@@ -201,31 +191,18 @@ window.getAllPilotsFromPopulations = getAllPilotsFromPopulations;
 
 
 export async function loadGoalsAndSystems() {
-    if (!window.firestoreFunctions || !window.db) return;
-    const { doc, getDoc } = window.firestoreFunctions;
+    const data = await window.getAdvancedConfigData();
 
-    try {
-        const docRef = doc(window.db, "settings", "advanced_config");
-        const docSnap = await getDoc(docRef);
+    if (data) {
+        Global.goalConfigurations.splice(0, Global.goalConfigurations.length, ...(data.goalConfigurations || []));
+        window.metricConfigurations = data.metricConfigurations || [];
+        metricConfigurations.splice(0, metricConfigurations.length, ...window.metricConfigurations);
 
-        if (docSnap.exists()) {
-            const data = docSnap.data();
+        const systems = data.systemClassifications || {};
+        for (const key in systems) { Global.systemClassifications[key] = systems[key]; }
 
-            // עדכון היעדים
-            Global.goalConfigurations.splice(0, Global.goalConfigurations.length, ...(data.goalConfigurations || []));
-
-            // 🔴 התיקון: סנכרון מלא של המשתנה הגלובלי כדי שהטבלה תראה אותו
-            window.metricConfigurations = data.metricConfigurations || [];
-            metricConfigurations.splice(0, metricConfigurations.length, ...window.metricConfigurations);
-            // עדכון המערכות
-            const systems = data.systemClassifications || {};
-            for (const key in systems) { Global.systemClassifications[key] = systems[key]; }
-
-            renderSystemList();
-            renderMetricsConfigTable();
-        }
-    } catch (error) {
-        console.error("Error loading advanced config:", error);
+        renderSystemList();
+        renderMetricsConfigTable();
     }
 }
 
@@ -251,24 +228,17 @@ function renderMetricsConfigTable() {
     });
 }
 
-// --- פונקציות טעינה וסנכרון רשימות ---
 export async function loadPersonnelLists() {
-    if (!window.firestoreFunctions || !window.db) { renderAllLists(); return; }
-    const { doc, getDoc } = window.firestoreFunctions;
-    try {
-        const docRef = doc(window.db, "settings", "personnel");
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            Object.assign(personnelLists, data);
+    const data = await window.getPersonnelListsData();
 
-            // הצמדה קריטית ל-Window כדי ש-Global.js ו-FaultManager.js יראו את הנתונים
-            window.personnelLists = personnelLists;
-
-            renderAllLists();
-            window.dispatchEvent(new CustomEvent('personnelListsUpdated'));
-        }
-    } catch (error) { console.error("Error loading lists:", error); }
+    if (Object.keys(data).length > 0) {
+        Object.assign(personnelLists, data);
+        window.personnelLists = personnelLists;
+        renderAllLists();
+        window.dispatchEvent(new CustomEvent('personnelListsUpdated'));
+    } else {
+        renderAllLists();
+    }
 }
 
 export async function syncFromExistingFlights() {
@@ -600,40 +570,29 @@ export async function loadPlanningData() {
     const minInput = document.getElementById('input-period-min');
     const targetInput = document.getElementById('input-period-target');
 
-    if (!window.firestoreFunctions || !window.db) return;
-    const { doc, getDoc } = window.firestoreFunctions;
+    // קריאה לפונקציית המעטפת במקום ל-getDoc
+    const data = await window.getPlanningSettings();
 
-    try {
-        const docRef = doc(window.db, "settings", "planning");
-        const snap = await getDoc(docRef);
+    if (Object.keys(data).length > 0) {
+        planningState.periodPrevStart = data.periodPrevStart ? new Date(data.periodPrevStart) : null;
+        planningState.periodCurrStart = data.periodCurrStart ? new Date(data.periodCurrStart) : null;
+        planningState.periodNextStart = data.periodNextStart ? new Date(data.periodNextStart) : null;
+        planningState.dailyPlans = data.dailyPlans || {};
+        planningState.originalPlans = data.originalPlans || {};
 
-        if (snap.exists()) {
-            const data = snap.data();
-            window.planningSettings = data; // שמירה גלובלית לשימוש בשאר המערכת
-
-            planningState.periodPrevStart = data.periodPrevStart ? new Date(data.periodPrevStart) : null;
-            planningState.periodCurrStart = data.periodCurrStart ? new Date(data.periodCurrStart) : null;
-            planningState.periodNextStart = data.periodNextStart ? new Date(data.periodNextStart) : null;
-            planningState.dailyPlans = data.dailyPlans || {};
-            planningState.originalPlans = data.originalPlans || {};
-
-            // טעינת המכסות של התקופה הנוכחית המוצגת
-            if (planningState.periodCurrStart) {
-                const periodName = window.getPeriodName(planningState.periodCurrStart);
-                const config = data.periodConfigs?.[periodName] || {};
-                if (nakaInput) nakaInput.value = config.naka || 85;
-                if (minInput) minInput.value = config.min || 0;
-                if (targetInput) targetInput.value = config.target || 0;
-            }
+        if (planningState.periodCurrStart) {
+            const periodName = window.getPeriodName(planningState.periodCurrStart);
+            const config = data.periodConfigs?.[periodName] || {};
+            if (nakaInput) nakaInput.value = config.naka || 85;
+            if (minInput) minInput.value = config.min || 0;
+            if (targetInput) targetInput.value = config.target || 0;
         }
-
-        // קריאה בסוף פונקציית loadPlanningData הקיימת
-        updatePeriodInputsUI();
-        window.renderPlanningSettings(); // החלפה של renderPlanningCalendar() הישן
-    } catch (error) {
-        console.error("Error loading planning data:", error);
     }
+
+    updatePeriodInputsUI();
+    window.renderPlanningSettings();
 }
+
 
 // עדכון התצוגה של השדות והלייבלים
 function updatePeriodInputsUI() {
@@ -975,17 +934,9 @@ export async function performExport() {
 
     let localPlanningData = planningState.dailyPlans;
     if (Object.keys(localPlanningData).length === 0) {
-        if (window.firestoreFunctions && window.db) {
-            try {
-                const { doc, getDoc } = window.firestoreFunctions;
-                const docRef = doc(window.db, "settings", "planning");
-                const snap = await getDoc(docRef);
-                if (snap.exists()) {
-                    localPlanningData = snap.data().dailyPlans || {};
-                }
-            } catch (e) {
-                console.error("Failed to fetch planning data for export", e);
-            }
+        const planningData = await window.getPlanningSettings();
+        if (planningData && planningData.dailyPlans) {
+            localPlanningData = planningData.dailyPlans;
         }
     }
 
@@ -3101,12 +3052,12 @@ window.removeConversionGroup = (idx) => {
 window.savePeriodConfigRow = async () => {
     const name = document.getElementById('admin-new-period-name').value.trim();
     const start = document.getElementById('admin-new-period-start').value;
-    const end = document.getElementById('admin-new-period-end').value; 
-    
+    const end = document.getElementById('admin-new-period-end').value;
+
     // קריאת נתוני החניכים (חדש)
     const nakaStudents = parseInt(document.getElementById('admin-new-period-naka-students')?.value) || 85;
     const targetStudents = parseInt(document.getElementById('admin-new-period-target-students')?.value) || 0;
-    
+
     // קריאת נתוני מזער ויעד כלליים (נשארים עבור עמוד הפרופילים)
     const min = parseInt(document.getElementById('admin-new-period-min')?.value) || 0;
     const target = parseInt(document.getElementById('admin-new-period-target')?.value) || 0;
@@ -3121,7 +3072,7 @@ window.savePeriodConfigRow = async () => {
 
     window.planningSettings.periodConfigs[name] = {
         startDate: start,
-        endDate: end || null, 
+        endDate: end || null,
         nakaStudents: nakaStudents, // נק"ע חניכים
         targetStudents: targetStudents, // יעד חניכים
         minFlights: min, // מזער כללי לתאימות
@@ -3157,17 +3108,17 @@ window.editPeriodConfigRow = (pKey) => {
 
     document.getElementById('admin-new-period-start').value = config.startDate || '';
     document.getElementById('admin-new-period-end').value = config.endDate || '';
-    
-    if(document.getElementById('admin-new-period-naka-students')) {
+
+    if (document.getElementById('admin-new-period-naka-students')) {
         document.getElementById('admin-new-period-naka-students').value = config.nakaStudents !== undefined ? config.nakaStudents : 85;
     }
-    if(document.getElementById('admin-new-period-target-students')) {
+    if (document.getElementById('admin-new-period-target-students')) {
         document.getElementById('admin-new-period-target-students').value = config.targetStudents !== undefined ? config.targetStudents : 0;
     }
-    if(document.getElementById('admin-new-period-min')) {
+    if (document.getElementById('admin-new-period-min')) {
         document.getElementById('admin-new-period-min').value = config.minFlights !== undefined ? config.minFlights : (config.min || 0);
     }
-    if(document.getElementById('admin-new-period-target')) {
+    if (document.getElementById('admin-new-period-target')) {
         document.getElementById('admin-new-period-target').value = config.targetFlights !== undefined ? config.targetFlights : (config.target || 0);
     }
 
@@ -3181,11 +3132,11 @@ window.clearPeriodForm = () => {
     document.getElementById('admin-new-period-name').classList.remove('bg-gray-100');
     document.getElementById('admin-new-period-start').value = '';
     document.getElementById('admin-new-period-end').value = '';
-    
-    if(document.getElementById('admin-new-period-naka-students')) document.getElementById('admin-new-period-naka-students').value = '85';
-    if(document.getElementById('admin-new-period-target-students')) document.getElementById('admin-new-period-target-students').value = '';
-    if(document.getElementById('admin-new-period-min')) document.getElementById('admin-new-period-min').value = '';
-    if(document.getElementById('admin-new-period-target')) document.getElementById('admin-new-period-target').value = '';
+
+    if (document.getElementById('admin-new-period-naka-students')) document.getElementById('admin-new-period-naka-students').value = '85';
+    if (document.getElementById('admin-new-period-target-students')) document.getElementById('admin-new-period-target-students').value = '';
+    if (document.getElementById('admin-new-period-min')) document.getElementById('admin-new-period-min').value = '';
+    if (document.getElementById('admin-new-period-target')) document.getElementById('admin-new-period-target').value = '';
 };
 
 
@@ -3212,7 +3163,7 @@ window.deletePeriodConfigRow = async (pKey) => {
 
 // תמיכה בפתיחת וסגירת טופס התקופות
 window.openNewPeriodForm = () => {
-    if(window.clearPeriodForm) window.clearPeriodForm();
+    if (window.clearPeriodForm) window.clearPeriodForm();
     document.getElementById('period-form-container').classList.remove('hidden');
     document.getElementById('admin-new-period-name').focus();
 };

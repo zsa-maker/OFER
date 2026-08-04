@@ -44,19 +44,8 @@ const missionDatabase = {
         const adminControls = document.getElementById('admin-delete-controls');
         if (adminControls) adminControls.style.display = isAdmin ? 'flex' : 'none';
 
-        if (window.firestoreFunctions && window.db) {
-            // בדיקה האם ההגדרות כבר נטענו
-            if (!window.planningSettings) {
-                try {
-                    const { doc, getDoc } = window.firestoreFunctions;
-                    const snap = await getDoc(doc(window.db, "settings", "planning"));
-                    if (snap.exists()) {
-                        window.planningSettings = snap.data();
-                    }
-                } catch (e) {
-                    console.error("Failed to load planning settings", e);
-                }
-            }
+        if (!window.planningSettings) {
+            await window.getPlanningSettings();
         }
 
         this.populateSelect('db-filter-period', 'period', this.allData);
@@ -310,7 +299,7 @@ const missionDatabase = {
     },
     updateDropdownsByPeriod: async function (periodName, finalData) {
         const safePeriodName = periodName.replace(/\//g, '-');
-        const periodPopulations = await this.getCachedPopulations(safePeriodName);
+        const periodPopulations = await window.getCachedPopulations(safePeriodName);
 
         let relevantFlights = new Set();
         let relevantPilots = new Set();

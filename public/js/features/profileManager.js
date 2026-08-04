@@ -1,7 +1,7 @@
 import { personnelLists, loadGoalsAndSystems, loadPersonnelLists } from './adminManager.js';
 import { fetchFlights } from '../core/global.js';
 import { showToast } from '../components/modals.js';
-import { getEffectivePeriod } from '../core/util.js'; 
+import { getEffectivePeriod } from '../core/util.js';
 
 
 let profileChart = null;
@@ -54,21 +54,18 @@ window.profileManager.initMatrixFilters = async function () {
         const selectedPeriod = periodSelect.value;
 
         // טעינת אוכלוסיות דינמית לפי התקופה שנבחרה
-        if (selectedPeriod && window.firestoreFunctions) {
-            const { doc, getDoc } = window.firestoreFunctions;
-            const safePeriodName = selectedPeriod.replace(/\//g, '-');
-            const popRef = doc(window.db, "populations_by_period", safePeriodName);
-            const popSnap = await getDoc(popRef);
-
-            if (popSnap.exists()) {
-                window.pilotPopulations = popSnap.data();
-            } else {
-                // Fallback להגדרות הישנות (אם מדובר בתקופה שנוצרה לפני העדכון)
-                const oldRef = doc(window.db, "settings", "populations");
-                const oldSnap = await getDoc(oldRef);
-                window.pilotPopulations = oldSnap.exists() ? oldSnap.data() : { instructorGroups: [], courses: [] };
+        if (selectedPeriod) {
+            const popData = await window.getCachedPopulations(selectedPeriod);
+            if (popData) {
+                window.pilotPopulations = popData;
             }
+        } else {
+            // Fallback להגדרות הישנות (אם מדובר בתקופה שנוצרה לפני העדכון)
+            const oldRef = doc(window.db, "settings", "populations");
+            const oldSnap = await getDoc(oldRef);
+            window.pilotPopulations = oldSnap.exists() ? oldSnap.data() : { instructorGroups: [], courses: [] };
         }
+
 
         const type = typeSelect.value;
         const populations = window.pilotPopulations || { instructorGroups: [], courses: [] };
@@ -132,7 +129,7 @@ window.profileManager.updateMatrix = function () {
 
         const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
         const isNotCancelled = f.executionStatus !== 'בוטלה';
-        const isNotPending = f.executionStatus !== 'טרם דווחה'; 
+        const isNotPending = f.executionStatus !== 'טרם דווחה';
         return isSamePeriod && isNotCancelled && isNotPending;
     });
 
@@ -403,14 +400,8 @@ async function populatePeriodSelector() {
     const matrixPeriodSelect = document.getElementById('matrix-period');
     const profilePeriodSelect = document.getElementById('profile-period-select');
 
-    if (!window.planningSettings && window.firestoreFunctions) {
-        const { doc, getDoc } = window.firestoreFunctions;
-        try {
-            const planSnap = await getDoc(doc(window.db, "settings", "planning"));
-            if (planSnap.exists()) {
-                window.planningSettings = planSnap.data();
-            }
-        } catch (e) { console.error("Error fetching periods:", e); }
+    if (!window.planningSettings) {
+        await window.getPlanningSettings();
     }
 
     const periodsSet = new Set();
