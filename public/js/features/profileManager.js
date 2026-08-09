@@ -221,7 +221,7 @@ window.profileManager.updateMatrix = function () {
 
         const bonusCount = filteredFlights.filter(f => {
             const d = f.data || {};
-            const names = [d['טייס ימין'], d['טייס שמאל'], d['מדריך'], d['מדריכה'], d['מדריכה נוספת']].map(n => n?.toString().trim());
+            const names = [d['טייס ימין'], d['טייס שמאל'], d['מדריך']].map(n => n?.toString().trim());
             return names.includes(cleanPilot) && (d['שם גיחה'] || '').includes('בונוס');
         }).length;
 
@@ -229,7 +229,7 @@ window.profileManager.updateMatrix = function () {
         const cells = relevantFlights.map(flightName => {
             const flightsForCell = filteredFlights.filter(f => {
                 const d = f.data || {};
-                const pilots = [d['טייס ימין'], d['טייס שמאל'], d['מדריך'], d['מדריכה'], d['מדריכה נוספת']].map(n => n?.toString().trim());
+                const pilots = [d['טייס ימין'], d['טייס שמאל'], d['מדריך']].map(n => n?.toString().trim());
                 return pilots.includes(cleanPilot) && (d['שם גיחה'] || '').trim() === flightName.trim();
             });
 
@@ -877,7 +877,7 @@ function collectDataForInstructor(instructorName, flights, periodName, periodMin
         const d = f.data || {};
         const isRightPilot = d['טייס ימין']?.trim() === instructorName || d['pilot-right']?.trim() === instructorName;
         const isLeftPilot = d['טייס שמאל']?.trim() === instructorName || d['pilot-left']?.trim() === instructorName;
-        const isInstructor = d['מדריך']?.trim() === instructorName || d['מדריכה']?.trim() === instructorName || d['instructor-main']?.trim() === instructorName;
+        const isInstructor = d['מדריך']?.trim() === instructorName  || d['instructor-main']?.trim() === instructorName;
 
         if (!isRightPilot && !isLeftPilot && !isInstructor) return;
 
