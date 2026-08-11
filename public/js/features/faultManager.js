@@ -149,8 +149,8 @@ export function populateFaultPeriodFilter() {
     // 2. גיבוי: הוספת תקופות שעולות מתוך נתוני התקלות בפועל
     allFaults.forEach(f => {
         if (f.firstReportTimestamp) {
-            const pName = typeof window.getPeriodName === 'function' 
-                ? window.getPeriodName(new Date(f.firstReportTimestamp)) 
+            const pName = typeof window.getPeriodName === 'function'
+                ? window.getPeriodName(new Date(f.firstReportTimestamp))
                 : getPeriodDisplay(new Date(f.firstReportTimestamp));
             if (pName) periods.add(pName);
         }
@@ -196,7 +196,7 @@ export function renderFaultStatistics() {
         const reportDate = new Date(f.firstReportTimestamp);
         reportDate.setHours(0, 0, 0, 0);
 
-if (timeFilterType === 'period') {
+        if (timeFilterType === 'period') {
             const selectedPeriod = document.getElementById('fault-period-select')?.value;
             const pName = typeof window.getPeriodName === 'function' ? window.getPeriodName(reportDate) : getPeriodDisplay(reportDate);
             matchTime = pName === selectedPeriod;
@@ -318,16 +318,8 @@ export async function initFaultDatabase() {
         await window.loadPersonnelLists();
     }
 
-    if (!window.planningSettings && window.db) {
-        const { doc, getDoc } = window.firestoreFunctions;
-        try {
-            const snap = await getDoc(doc(window.db, "settings", "planning"));
-            if (snap.exists()) {
-                window.planningSettings = snap.data();
-            }
-        } catch (e) {
-            console.error("Failed to load planning settings for weeks filter", e);
-        }
+    if (typeof window.getPlanningSettings === 'function') {
+        await window.getPlanningSettings();
     }
 
     document.getElementById('simulator-select')?.addEventListener('change', (e) => {
@@ -344,7 +336,7 @@ export async function initFaultDatabase() {
 
     // תיקון: משיכת רשימת הסימולטורים מתוך ההגדרות של עמוד המנהל במקום ערכים קשיחים
     const sims = (window.personnelLists && window.personnelLists.simulators) ? window.personnelLists.simulators : [];
-    simSelect.innerHTML = '<option value="ALL" selected>כל המאמנים</option>' + 
+    simSelect.innerHTML = '<option value="ALL" selected>כל המאמנים</option>' +
         sims.map(s => `<option value="${s}">${s}</option>`).join('');
 
     populateFaultPeriodFilter();
@@ -587,8 +579,16 @@ export function populateFaultOptions(simulatorId) {
     }
 }
 
-export async function fetchStandaloneFaults() {
+export async function fetchStandaloneFaults(forceRefresh = false) {
     if (!window.db) return;
+    
+    // עצירה אם הנתונים כבר נטענו ולא ביקשנו רענון כפוי
+    if (!forceRefresh && window.standaloneFaults && window.standaloneFaults.length > 0) {
+        processFaultsData();
+        renderFaultDatabaseTable();
+        return;
+    }
+
     const { collection, getDocs } = window.firestoreFunctions;
     try {
         const querySnapshot = await getDocs(collection(window.db, "standalone_faults"));
@@ -596,7 +596,6 @@ export async function fetchStandaloneFaults() {
             id: doc.id,
             ...doc.data()
         }));
-        // לאחר הטעינה, מעבדים את הנתונים מחדש ומציגים את הטבלה
         processFaultsData();
         renderFaultDatabaseTable();
     } catch (e) {
@@ -646,7 +645,7 @@ export function renderFaultDatabaseTable() {
             return true;
         });
     }
-    
+
     filteredFaults = filteredFaults.filter(f => {
         const reportDate = new Date(f.firstReportTimestamp);
         reportDate.setHours(0, 0, 0, 0);
@@ -1280,9 +1279,9 @@ window.deleteSelectedFaults = async function () {
                 for (const flightId of faultEntry.sourceFlights) {
                     try {
                         const flightRef = doc(window.db, "flights", flightId);
-                        const flightSnap = await getDoc(flightRef);
-                        if (flightSnap.exists()) {
-                            const flightData = flightSnap.data();
+                        const localFlight = window.savedFlights.find(f => f.id === flightId);
+                        if (localFlight) {
+                            const flightData = localFlight.data; // או localFlight עצמו, תלוי במבנה שלך
                             const originalFaults = flightData.faults || [];
                             const updatedFaults = originalFaults.filter(f =>
                                 !(f.description === faultEntry.description && f.simulator === faultEntry.simulator)
@@ -1290,6 +1289,8 @@ window.deleteSelectedFaults = async function () {
 
                             if (originalFaults.length !== updatedFaults.length) {
                                 await updateDoc(flightRef, { faults: updatedFaults });
+                                // כדאי גם לעדכן את המערך המקומי כדי למנוע חוסר סנכרון
+                                localFlight.data.faults = updatedFaults;
                             }
                         }
                     } catch (err) {

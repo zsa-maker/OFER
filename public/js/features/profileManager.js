@@ -400,12 +400,8 @@ async function populatePeriodSelector() {
     const matrixPeriodSelect = document.getElementById('matrix-period');
     const profilePeriodSelect = document.getElementById('profile-period-select');
 
-    if (!window.planningSettings) {
-        await window.getPlanningSettings();
-    }
-
+    await window.getPlanningSettings();
     const periodsSet = new Set();
-
     const configs = window.planningSettings?.periodConfigs || {};
     Object.keys(configs).forEach(p => periodsSet.add(p.trim()));
 
@@ -877,7 +873,7 @@ function collectDataForInstructor(instructorName, flights, periodName, periodMin
         const d = f.data || {};
         const isRightPilot = d['טייס ימין']?.trim() === instructorName || d['pilot-right']?.trim() === instructorName;
         const isLeftPilot = d['טייס שמאל']?.trim() === instructorName || d['pilot-left']?.trim() === instructorName;
-        const isInstructor = d['מדריך']?.trim() === instructorName  || d['instructor-main']?.trim() === instructorName;
+        const isInstructor = d['מדריך']?.trim() === instructorName || d['instructor-main']?.trim() === instructorName;
 
         if (!isRightPilot && !isLeftPilot && !isInstructor) return;
 

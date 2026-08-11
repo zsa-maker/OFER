@@ -44,9 +44,7 @@ const missionDatabase = {
         const adminControls = document.getElementById('admin-delete-controls');
         if (adminControls) adminControls.style.display = isAdmin ? 'flex' : 'none';
 
-        if (!window.planningSettings) {
-            await window.getPlanningSettings();
-        }
+        await window.getPlanningSettings();
 
         this.populateSelect('db-filter-period', 'period', this.allData);
         this.populateSelect('db-filter-week', 'week', this.allData);

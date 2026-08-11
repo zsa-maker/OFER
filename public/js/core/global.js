@@ -419,23 +419,41 @@ window.deletePendingSelected = async function () {
 // ==========================================
 // פונקציות מעטפת לניהול מטמון וחיסכון בקריאות Firestore
 // ==========================================
+let planningSettingsPromise = null;
 
-export async function getPlanningSettings() {
-    if (window.planningSettings) return window.planningSettings;
+window.getPlanningSettings = async function(forceRefresh = false) {
     if (!window.firestoreFunctions || !window.db) return {};
-    
-    try {
-        const { doc, getDoc } = window.firestoreFunctions;
-        const snap = await getDoc(doc(window.db, "settings", "planning"));
-        if (snap.exists()) {
-            window.planningSettings = snap.data();
-        }
-        return window.planningSettings || {};
-    } catch (e) {
-        console.error("Error fetching planning settings:", e);
-        return {};
+
+    // 1. אם הנתונים כבר טעונים בזיכרון ולא ביקשנו רענון כפוי - החזר אותם מיד
+    if (!forceRefresh && window.planningSettings) {
+        return window.planningSettings;
     }
-}
+
+    // 2. אם כבר יש קריאת רשת שרצה ברקע ממש עכשיו - הצטרף אליה (מונע כפילויות!)
+    if (planningSettingsPromise && !forceRefresh) {
+        return await planningSettingsPromise;
+    }
+
+    // 3. אין נתונים ואין קריאה שרצה - צור קריאה חדשה
+    planningSettingsPromise = (async () => {
+        try {
+            const { doc, getDoc } = window.firestoreFunctions;
+            const snap = await getDoc(doc(window.db, "settings", "planning"));
+            
+            if (snap.exists()) {
+                window.planningSettings = snap.data();
+            } else {
+                window.planningSettings = {};
+            }
+            return window.planningSettings;
+        } catch (e) {
+            console.error("Error fetching planning settings:", e);
+            return window.planningSettings || {};
+        }
+    })();
+
+    return await planningSettingsPromise;
+};
 
 export async function getPersonnelListsData() {
     // בודק האם הרשימה כבר קיימת ולא ריקה

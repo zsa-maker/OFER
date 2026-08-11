@@ -84,11 +84,8 @@ export async function showFormStep2(flightStatus, flightData = null) {
             await loadPersonnelLists().catch(e => console.warn("List load skipped:", e));
         }
         await loadGoalsAndSystems().catch(e => console.warn("Goals load skipped:", e));
-        if (!window.planningSettings) {
-            await window.getPlanningSettings();
-        }
+        await window.getPlanningSettings();
         const currentManual = flightData?.data?.manualPeriod || null;
-        // --- תוספת: טעינת נתוני האוכלוסיות והשיוכים באופן אוטומטי לטופס ---
         if (typeof window.loadPopulationsForAdmin === 'function') {
             await window.loadPopulationsForAdmin().catch(e => console.warn("Populations load skipped:", e));
         }
@@ -97,7 +94,6 @@ export async function showFormStep2(flightStatus, flightData = null) {
         window.goalConfigurations = goalConfigurations;
         window.systemClassifications = systemClassifications;
 
-        // >>> הקריאה החדשה, ממתינה בסבלנות לנתונים מהשרת:
         await loadAndPopulatePeriods(currentManual);
     } catch (e) {
         console.warn("Initialization warning:", e);

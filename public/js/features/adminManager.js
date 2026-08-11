@@ -2226,14 +2226,20 @@ export async function loadPopulationsForAdmin() {
     if (window.firestoreFunctions && window.db) {
         try {
             const { doc, getDoc } = window.firestoreFunctions;
+            let currentPopData = null;
 
-            // 1. ננסה לטעון את האוכלוסייה של התקופה הספציפית הזו
-            const popRef = doc(window.db, "populations_by_period", safePeriodName);
-            const popSnap = await getDoc(popRef);
+            // 1. נסיון טעינה חכם באמצעות Cache (חוסך Reads)
+            if (typeof window.getCachedPopulations === 'function') {
+                currentPopData = await window.getCachedPopulations(safePeriodName);
+            } else {
+                // גיבוי למקרה שהפונקציה אינה זמינה עדיין
+                const popSnap = await getDoc(doc(window.db, "populations_by_period", safePeriodName));
+                if (popSnap.exists()) currentPopData = popSnap.data();
+            }
 
-            if (popSnap.exists()) {
+            if (currentPopData) {
                 // Deep Copy: יצירת עותק מנותק לחלוטין בזיכרון כדי למנוע דריסת כתובות
-                window.pilotPopulations = JSON.parse(JSON.stringify(popSnap.data()));
+                window.pilotPopulations = JSON.parse(JSON.stringify(currentPopData));
             } else {
                 // 2. אם אין מידע לתקופה הנוכחית, נבצע "הורשה" חכמה מהתקופה הקודמת לה כרונולוגית!
                 const configs = window.planningSettings?.periodConfigs || {};
@@ -2246,26 +2252,29 @@ export async function loadPopulationsForAdmin() {
                 const currentIndex = sortedPeriods.indexOf(selectedPeriod);
                 let inheritedData = null;
 
-                // חיפוש בתקופה הקודמת (אם קיימת)
+                // חיפוש בתקופה הקודמת (אם קיימת) - גם כאן משתמשים ב-Cache!
                 if (currentIndex > 0) {
                     const prevPeriod = sortedPeriods[currentIndex - 1];
                     const prevSafeName = prevPeriod.replace(/\//g, '-');
-                    const prevSnap = await getDoc(doc(window.db, "populations_by_period", prevSafeName));
-                    if (prevSnap.exists()) {
-                        inheritedData = prevSnap.data();
+                    
+                    if (typeof window.getCachedPopulations === 'function') {
+                        inheritedData = await window.getCachedPopulations(prevSafeName);
+                    } else {
+                        const prevSnap = await getDoc(doc(window.db, "populations_by_period", prevSafeName));
+                        if (prevSnap.exists()) inheritedData = prevSnap.data();
                     }
                 }
+
                 if (inheritedData) {
                     // הורשה (עותק מנותק) - מעתיק הכל כולל קורסים וחניכים!
                     window.pilotPopulations = JSON.parse(JSON.stringify(inheritedData));
-
                     import('../components/modals.js').then(m => m.showToast("נשאבו כל נתוני האוכלוסיות והקורסים מהתקופה הקודמת.", "blue"));
                 } else {
                     // 3. Fallback אחרון: מבנה ריק לחלוטין
                     window.pilotPopulations = {
                         instructorGroups: [], courses: [], conversionGroups: [],
                         flightMapping: { students: [], instructors: [], conversion: [] },
-                        flightTypeMapping: {} // <--- הוסיפי את השורה הזו כאן
+                        flightTypeMapping: {}
                     };
                 }
             }
@@ -2275,7 +2284,7 @@ export async function loadPopulationsForAdmin() {
                 Object.assign(pilotPopulations, JSON.parse(JSON.stringify(window.pilotPopulations)));
             }
 
-            // הוספת שורת הרינדור כאן מוודאת שזה קורה מיד בסיום הטעינה:
+            // הוספת שורת הרינדור כאן מוודאת שזה קורה מיד בסיום הטעינה
             if (typeof window.renderFlightTypeMappingUI === 'function') {
                 window.renderFlightTypeMappingUI();
             }
