@@ -66,7 +66,7 @@
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = html;
 
-                // שליפת האלמנט הראשי מתוך הקובץ (למשל <nav> או <header>)
+                // שליפת האלמנט הראשי מתוך הקובץ 
                 const newContent = tempDiv.firstElementChild;
 
                 const placeholder = document.getElementById(placeholderId);
@@ -183,7 +183,7 @@ window.getServerTimestamp = serverTimestamp;
             `;
             document.body.appendChild(mainScript);
 
-            // טעינת קבצי JS נוספים
+            // טעינת קבצי JS 
             const jsFiles = [
                 './js/core/util.js',
                 './js/features/executionStatusManager.js',
