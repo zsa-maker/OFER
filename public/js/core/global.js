@@ -240,16 +240,27 @@ export async function showScreen(screenId) {
     // --- ליבת הייעול בניווט המסכים ---
     if (screenId === 'flight-form-screen') {
         populateFilters(screenId);
-        // טוען רק את הגיחות הקלות שטרם דווחו!
-        fetchPendingFlights();
+        // טוען רק את הגיחות הקלות שטרם דווחו (אם עדיין לא נטענו)
+        if (!window.pendingFlights || window.pendingFlights.length === 0) {
+            fetchPendingFlights();
+        } else {
+            renderFlightTable();
+        }
     } else {
-        // טוען את ההיסטוריה עבור המסכים הגדולים שמצריכים אותה
-        fetchFlights();
+        // טוען את ההיסטוריה עבור המסכים הגדולים שמצריכים אותה (אם טרם נטענה)
+        if (!window.savedFlights || window.savedFlights.length === 0) {
+            await fetchFlights();
+        } else {
+            // אם כבר יש נתונים, פשוט נרנדר את המסך מחדש
+            refreshCurrentScreen();
+        }
     }
 
     if (screenId === 'fault-database-screen') {
         if (!window.standaloneFaults || window.standaloneFaults.length === 0) {
-            await fetchStandaloneFaults();
+            if (typeof window.fetchStandaloneFaults === 'function') {
+                await fetchStandaloneFaults();
+            }
         }
     }
 }

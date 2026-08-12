@@ -163,7 +163,7 @@ export async function importFlightsFromExcel(file) {
                         await deleteDoc(doc(window.db, "flights", docRef.id));
                     }
                     import('../components/modals.js').then(m => m.showToast('הייבוא בוטל בהצלחה, הגיחות נמחקו.', 'green'));
-                    fetchFlights(); // רענון המסך
+                    // fetchFlights(); // רענון המסך
                 } catch (e) {
                     console.error("שגיאה בביטול ייבוא:", e);
                     import('../components/modals.js').then(m => m.showToast('שגיאה בביטול הייבוא.', 'red'));
@@ -172,7 +172,7 @@ export async function importFlightsFromExcel(file) {
 
             // קריאה ל-Toast עם הפעלת ה-Undo
             showToast(`יוצרו בהצלחה ${flightsToSave.length} גיחות ועודכנו רשימות כוח אדם!`, 'green', 3000, undoImport);
-            fetchFlights();
+            // fetchFlights();
         } else {
             showToast('לא נמצאו גיחות תקינות לייבוא.', 'red');
         }

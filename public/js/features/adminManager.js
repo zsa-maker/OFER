@@ -1955,32 +1955,6 @@ window.removeCourse = (idx) => {
     }
 };
 
-// פונקציית השמירה - שומרת *אך ורק* לנתיב של התקופה הספציפית, בלי Fallback גלובלי דורס!
-window.savePopulations = async (silent = false) => {
-    if (!window.firestoreFunctions || !window.db) return;
-    const { doc, setDoc } = window.firestoreFunctions;
-
-    let activePeriod = document.getElementById('admin-population-period')?.value;
-    if (!activePeriod) activePeriod = window.getPeriodName(new Date());
-
-    const safePeriodName = activePeriod.replace(/\//g, '-');
-    currentPeriodCoursesCache = null;
-    if (typeof renderList === 'function') window.renderList('pilots');
-
-    try {
-        // שמירת ה-Deep Copy למסד הנתונים, תחת השם הייחודי של התקופה
-        const dataToSave = JSON.parse(JSON.stringify(pilotPopulations));
-        await setDoc(doc(window.db, "populations_by_period", safePeriodName), dataToSave);
-
-        if (!silent) {
-            import('../components/modals.js').then(m => m.showToast(`הגדרות אוכלוסייה נשמרו בלעדית לתקופה: ${activePeriod}`, "green"));
-        }
-    } catch (e) {
-        console.error("שגיאה בשמירה:", e);
-        if (!silent) import('../components/modals.js').then(m => m.showToast("שגיאה בשמירה", "red"));
-    }
-};
-
 window.saveFlightMapping = async () => {
     const studentFlights = Array.from(document.getElementById('flight-mapping-students').selectedOptions).map(o => o.value);
     const instructorFlights = Array.from(document.getElementById('flight-mapping-instructors').selectedOptions).map(o => o.value);
@@ -2297,7 +2271,6 @@ export async function loadPopulationsForAdmin() {
 }
 window.loadPopulationsForAdmin = loadPopulationsForAdmin;
 
-// פונקציית השמירה - שומרת *אך ורק* לנתיב של התקופה הספציפית, בלי Fallback גלובלי דורס!
 window.savePopulations = async (silent = false) => {
     if (!window.firestoreFunctions || !window.db) return;
     const { doc, setDoc } = window.firestoreFunctions;
@@ -2307,10 +2280,17 @@ window.savePopulations = async (silent = false) => {
 
     const safePeriodName = activePeriod.replace(/\//g, '-');
 
+    // 1. איפוס מטמון מקומי בזיכרון ורענון תצוגת הטייסים
+    currentPeriodCoursesCache = null;
+    if (typeof renderList === 'function') window.renderList('pilots');
+
     try {
-        // שמירת ה-Deep Copy למסד הנתונים, תחת השם הייחודי של התקופה
+        // 2. שמירת ה-Deep Copy למסד הנתונים
         const dataToSave = JSON.parse(JSON.stringify(pilotPopulations));
         await setDoc(doc(window.db, "populations_by_period", safePeriodName), dataToSave);
+
+        // 3. מחיקת המטמון ב-sessionStorage כדי למנוע הצגת נתונים ישנים בטעינה הבאה
+        sessionStorage.removeItem(`pop_${safePeriodName}`);
 
         if (!silent) {
             import('../components/modals.js').then(m => m.showToast(`הגדרות אוכלוסייה נשמרו בלעדית לתקופה: ${activePeriod}`, "green"));

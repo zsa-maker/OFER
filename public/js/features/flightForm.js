@@ -791,14 +791,37 @@ export async function saveFlightForm(skipValidation = false) {
             const docRef = doc(collection(window.db, "flights"), currentForm.flightId);
             delete dataToSave.flightId;
             await updateDoc(docRef, dataToSave);
+            
+            // עדכון מקומי של הגיחה הקיימת בזיכרון הלקוח
+            if (window.savedFlights) {
+                const index = window.savedFlights.findIndex(f => f.id === currentForm.flightId);
+                if (index !== -1) {
+                    window.savedFlights[index] = { id: currentForm.flightId, ...dataToSave };
+                }
+            }
+            
+            // הסרה אוטומטית ממערך "טרם דווחה" אם הגיחה דווחה
+            if (window.pendingFlights && dataToSave.executionStatus !== 'טרם דווחה') {
+                window.pendingFlights = window.pendingFlights.filter(f => f.id !== currentForm.flightId);
+            }
         } else {
             const newDoc = await addDoc(collection(window.db, "flights"), dataToSave);
             currentForm.flightId = newDoc.id;
+            
+            // דחיפת הגיחה החדשה למערך בזיכרון הלקוח
+            if (!window.savedFlights) window.savedFlights = [];
+            window.savedFlights.push({ id: newDoc.id, ...dataToSave });
+            
+            // אם הגיחה הוגדרה כ"טרם דווחה", נדחוף אותה גם למערך הממתינות
+            if (dataToSave.executionStatus === 'טרם דווחה') {
+                if (!window.pendingFlights) window.pendingFlights = [];
+                window.pendingFlights.push({ id: newDoc.id, ...dataToSave });
+            }
         }
 
         showToast('הגיחה נשמרה בהצלחה!', 'green');
 
-        // משיכת הגיחות מחדש וסנכרון כדי לעדכן מיד את טבלאות המעקבים
+        // מעבר מסך - כעת הנתונים מעודכנים בזיכרון ואין צורך למשוך אותם מהשרת
         showScreen('flight-form-screen');
     } catch (e) {
         console.error('Error saving flight:', e);

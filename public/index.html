@@ -143,8 +143,8 @@
             mainScript.type = 'module';
             mainScript.innerHTML = `
                 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-                import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc,query, where, onSnapshot } 
-                    from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+                import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc,query, where, onSnapshot } 
+    from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
                 
                 // הגדרות Firebase
                 const firebaseConfig = {
@@ -157,9 +157,16 @@
   measurementId: "G-THFVR6VHP4"
                 };
 
-                const app = initializeApp(firebaseConfig);
-                window.db = getFirestore(app);
-                window.getServerTimestamp = serverTimestamp;
+               const app = initializeApp(firebaseConfig);
+
+// Initialize Firestore with offline persistence enabled
+window.db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
+});
+
+window.getServerTimestamp = serverTimestamp;
                 
                 // חשיפת פונקציות גלובליות לשימוש בקבצים אחרים
                 window.firestoreFunctions = { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc, query, where, onSnapshot };

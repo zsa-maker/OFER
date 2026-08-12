@@ -832,7 +832,7 @@ export async function saveFaultResolutionStatus(faultKey, onlyUpdateClassificati
             }
             showToast('התקלה נפתחה מחדש', 'blue');
             hideAllModals();
-            if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
+            renderFaultDatabaseTable();
             return;
         } catch (e) {
             showToast('שגיאה בפתיחה מחדש', 'red');
@@ -881,7 +881,7 @@ export async function saveFaultResolutionStatus(faultKey, onlyUpdateClassificati
 
         showToast(onlyUpdateClassification ? 'סיווג עודכן' : 'התקלה טופלה', 'green');
         hideAllModals();
-        if (typeof window.fetchFlights === 'function') window.fetchFlights().then(() => renderFaultDatabaseTable());
+        irenderFaultDatabaseTable();
     } catch (e) {
         console.error('Save failed:', e);
         showToast('שגיאה בשמירת הנתונים', 'red');
