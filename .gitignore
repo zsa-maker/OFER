@@ -68,6 +68,8 @@ node_modules/
 # dataconnect generated files
 .dataconnect
 
-.serviceAccountKey.json
+# Ignore the specific file
+serviceAccountKey.json.json
 
-.backup/
+# Ignore the entire backup folder
+backup/
