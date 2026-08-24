@@ -717,3 +717,63 @@
         </div>
     </div>
 </div>
+
+<!-- Period Selection Modal -->
+<div id="period-selection-modal" class="modal-overlay hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[100] flex justify-center items-center">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right" dir="rtl">
+        <h3 class="text-xl font-bold mb-4 text-ofer-dark-brown border-b pb-2">בחירת תקופה לצפייה</h3>
+        <p class="text-sm text-gray-600 mb-4">במצב זה המערכת תציג נתונים היסטוריים לקריאה בלבד מהתקופה הנבחרת.</p>
+        
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">בחר תקופה:</label>
+            <select id="home-period-select" class="w-full border p-2 rounded-md shadow-sm bg-gray-50 focus:ring-ofer-orange focus:border-ofer-orange text-lg font-bold">
+            </select>
+        </div>
+        
+        <div class="flex justify-end gap-3 mt-4 pt-4 border-t">
+            <button onclick="document.getElementById('period-selection-modal').classList.add('hidden')" class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 font-bold">ביטול</button>
+            <button onclick="window.confirmPeriodView()" class="px-4 py-2 text-white bg-ofer-orange rounded-lg hover:bg-ofer-dark-brown font-bold">אישור ומעבר</button>
+        </div>
+    </div>
+</div>
+
+<!-- Persistent Mode Banner -->
+<div id="period-view-banner" class="hidden fixed top-0 left-0 w-full bg-ofer-dark-brown text-white shadow-md z-[200] px-4 py-2 flex justify-between items-center" dir="rtl">
+    <div class="flex items-center gap-3">
+        <i class="fas fa-exclamation-triangle text-ofer-yellow"></i>
+        <span class="font-bold">מצב צפייה פעיל: <span id="banner-period-name" class="text-ofer-yellow"></span></span>
+        <span class="text-xs opacity-80">(נתונים היסטוריים בלבד)</span>
+    </div>
+    <button onclick="window.enterDailyWorkflow()" class="bg-white text-ofer-dark-brown hover:bg-gray-100 text-xs font-bold py-1 px-3 rounded shadow transition-colors">
+        חזור לעבודה יומית
+    </button>
+</div>
+
+<!-- Period Password Modal -->
+<div id="period-password-modal" class="modal-overlay hidden fixed inset-0 bg-gray-900 bg-opacity-60 overflow-y-auto h-full w-full z-[150] flex justify-center items-center">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96 text-right border-t-4 border-ofer-orange" dir="rtl">
+        <h3 class="text-xl font-bold mb-4 text-ofer-dark-brown border-b pb-2">
+            <i class="fas fa-lock text-ofer-orange ml-2"></i>נדרשת סיסמה
+        </h3>
+        <p class="text-sm text-gray-600 mb-4">אנא הזיני סיסמת מורשה כדי לצפות בנתונים היסטוריים של הטייסת.</p>
+        
+        <div class="mb-6">
+            <input type="password" id="period-password-input" 
+                   class="w-full p-3 border rounded-md shadow-sm bg-gray-50 focus:ring-ofer-orange focus:border-ofer-orange text-center tracking-widest text-lg" 
+                   placeholder="סיסמה..." 
+                   onkeypress="if(event.key === 'Enter') window.verifyPeriodPassword()">
+            <p id="period-password-error" class="text-red-500 text-xs mt-2 font-bold hidden">סיסמה שגויה, נסי שוב.</p>
+        </div>
+        
+        <div class="flex justify-end gap-3 mt-4 pt-4 border-t">
+            <button onclick="document.getElementById('period-password-modal').classList.add('hidden'); document.getElementById('period-password-error').classList.add('hidden');" 
+                    class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 font-bold transition-colors">
+                ביטול
+            </button>
+            <button onclick="window.verifyPeriodPassword()" 
+                    class="px-4 py-2 text-white bg-ofer-orange rounded-lg hover:bg-ofer-dark-brown font-bold transition-colors shadow">
+                אישור
+            </button>
+        </div>
+    </div>
+</div>

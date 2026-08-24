@@ -407,6 +407,27 @@
         "FFS 2": "21:00"
       },
       "timestamp": 1786447789935
+    },
+    "2026-08-11": {
+      "date": "2026-08-11",
+      "simulators": {
+        "FFS 2": "19:30"
+      },
+      "timestamp": 1786960129977
+    },
+    "2026-08-12": {
+      "date": "2026-08-12",
+      "simulators": {
+        "FFS 2": "19:00"
+      },
+      "timestamp": 1786960138644
+    },
+    "2026-08-13": {
+      "date": "2026-08-13",
+      "simulators": {
+        "FFS 2": "18:00"
+      },
+      "timestamp": 1786960304507
     }
   },
   "fault_resolutions": {
@@ -596,6 +617,20 @@
       "time": "13:49",
       "timestamp": 1780311024772
     },
+    "FFS 2|בהתחלה בקושי שמעו ברמקולים של העמדת מדריכה. ניסים בא וטיפל והסביר שזה מחובר לאוזניות של העמדת מדריכה ושאם משנים את השמע דרכן (הגלגלת) זה יכול להשפיע|1786613081020": {
+      "isResolved": true,
+      "technicianName": "ניסים",
+      "faultCategory": "תקלה",
+      "systemClassification": "קשר - IOS offboard",
+      "isVerified": true,
+      "resolutionDescription": "כפי שנכתב",
+      "isClosedWithPermission": false,
+      "wasClosedWithPermission": false,
+      "permissionNote": "",
+      "date": "2026-08-17",
+      "time": "12:46",
+      "timestamp": 1786959988764
+    },
     "FFS 2|בהתחלה היה סנריו פתוח של בדיקות ולא הייתה אפשרות להצטרף אליו כדי לסגור אותו ולפתוח חדש. ניסים בא וסידר|1785755559230": {
       "isResolved": true,
       "technicianName": "ניסים",
@@ -690,6 +725,20 @@
       "date": "2026-06-08",
       "time": "15:08",
       "timestamp": 1780920585011
+    },
+    "FFS 2|בצד שמאל בהירות כל הזמן ירדה והיה צורך להתאים מחדגש|1786628443516": {
+      "isResolved": true,
+      "technicianName": "ניסים",
+      "faultCategory": "תקלה",
+      "systemClassification": "מערכות ישראליות - מערכת ראש",
+      "isVerified": true,
+      "resolutionDescription": "הועבר להנדסה",
+      "isClosedWithPermission": false,
+      "wasClosedWithPermission": false,
+      "permissionNote": "",
+      "date": "2026-08-17",
+      "time": "12:47",
+      "timestamp": 1786960074316
     },
     "FFS 2|בתחילת הגיחה בפתיחת הסנריו, היה כתוב UNAVAILABLE על COCKPIT2 ולא היה ניתן לבחור אותו כACTIVE|1779879359802": {
       "isResolved": true,
@@ -810,6 +859,20 @@
       "date": "2026-02-24",
       "time": "11:37",
       "timestamp": null
+    },
+    "FFS 2|הופיעו איקסים על המחוונים ב41:33|1786617988263": {
+      "isResolved": true,
+      "technicianName": "ניסים",
+      "faultCategory": "תקלה",
+      "systemClassification": "תצוגות",
+      "isVerified": false,
+      "resolutionDescription": "הועבר להנדסה",
+      "isClosedWithPermission": false,
+      "wasClosedWithPermission": false,
+      "permissionNote": "",
+      "date": "2026-08-17",
+      "time": "12:46",
+      "timestamp": 1786960022878
     },
     "FFS 2|הופיעו איקסים על מסך ENGINE|1785747884805": {
       "isResolved": true,
@@ -1017,6 +1080,20 @@
       "date": "2026-06-18",
       "time": "09:16",
       "timestamp": 1781763421659
+    },
+    "FFS 2|הקשר בין העמדת מדריכה לקוקפיט עבד כרגיל, לא היה אפשר לשמוע את הקשר דרך הרמקול בעמדת מדריכה, אלביט הגיעו וסידרו את התקלה.|1786288892491": {
+      "isResolved": true,
+      "technicianName": "אליאור",
+      "faultCategory": "תקלה",
+      "systemClassification": "קשר - אחר",
+      "isVerified": true,
+      "resolutionDescription": "הועבר להנדסה",
+      "isClosedWithPermission": false,
+      "wasClosedWithPermission": false,
+      "permissionNote": "",
+      "date": "2026-08-13",
+      "time": "11:10",
+      "timestamp": 1786608643555
     },
     "FFS 2|הרמקולים בעמדת מדריכה השמיעו כפול (בדיליי). אליאור הגיע והשתיק את הטלוויזיה ואז זה הסתדר|1786435990186": {
       "isResolved": true,
@@ -2417,6 +2494,45 @@
         "טייס שמאל": "חגי ל"
       }
     },
+    "0zaldoRfCPRAazi4V6JT": {
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "מעבר מבחן חירומים (90+)": "עמד.ה"
+      },
+      "id": "0zaldoRfCPRAazi4V6JT",
+      "flightStartTimestamp": 1786601400000,
+      "data": {
+        "מדריכה": "אלמה",
+        "שעת סיום": "09:55",
+        "טייס ימין": "תומר",
+        "שם גיחה": "יסודות 4",
+        "שעות טיסה (דקות)": "45",
+        "סוג גיחה": "חניכים",
+        "סימולטור": "FFS 2",
+        "לקחי מתאמן - ימין": "לשמור על ההקפה במיוחד בפיינלים\nאם צריך ללכת סביב ולנחות עם ביטחון",
+        "טייס שמאל": "דורגו",
+        "סוג": "GENERIC_FLIGHT",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "מדריכה נוספת": "עדי",
+        "תאריך": "2026-08-13",
+        "מתצפת": "",
+        "שעת התחלה": "09:10",
+        "סוג ביצוע": "מלא"
+      },
+      "timestamp": {
+        "_seconds": 1786974170,
+        "_nanoseconds": 58000000
+      }
+    },
     "10D3n1NQVjGstbFhGJM7": {
       "goalsDetails": {},
       "faults": [],
@@ -3663,6 +3779,43 @@
         "_nanoseconds": 550000000
       }
     },
+    "3fL8gCRk7A0UQvuKnQQW": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שם גיחה": "יגנ 1",
+        "תאריך": "2026-08-13",
+        "סוג גיחה": "חניכים",
+        "סימולטור": "FFS 2",
+        "שעת התחלה": "17:05",
+        "שעת סיום": "17:35",
+        "מדריכה": "לירי",
+        "טייס ימין": "",
+        "טייס שמאל": "",
+        "שעות טיסה (דקות)": "30",
+        "סיבת ביטול": "איוש",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוטלה",
+      "id": "3fL8gCRk7A0UQvuKnQQW",
+      "flightStartTimestamp": 1786629900000,
+      "timestamp": {
+        "_seconds": 1786974133,
+        "_nanoseconds": 568000000
+      }
+    },
     "3gnM72Aoz5LISdyhNnp2": {
       "goalsDetails": {},
       "faults": [],
@@ -3901,6 +4054,58 @@
         "סוג": "GENERIC_FLIGHT",
         "מדריכה": "נועם",
         "מתצפת": ""
+      }
+    },
+    "3yjYNAaIeUn9OVwCXM95": {
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "תאריך": "2026-08-13",
+        "סוג גיחה": "חניכים",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "ניר ר",
+        "שעת התחלה": "16:20",
+        "שם גיחה": "יגנ 1",
+        "טייס שמאל": "רצהבי",
+        "מדריכה": "אביגיל",
+        "שעת סיום": "15:50",
+        "שעות טיסה (דקות)": "1410",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "ללא מעבר מגהבלות": "לא עמד.ה",
+        "ללא טעויות בדח": "עמד.ה"
+      },
+      "id": "3yjYNAaIeUn9OVwCXM95",
+      "goalsDetails": {
+        "ללא מעבר מגהבלות": "צפצפה תחתוטנה"
+      },
+      "faults": [
+        {
+          "simulator": "FFS 2",
+          "description": "בצד שמאל בהירות כל הזמן ירדה והיה צורך להתאים מחדגש",
+          "systemClassification": "מערכות ישראליות - מערכת ראש",
+          "severity": "קל",
+          "reportingInstructor": "אביגיל",
+          "isDowntime": false,
+          "timestamp": 1786628443516
+        }
+      ],
+      "flightStartTimestamp": 1786627200000,
+      "timestamp": {
+        "_seconds": 1786628444,
+        "_nanoseconds": 798000000
       }
     },
     "3zrdMELUpyaH0Z5yFWn2": {
@@ -5994,6 +6199,43 @@
         "מדריכה נוספת": ""
       }
     },
+    "6usKULEQfE221U1kQVRG": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-11",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שעת סיום": "19:35",
+        "תאריך": "2026-08-11",
+        "סימולטור": "FFS 2",
+        "מדריכה": "אביגיל",
+        "טייס שמאל": "",
+        "שעת התחלה": "19:00",
+        "שם גיחה": "עמידת ראש",
+        "טייס ימין": "",
+        "סוג גיחה": "השכלה",
+        "שעות טיסה (דקות)": "35",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "נועם",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "6usKULEQfE221U1kQVRG",
+      "flightStartTimestamp": 1786464000000,
+      "timestamp": {
+        "_seconds": 1786949559,
+        "_nanoseconds": 751000000
+      }
+    },
     "74NRlyAD2JErnPpD0S2z": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -6430,6 +6672,47 @@
         "סוג גיחה": "חניכים",
         "שם גיחה": "מצבי טיסה יסודיים 1",
         "שעת התחלה": "08:30"
+      }
+    },
+    "7hhrYuJowjMFszCXvP8w": {
+      "flightId": null,
+      "trainingType": "GENERIC_FLIGHT",
+      "flightType": "גיחה רגילה",
+      "flightGrounding": "גיחה",
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "מעבר מבחן חירומים (90+)": "עמד.ה"
+      },
+      "data": {
+        "סימולטור": "FFS 2",
+        "שם גיחה": "יסודות 4",
+        "תאריך": "2026-08-17",
+        "שעת התחלה": "14:10",
+        "שעת סיום": "14:55",
+        "שעות טיסה (דקות)": "45",
+        "מדריכה": "מילואים",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "טייס ימין": "מוזיקנט",
+        "טייס שמאל": "אמיתי",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "סוג גיחה": "חניכים",
+        "מדדי ביצוע": [],
+        "סוג ביצוע": "מלא",
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "crew": [],
+      "faults": [],
+      "flightStartTimestamp": 1786965000000,
+      "goalsDetails": {},
+      "date": "2026-08-17",
+      "period": "2/26",
+      "week": 8,
+      "isUnplanned": true,
+      "timestamp": {
+        "_seconds": 1786956796,
+        "_nanoseconds": 441000000
       }
     },
     "7hx7zOfr0Q3CGkIqjVd3": {
@@ -7896,6 +8179,46 @@
         "טייס ימין": "אווי",
         "טייס שמאל": "זיגלוב",
         "סימולטור": "FFS 2"
+      }
+    },
+    "AVvWuBmZ99D9hfAhz9tX": {
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "id": "AVvWuBmZ99D9hfAhz9tX",
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "1": "עמד.ה",
+        "2": "עמד.ה"
+      },
+      "flightStartTimestamp": 1786619400000,
+      "data": {
+        "מדריכה נוספת": "",
+        "סוג": "GENERIC_FLIGHT",
+        "שם גיחה": "יגנ 1",
+        "שעת סיום": "13:40",
+        "סוג גיחה": "חניכים",
+        "סימולטור": "FFS 2",
+        "שעות טיסה (דקות)": "30",
+        "מתצפת": "",
+        "שעת התחלה": "13:10",
+        "לקחי מתאמן - ימין": "ראש בחוץ\nבמצבי טיסה לא סטנדרטים וחירומים- תשומת לב לחלונות הטסה",
+        "מדדי ביצוע": [],
+        "תאריך": "2026-08-13",
+        "טייס ימין": "אמיתי",
+        "מדריכה": "לירי",
+        "טייס שמאל": "אופק ס",
+        "לקחי מתאמן - שמאל": "",
+        "סוג ביצוע": "מלא"
+      },
+      "timestamp": {
+        "_seconds": 1786975974,
+        "_nanoseconds": 170000000
       }
     },
     "AWzXLLe1TqI13urdjE34": {
@@ -9422,6 +9745,42 @@
         "סוג ביצוע": "מלא"
       }
     },
+    "DBLDcrw4broiVi9lfm0J": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "data": {
+        "טייס ימין": "אלון פ",
+        "סוג גיחה": "חניכים",
+        "תאריך": "2026-08-17",
+        "מדריכה": "אביגיל",
+        "שם גיחה": "יגנ 1",
+        "סימולטור": "FFS 2",
+        "שעת התחלה": "14:40",
+        "טייס שמאל": "מוזיקנט",
+        "שעת סיום": "15:10",
+        "שעות טיסה (דקות)": "30",
+        "מדריכה נוספת": "עדי",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "תיקונים בינ\"פ סמנים\nסוג נחיתה בהתאם לתקלה",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "דווחה",
+      "id": "DBLDcrw4broiVi9lfm0J",
+      "flightStartTimestamp": 1786966800000,
+      "timestamp": {
+        "_seconds": 1786973188,
+        "_nanoseconds": 861000000
+      }
+    },
     "DEhtLe1pnwcR2868TuRp": {
       "faults": [],
       "date": "2026-03-30",
@@ -10901,6 +11260,43 @@
       "timestamp": {
         "_seconds": 1778667366,
         "_nanoseconds": 23000000
+      }
+    },
+    "Fg8x2YM0aWgutqEzStoO": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שם גיחה": "יגנ 1",
+        "תאריך": "2026-08-13",
+        "סוג גיחה": "חניכים",
+        "סימולטור": "FFS 2",
+        "שעת התחלה": "16:30",
+        "שעת סיום": "17:00",
+        "מדריכה": "לירי",
+        "טייס ימין": "",
+        "טייס שמאל": "",
+        "שעות טיסה (דקות)": "30",
+        "סיבת ביטול": "איוש",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוטלה",
+      "id": "Fg8x2YM0aWgutqEzStoO",
+      "flightStartTimestamp": 1786627800000,
+      "timestamp": {
+        "_seconds": 1786974124,
+        "_nanoseconds": 286000000
       }
     },
     "Fh5q6MY8f8qXAZcyjs1A": {
@@ -12419,6 +12815,43 @@
         "טייס ימין": ""
       }
     },
+    "IRxtAnQ3d8OGv8k2ACuD": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "data": {
+        "סימולטור": "FFS 2",
+        "טייס ימין": "איתי ר",
+        "תאריך": "2026-08-17",
+        "שם גיחה": "יגנ 1",
+        "טייס שמאל": "קוניק",
+        "מדריכה": "לירי",
+        "שעת התחלה": "09:05",
+        "סוג גיחה": "חניכים",
+        "שעת סיום": "09:35",
+        "שעות טיסה (דקות)": "30",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "שמירת מהירות בחירומי מנוע\nלקבע טיפוס בנורית",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "IRxtAnQ3d8OGv8k2ACuD",
+      "flightStartTimestamp": 1786950300000,
+      "timestamp": {
+        "_seconds": 1786977137,
+        "_nanoseconds": 638000000
+      }
+    },
     "ISNyYYsjnryVLf8xLEay": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -13434,27 +13867,27 @@
       "id": "K2tWkOZyN2nNZ6nM1FpW",
       "flightStartTimestamp": 1786280400000,
       "data": {
-        "טייס שמאל": "",
-        "מדריכה": "מיקה",
-        "טייס ימין": "",
-        "סוג גיחה": "חניכים",
-        "שעת סיום": "16:30",
-        "שם גיחה": "יגנ 1",
-        "תאריך": "2026-08-09",
         "סימולטור": "FFS 2",
-        "שעת התחלה": "16:00",
-        "שעות טיסה (דקות)": "30",
-        "סוג ביצוע": "מלא",
-        "מדריכה נוספת": "",
-        "מתצפת": "",
-        "לקחי מתאמן - ימין": "",
-        "לקחי מתאמן - שמאל": "",
+        "שעת סיום": "16:30",
         "מדדי ביצוע": [],
-        "סוג": "GENERIC_FLIGHT"
+        "לקחי מתאמן - שמאל": "",
+        "מדריכה נוספת": "",
+        "תאריך": "2026-08-09",
+        "סוג גיחה": "חניכים",
+        "לקחי מתאמן - ימין": "",
+        "מתצפת": "",
+        "שעת התחלה": "16:00",
+        "מדריכה": "מיקה",
+        "סוג ביצוע": "מלא",
+        "סוג": "GENERIC_FLIGHT",
+        "שעות טיסה (דקות)": "30",
+        "שם גיחה": "יגנ 1",
+        "טייס שמאל": "דורגו",
+        "טייס ימין": "יובל ח"
       },
       "timestamp": {
-        "_seconds": 1786287359,
-        "_nanoseconds": 948000000
+        "_seconds": 1786975534,
+        "_nanoseconds": 955000000
       }
     },
     "K2vTOE9pN3Npomrc54M8": {
@@ -14552,6 +14985,43 @@
         "טייס ימין": "",
         "מדריכה נוספת": "",
         "נדרש ביצוע חוזר": "לא"
+      }
+    },
+    "LmOzhiBdnQfUJdUaT10s": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-11",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שם גיחה": "עמידת ראש",
+        "סוג גיחה": "השכלה",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "",
+        "שעת התחלה": "11:40",
+        "מדריכה": "נועם",
+        "שעת סיום": "11:15",
+        "תאריך": "2026-08-11",
+        "טייס שמאל": "",
+        "שעות טיסה (דקות)": "1415",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "אביגיל",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "LmOzhiBdnQfUJdUaT10s",
+      "flightStartTimestamp": 1786437600000,
+      "timestamp": {
+        "_seconds": 1786949527,
+        "_nanoseconds": 14000000
       }
     },
     "LnyKTdEDuNMuyJWMPMFv": {
@@ -16403,6 +16873,48 @@
         "_nanoseconds": 569000000
       }
     },
+    "OSRwbvGt8LEntephkK7W": {
+      "flightId": null,
+      "trainingType": "GENERIC_FLIGHT",
+      "flightType": "גיחה רגילה",
+      "flightGrounding": "גיחה",
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "עמידת בתקן הליכה סביב": "עמד.ה",
+        "ללא ירידה מהמינימה": "עמד.ה"
+      },
+      "data": {
+        "סימולטור": "FFS 2",
+        "שעות טיסה (דקות)": "45",
+        "שם גיחה": "הסבת מדריכים 7",
+        "תאריך": "2026-08-12",
+        "שעת התחלה": "10:05",
+        "שעת סיום": "10:50",
+        "מדריכה": "מיקה",
+        "מדריכה נוספת": "שירה",
+        "מתצפת": "",
+        "טייס ימין": "שודרון",
+        "טייס שמאל": "מעין",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "סוג גיחה": "הסבת מדריכים",
+        "מדדי ביצוע": [],
+        "סוג ביצוע": "מלא",
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "crew": [],
+      "faults": [],
+      "flightStartTimestamp": 1786518300000,
+      "goalsDetails": {},
+      "date": "2026-08-12",
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "timestamp": {
+        "_seconds": 1786549453,
+        "_nanoseconds": 955000000
+      }
+    },
     "OXkao8IyPBarEscMTa0P": {
       "faults": [],
       "date": "2026-05-03",
@@ -17943,6 +18455,43 @@
       "timestamp": {
         "_seconds": 1785303448,
         "_nanoseconds": 595000000
+      }
+    },
+    "QzgDCzOYADP53pEpJRiu": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "data": {
+        "מדריכה": "נועם",
+        "שעת סיום": "16:20",
+        "תאריך": "2026-08-17",
+        "שעת התחלה": "15:50",
+        "טייס ימין": "",
+        "טייס שמאל": "",
+        "סוג גיחה": "חניכים",
+        "שם גיחה": "יגנ 1",
+        "סימולטור": "FFS 2",
+        "שעות טיסה (דקות)": "30",
+        "סיבת ביטול": "טייסת",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוטלה",
+      "id": "QzgDCzOYADP53pEpJRiu",
+      "flightStartTimestamp": 1786971000000,
+      "timestamp": {
+        "_seconds": 1786971724,
+        "_nanoseconds": 991000000
       }
     },
     "R1BxwQRQjeeJgi3q49Hf": {
@@ -19890,6 +20439,42 @@
         "_nanoseconds": 881000000
       }
     },
+    "Tk3u94mDCxdK4Aa8JUYK": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "isUnplanned": false,
+      "executionStatus": "דווחה",
+      "id": "Tk3u94mDCxdK4Aa8JUYK",
+      "flightStartTimestamp": 1786953600000,
+      "data": {
+        "מדריכה": "אביגיל",
+        "סוג גיחה": "חניכים",
+        "סוג": "GENERIC_FLIGHT",
+        "שעת סיום": "11:30",
+        "שעות טיסה (דקות)": "30",
+        "טייס ימין": "תומר",
+        "לקחי מתאמן - שמאל": "",
+        "סימולטור": "FFS 2",
+        "מדדי ביצוע": [],
+        "שם גיחה": "יגנ 1",
+        "תאריך": "2026-08-17",
+        "מדריכה נוספת": "דפנה",
+        "מתצפת": "",
+        "שעת התחלה": "11:00",
+        "טייס שמאל": "קוניק",
+        "לקחי מתאמן - ימין": "לא להזניח חלונות הטסה וחלונות משימה."
+      },
+      "timestamp": {
+        "_seconds": 1786978685,
+        "_nanoseconds": 932000000
+      }
+    },
     "TqF0hcbisDiLEhJvmEKS": {
       "trainingType": "GENERIC_FLIGHT",
       "data": {
@@ -20523,6 +21108,43 @@
       "timestamp": {
         "_seconds": 1782673686,
         "_nanoseconds": 231000000
+      }
+    },
+    "V0bAUKbZ8VcbsCZ5pn9j": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-11",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שעת סיום": "20:30",
+        "מדריכה": "נועם",
+        "סימולטור": "FFS 2",
+        "טייס שמאל": "",
+        "תאריך": "2026-08-11",
+        "שעת התחלה": "19:55",
+        "טייס ימין": "",
+        "שם גיחה": "עמידת ראש",
+        "סוג גיחה": "השכלה",
+        "שעות טיסה (דקות)": "35",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "אביגיל",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "V0bAUKbZ8VcbsCZ5pn9j",
+      "flightStartTimestamp": 1786467300000,
+      "timestamp": {
+        "_seconds": 1786949568,
+        "_nanoseconds": 918000000
       }
     },
     "V1UKX9wI7VLvxl9CIegA": {
@@ -22963,6 +23585,56 @@
         "_nanoseconds": 548000000
       }
     },
+    "ZlznXlGP72IGXJkQ6ZSN": {
+      "goalsDetails": {},
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "goalsStatus": {
+        "מעבר מבחן חירומים (90+)": "עמד.ה"
+      },
+      "id": "ZlznXlGP72IGXJkQ6ZSN",
+      "faults": [
+        {
+          "simulator": "FFS 2",
+          "description": "בהתחלה בקושי שמעו ברמקולים של העמדת מדריכה. ניסים בא וטיפל והסביר שזה מחובר לאוזניות של העמדת מדריכה ושאם משנים את השמע דרכן (הגלגלת) זה יכול להשפיע",
+          "systemClassification": "קשר - IOS offboard",
+          "severity": "קל",
+          "reportingInstructor": "אלמה",
+          "isDowntime": false,
+          "timestamp": 1786613081020
+        }
+      ],
+      "flightStartTimestamp": 1786598400000,
+      "data": {
+        "מדדי ביצוע": [],
+        "טייס ימין": "אלון פ",
+        "סוג גיחה": "חניכים",
+        "מדריכה": "אלמה",
+        "סימולטור": "FFS 2",
+        "שעות טיסה (דקות)": "40",
+        "טייס שמאל": "דורגו",
+        "לקחי מתאמן - שמאל": "",
+        "שעת סיום": "09:00",
+        "מתצפת": "",
+        "נדרש ביצוע חוזר": "לא",
+        "תאריך": "2026-08-13",
+        "סוג": "GENERIC_FLIGHT",
+        "לקחי מתאמן - ימין": "תפעול רגוע\nהטסה עם חלונות לתקלה",
+        "שם גיחה": "יסודות 4",
+        "סוג ביצוע": "מלא",
+        "שעת התחלה": "08:20",
+        "מדריכה נוספת": "עדי"
+      },
+      "executionStatus": "בוצעה",
+      "timestamp": {
+        "_seconds": 1786973810,
+        "_nanoseconds": 683000000
+      }
+    },
     "ZuzNBjUcBuuP5Q3aLxek": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -23278,6 +23950,92 @@
       "timestamp": {
         "_seconds": 1785663709,
         "_nanoseconds": 652000000
+      }
+    },
+    "aNI2NAgNdtt4rjgb7TwK": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "תאריך": "2026-08-13",
+        "שם גיחה": "יגנ 1",
+        "מדריכה": "יובל",
+        "שעת התחלה": "12:35",
+        "שעת סיום": "13:05",
+        "טייס ימין": "יונתן פ",
+        "סימולטור": "FFS 2",
+        "סוג גיחה": "חניכים",
+        "טייס שמאל": "דורגו",
+        "שעות טיסה (דקות)": "30",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "aNI2NAgNdtt4rjgb7TwK",
+      "flightStartTimestamp": 1786613700000,
+      "timestamp": {
+        "_seconds": 1786707972,
+        "_nanoseconds": 443000000
+      }
+    },
+    "aOYXZV40Yi00QuVuU820": {
+      "goalsDetails": {},
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "מעבר מבחן חירומים (90+)": "עמד.ה"
+      },
+      "id": "aOYXZV40Yi00QuVuU820",
+      "faults": [
+        {
+          "simulator": "FFS 2",
+          "description": "הופיעו איקסים על המחוונים ב41:33",
+          "systemClassification": "תצוגות",
+          "severity": "קל",
+          "reportingInstructor": "נועם",
+          "isDowntime": false,
+          "timestamp": 1786617988263
+        }
+      ],
+      "flightStartTimestamp": 1786604400000,
+      "data": {
+        "מדדי ביצוע": [],
+        "שעות טיסה (דקות)": "45",
+        "לקחי מתאמן - ימין": "עבודה מסודרת וחדות בין בדחים ופעולות\nוידוא התקלה לפני תפעול",
+        "סימולטור": "FFS 2",
+        "סוג": "GENERIC_FLIGHT",
+        "שעת התחלה": "10:00",
+        "סוג ביצוע": "מלא",
+        "מתצפת": "",
+        "תאריך": "2026-08-13",
+        "סוג גיחה": "חניכים",
+        "מדריכה": "נועם",
+        "טייס ימין": "דניאל",
+        "טייס שמאל": "דורגו",
+        "שעת סיום": "10:45",
+        "מדריכה נוספת": "עדי",
+        "לקחי מתאמן - שמאל": "",
+        "שם גיחה": "יסודות 4"
+      },
+      "timestamp": {
+        "_seconds": 1786974195,
+        "_nanoseconds": 839000000
       }
     },
     "aUAeQc5vuchm7oWOmLW0": {
@@ -24134,6 +24892,43 @@
         "_nanoseconds": 927000000
       }
     },
+    "cC1voZ8g9TcVYHex3wZ2": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "id": "cC1voZ8g9TcVYHex3wZ2",
+      "flightStartTimestamp": 1786607400000,
+      "data": {
+        "לקחי מתאמן - שמאל": "",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "טל",
+        "טייס שמאל": "נפתלי",
+        "מדריכה": "אביגיל",
+        "שעות טיסה (דקות)": "30",
+        "סוג": "GENERIC_FLIGHT",
+        "שעת התחלה": "10:50",
+        "מדריכה נוספת": "",
+        "סוג גיחה": "חניכים",
+        "לקחי מתאמן - ימין": "",
+        "מדדי ביצוע": [],
+        "שם גיחה": "יגנ 1",
+        "תאריך": "2026-08-13",
+        "שעת סיום": "11:20",
+        "מתצפת": "",
+        "סוג ביצוע": "מלא"
+      },
+      "executionStatus": "בוצעה",
+      "timestamp": {
+        "_seconds": 1786987625,
+        "_nanoseconds": 928000000
+      }
+    },
     "cHOB36PiLOwHtfLhVQa3": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -24825,6 +25620,46 @@
         "_nanoseconds": 959000000
       }
     },
+    "dTxEn8c1x4EliRW27tvO": {
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שם גיחה": "יגנ 1",
+        "תאריך": "2026-08-13",
+        "שעת סיום": "14:15",
+        "סוג גיחה": "חניכים",
+        "שעת התחלה": "13:45",
+        "טייס שמאל": "אופק ס",
+        "מדריכה": "לירי",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "אלכס",
+        "שעות טיסה (דקות)": "30",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "1": "עמד.ה",
+        "2": "עמד.ה"
+      },
+      "id": "dTxEn8c1x4EliRW27tvO",
+      "flightStartTimestamp": 1786621500000,
+      "timestamp": {
+        "_seconds": 1786975957,
+        "_nanoseconds": 309000000
+      }
+    },
     "dWVVLj8gE4XgC2Y8tXTz": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -25297,6 +26132,43 @@
       "timestamp": {
         "_seconds": 1785827519,
         "_nanoseconds": 335000000
+      }
+    },
+    "eiPMG0ybkd0Xm0Cumbh1": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-11",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שעת סיום": "16:50",
+        "טייס שמאל": "",
+        "שעת התחלה": "16:15",
+        "תאריך": "2026-08-11",
+        "שם גיחה": "עמידת ראש",
+        "טייס ימין": "",
+        "סימולטור": "FFS 2",
+        "סוג גיחה": "השכלה",
+        "מדריכה": "נועם",
+        "שעות טיסה (דקות)": "35",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "אלמה",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "eiPMG0ybkd0Xm0Cumbh1",
+      "flightStartTimestamp": 1786454100000,
+      "timestamp": {
+        "_seconds": 1786949539,
+        "_nanoseconds": 343000000
       }
     },
     "ep3hjLhRRVS2hwtQ7Fhf": {
@@ -28106,6 +28978,43 @@
         "_nanoseconds": 426000000
       }
     },
+    "ivrwMJHopQ82Au5m8P75": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שעת סיום": "12:30",
+        "סימולטור": "FFS 2",
+        "סוג גיחה": "חניכים",
+        "תאריך": "2026-08-13",
+        "מדריכה": "יובל",
+        "טייס שמאל": "דורגו",
+        "שעת התחלה": "12:00",
+        "שם גיחה": "יגנ 1",
+        "טייס ימין": "נועם ש",
+        "שעות טיסה (דקות)": "30",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "ivrwMJHopQ82Au5m8P75",
+      "flightStartTimestamp": 1786611600000,
+      "timestamp": {
+        "_seconds": 1786707907,
+        "_nanoseconds": 523000000
+      }
+    },
     "ixQDuMcgF2HfcOCrjgCg": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -30253,6 +31162,43 @@
         "_nanoseconds": 249000000
       }
     },
+    "mZCfDGVhxjSogqM40quG": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "תאריך": "2026-08-13",
+        "שעת התחלה": "11:25",
+        "טייס שמאל": "נפתלי",
+        "סוג גיחה": "חניכים",
+        "מדריכה": "אביגיל",
+        "טייס ימין": "גלי",
+        "שם גיחה": "יגנ 1",
+        "סימולטור": "FFS 2",
+        "שעת סיום": "11:55",
+        "שעות טיסה (דקות)": "30",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "mZCfDGVhxjSogqM40quG",
+      "flightStartTimestamp": 1786609500000,
+      "timestamp": {
+        "_seconds": 1786987653,
+        "_nanoseconds": 210000000
+      }
+    },
     "mbndLcqH9YDN2haOM6U5": {
       "flightId": null,
       "trainingType": "GENERIC_FLIGHT",
@@ -30797,6 +31743,47 @@
         "_nanoseconds": 423000000
       }
     },
+    "nE9Uxm2qmmao76wxSm6q": {
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "1": "עמד.ה",
+        "2": "עמד.ה"
+      },
+      "id": "nE9Uxm2qmmao76wxSm6q",
+      "flightStartTimestamp": 1786947600000,
+      "data": {
+        "סימולטור": "FFS 2",
+        "שעת התחלה": "08:20",
+        "טייס שמאל": "קוניק",
+        "תאריך": "2026-08-17",
+        "טייס ימין": "ארז ג",
+        "מדריכה": "לירי",
+        "סוג גיחה": "חניכים",
+        "שם גיחה": "יגנ 1",
+        "שעת סיום": "09:00",
+        "שעות טיסה (דקות)": "40",
+        "סוג ביצוע": "מופרעת",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "ש\"ע סדורה יותר- דגימה של הצהרונית\nלהיות פחות מקובע על זוויות\nהשפעות ושוני בין סוגי נחיתות שונות בג\"נ",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT",
+        "נדרש ביצוע חוזר": "לא"
+      },
+      "timestamp": {
+        "_seconds": 1786977014,
+        "_nanoseconds": 890000000
+      }
+    },
     "nGN2mHGsdVN4TNoSGe0X": {
       "isImported": true,
       "faults": [],
@@ -31158,6 +32145,43 @@
         "סוג": "GENERIC_FLIGHT",
         "טייס שמאל": "אבשה",
         "טייס ימין": "ירין"
+      }
+    },
+    "nmeS9vsIBMPuOwJCoLy4": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-11",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "טייס שמאל": "",
+        "מדריכה": "נועם",
+        "סוג גיחה": "השכלה",
+        "תאריך": "2026-08-11",
+        "שם גיחה": "עמידת ראש",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "",
+        "שעת התחלה": "17:15",
+        "שעת סיום": "17:50",
+        "שעות טיסה (דקות)": "35",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "אלמה",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "nmeS9vsIBMPuOwJCoLy4",
+      "flightStartTimestamp": 1786457700000,
+      "timestamp": {
+        "_seconds": 1786949551,
+        "_nanoseconds": 613000000
       }
     },
     "nzlklx0mcHAeGL4LwDaA": {
@@ -33044,6 +34068,42 @@
         "_nanoseconds": 922000000
       }
     },
+    "rjdULj2sJM3FYK2H9I4F": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "isUnplanned": false,
+      "executionStatus": "דווחה",
+      "id": "rjdULj2sJM3FYK2H9I4F",
+      "flightStartTimestamp": 1786968900000,
+      "data": {
+        "תאריך": "2026-08-17",
+        "שם גיחה": "יגנ 1",
+        "מדריכה": "נועם",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "דניאל",
+        "שעת התחלה": "15:15",
+        "טייס שמאל": "מוזיקנט",
+        "שעת סיום": "15:45",
+        "סוג גיחה": "חניכים",
+        "שעות טיסה (דקות)": "30",
+        "מדריכה נוספת": "דפנה",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "תיקונים תכליתיים בינפ (כשצריך!).\nלהעזר באיש צוות.",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "timestamp": {
+        "_seconds": 1786978700,
+        "_nanoseconds": 999000000
+      }
+    },
     "ropZhz5AjI0hujtjcext": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -33844,6 +34904,43 @@
       "timestamp": {
         "_seconds": 1784712224,
         "_nanoseconds": 782000000
+      }
+    },
+    "t4G47I6FtOOd6sn9iM7j": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-11",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "שעת סיום": "12:20",
+        "סימולטור": "FFS 2",
+        "שעת התחלה": "11:20",
+        "טייס ימין": "",
+        "טייס שמאל": "",
+        "תאריך": "2026-08-11",
+        "סוג גיחה": "השכלה",
+        "שם גיחה": "עמידת ראש",
+        "מדריכה": "נועם",
+        "שעות טיסה (דקות)": "60",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "אלמה",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "t4G47I6FtOOd6sn9iM7j",
+      "flightStartTimestamp": 1786436400000,
+      "timestamp": {
+        "_seconds": 1786949516,
+        "_nanoseconds": 803000000
       }
     },
     "t7Dt8Ot7XsZErWvX8dYT": {
@@ -36526,6 +37623,52 @@
         "_nanoseconds": 30000000
       }
     },
+    "wtFZ0ZLx3juPka4YNVkd": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "data": {
+        "מדריכה": "אביגיל",
+        "סוג גיחה": "חניכים",
+        "טייס ימין": "עיטם",
+        "סימולטור": "FFS 2",
+        "תאריך": "2026-08-17",
+        "טייס שמאל": "קוניק",
+        "שם גיחה": "יגנ 1",
+        "שעת סיום": "10:55",
+        "שעת התחלה": "10:25",
+        "שעות טיסה (דקות)": "30",
+        "מדריכה נוספת": "עדי",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "ניהול חירום - יציאה ממוד סולו\nפניות לעשות לאט\n98 אחוז ראש בחוץ",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "דווחה",
+      "id": "wtFZ0ZLx3juPka4YNVkd",
+      "faults": [
+        {
+          "simulator": "FFS 2",
+          "description": "הופיעו איקסים כמה שניות לפני דגלון BOOKMARK4",
+          "systemClassification": "cockpit - מסכי גרמין",
+          "severity": "קל",
+          "reportingInstructor": "אביגיל",
+          "isDowntime": false,
+          "timestamp": 1786972541227
+        }
+      ],
+      "flightStartTimestamp": 1786951500000,
+      "timestamp": {
+        "_seconds": 1786974548,
+        "_nanoseconds": 156000000
+      }
+    },
     "wxbv3S9b56uOplvV737B": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -36747,6 +37890,43 @@
       "timestamp": {
         "_seconds": 1778589037,
         "_nanoseconds": 159000000
+      }
+    },
+    "xrs2KlgzWAMK4H96wSdK": {
+      "goalsStatus": {},
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-12",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "data": {
+        "תאריך": "2026-08-12",
+        "שם גיחה": "לימוד התנעה",
+        "סימולטור": "FFS 2",
+        "טייס ימין": "",
+        "סוג גיחה": "הסבת מדריכים",
+        "שעת סיום": "12:30",
+        "מדריכה": "יובל",
+        "שעת התחלה": "11:45",
+        "טייס שמאל": "מעין",
+        "שעות טיסה (דקות)": "45",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "עדי",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "id": "xrs2KlgzWAMK4H96wSdK",
+      "flightStartTimestamp": 1786524300000,
+      "timestamp": {
+        "_seconds": 1786549617,
+        "_nanoseconds": 109000000
       }
     },
     "xtAxFJh2H1rPp4JLxITM": {
@@ -37639,6 +38819,86 @@
         "טייס שמאל": ""
       }
     },
+    "zXDzcIWP36MTDTjMx2jc": {
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-13",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 7,
+      "isUnplanned": false,
+      "goalsStatus": {
+        "ללא מעבר מגבלות": "עמד.ה",
+        "ללא טעויות בדח": "עמד.ה"
+      },
+      "id": "zXDzcIWP36MTDTjMx2jc",
+      "flightStartTimestamp": 1786623600000,
+      "data": {
+        "סוג": "GENERIC_FLIGHT",
+        "מדריכה נוספת": "",
+        "סימולטור": "FFS 2",
+        "שעות טיסה (דקות)": "30",
+        "שעת התחלה": "15:20",
+        "מתצפת": "",
+        "תאריך": "2026-08-13",
+        "מדריכה": "אביגיל",
+        "לקחי מתאמן - ימין": "",
+        "סוג גיחה": "חניכים",
+        "טייס שמאל": "רצהבי",
+        "שם גיחה": "יגנ 1",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "טייס ימין": "מנצל",
+        "שעת סיום": "15:50",
+        "סוג ביצוע": "מלא"
+      },
+      "executionStatus": "בוצעה",
+      "timestamp": {
+        "_seconds": 1786987484,
+        "_nanoseconds": 467000000
+      }
+    },
+    "zZlvNLqEF4N4yGcsYUxl": {
+      "goalsDetails": {},
+      "faults": [],
+      "date": "2026-08-17",
+      "trainingType": "GENERIC_FLIGHT",
+      "isImported": true,
+      "period": "2/26",
+      "week": 8,
+      "data": {
+        "שם גיחה": "הסבת מדריכים 7",
+        "טייס שמאל": "וידס",
+        "טייס ימין": "רום ג",
+        "סימולטור": "FFS 2",
+        "שעת סיום": "12:25",
+        "סוג גיחה": "הסבת מדריכים",
+        "מדריכה": "מיקה",
+        "תאריך": "2026-08-17",
+        "שעת התחלה": "11:40",
+        "שעות טיסה (דקות)": "45",
+        "סוג ביצוע": "מלא",
+        "מדריכה נוספת": "",
+        "מתצפת": "",
+        "לקחי מתאמן - ימין": "",
+        "לקחי מתאמן - שמאל": "",
+        "מדדי ביצוע": [],
+        "סוג": "GENERIC_FLIGHT"
+      },
+      "isUnplanned": false,
+      "executionStatus": "בוצעה",
+      "goalsStatus": {
+        "עמידת בתקן הליכה סביב": "עמד.ה",
+        "ללא ירידה מהמינימה": "עמד.ה"
+      },
+      "id": "zZlvNLqEF4N4yGcsYUxl",
+      "flightStartTimestamp": 1786956000000,
+      "timestamp": {
+        "_seconds": 1786975508,
+        "_nanoseconds": 232000000
+      }
+    },
     "zaWX5ImsxUpy8yfxY59t": {
       "goalsStatus": {},
       "goalsDetails": {},
@@ -38252,22 +39512,33 @@
       "instructorGroups": [
         {
           "members": [
+            "שודרון",
+            "ירין",
+            "מוזיקנט",
+            "טורחנסקי",
+            "כתב",
+            "פלביץ'"
+          ],
+          "name": "סדירים"
+        },
+        {
+          "name": "אעצ",
+          "members": [
             "אריאלי",
             "ויצמן",
             "נפתלי",
             "קוניק"
-          ],
-          "name": "אעצ"
+          ]
         },
         {
+          "name": "מדרט",
           "members": [
             "סקיני",
             "שדל",
             "וידס",
             "מעין",
             "דורגו"
-          ],
-          "name": "מדרט"
+          ]
         },
         {
           "name": "מילואים",
@@ -38287,17 +39558,14 @@
             "רצהבי",
             "שירה",
             "נמרוד ג",
-            "מידן ב",
-            "ויצמן",
-            "אופק ס",
-            "דרור אלטמן"
+            "מידן ב"
           ]
         },
         {
+          "name": "בכירים",
           "members": [
             "צין"
-          ],
-          "name": "בכירים"
+          ]
         }
       ],
       "courses": [
@@ -38326,26 +39594,23 @@
       ],
       "conversionGroups": [
         {
+          "name": "הסבה 1.26",
           "members": [
             "מעיין",
             "דרור",
             "פלביץ'"
-          ],
-          "name": "הסבה 1.26"
+          ]
+        },
+        {
+          "name": "הסבת מדרט 2.26",
+          "members": [
+            "רום ג",
+            "נייבי",
+            "מיר"
+          ]
         }
       ],
       "flightMapping": {
-        "conversion": [
-          "הסבת מדריכים 1",
-          "הסבת מדריכים 2",
-          "הסבת מדריכים 3",
-          "הסבת מדריכים 4",
-          "הסבת מדריכים 5",
-          "הסבת מדריכים 6",
-          "הסבת מדריכים 7",
-          "הסבת מדריכים 8",
-          "הסבת מדריכים 9"
-        ],
         "instructors": [
           "מנוע",
           "גיחת מכשירים",
@@ -38381,6 +39646,17 @@
           "חירומים מתקדמים",
           "מסכם משימה",
           "יסודות בונוס 1"
+        ],
+        "conversion": [
+          "הסבת מדריכים 1",
+          "הסבת מדריכים 2",
+          "הסבת מדריכים 3",
+          "הסבת מדריכים 4",
+          "הסבת מדריכים 5",
+          "הסבת מדריכים 6",
+          "הסבת מדריכים 7",
+          "הסבת מדריכים 8",
+          "הסבת מדריכים 9"
         ]
       },
       "flightTypeMapping": {
@@ -38413,9 +39689,23 @@
           "מסכם משימה מסקר",
           "מסכמת משימה"
         ],
-        "פנימי": [
-          "הסמכת התנעה",
-          "בדיקת גיחות"
+        "יום אימון": [
+          "גיחת מכשירים",
+          "גיחת זנב",
+          "גיחת חירומי מנוע",
+          "מנוע, הידראוליקה, חשמל",
+          "ממסרים, דלק, אש וט\"א",
+          "מבחן חירומים",
+          "חירומים בהדרכה",
+          "מנוע"
+        ],
+        "השכלה": [
+          "עמידת ראש",
+          "השכלה",
+          "השכלה בונוס"
+        ],
+        "בכירים": [
+          "בכירים"
         ],
         "הסבת מדריכים": [
           "הסבת מדריכים 1",
@@ -38428,10 +39718,8 @@
           "הסבת מדריכים 8",
           "הסבת מדריכים 9"
         ],
-        "השכלה": [
-          "עמידת ראש",
-          "השכלה",
-          "השכלה בונוס"
+        "בדיקת גיחות": [
+          "בדיקת גיחות"
         ],
         "מדריכים": [
           "הסבת מדריכים 1",
@@ -38444,20 +39732,8 @@
           "הסבת מדריכים 8",
           "הסבת מדריכים 9"
         ],
-        "בכירים": [
-          "בכירים"
-        ],
-        "יום אימון": [
-          "גיחת מכשירים",
-          "גיחת זנב",
-          "גיחת חירומי מנוע",
-          "מנוע, הידראוליקה, חשמל",
-          "ממסרים, דלק, אש וט\"א",
-          "מבחן חירומים",
-          "חירומים בהדרכה",
-          "מנוע"
-        ],
-        "בדיקת גיחות": [
+        "פנימי": [
+          "הסמכת התנעה",
           "בדיקת גיחות"
         ]
       }

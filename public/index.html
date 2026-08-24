@@ -132,18 +132,18 @@
                 appendScreen('partials/screens/tips-remarks-screen.html')
             ]);
 
-            // 3. חשיפת ה-Sidebar (אם הוא הוגדר כ-hidden בקובץ המקור)
-            const sidebar = document.getElementById('sidebar');
-            if (sidebar) {
-                sidebar.classList.remove('hidden');
-            }
+            // // 3. חשיפת ה-Sidebar (אם הוא הוגדר כ-hidden בקובץ המקור)
+            // const sidebar = document.getElementById('sidebar');
+            // if (sidebar) {
+            //     sidebar.classList.remove('hidden');
+            // }
 
             // 4. טעינת הסקריפטים והפעלת האפליקציה - רק לאחר שה-HTML קיים!
             const mainScript = document.createElement('script');
             mainScript.type = 'module';
             mainScript.innerHTML = `
                 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-                import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc,query, where, onSnapshot } 
+                import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc,query, where, onSnapshot, writeBatch } 
     from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
                 
                 // הגדרות Firebase
@@ -169,7 +169,7 @@ window.db = initializeFirestore(app, {
 window.getServerTimestamp = serverTimestamp;
                 
                 // חשיפת פונקציות גלובליות לשימוש בקבצים אחרים
-                window.firestoreFunctions = { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc, query, where, onSnapshot };
+                window.firestoreFunctions = { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, getDoc, query, where, onSnapshot, writeBatch };
 
                 // טעינת המודולים של האפליקציה
                 import { initializeAuth } from './js/auth/auth.js';

@@ -766,13 +766,14 @@ export async function saveFlightForm(skipValidation = false) {
     currentForm.week = calculatedWeek || 1;
 
     try {
-        const { collection, addDoc, updateDoc, doc } = window.firestoreFunctions;
+        const { writeBatch, doc, collection } = window.firestoreFunctions;
+        const batch = writeBatch(window.db);
+        
         let statusToSet = currentForm.executionStatus;
         if (currentReportMode === 'full' || currentReportMode === 'partial') statusToSet = 'בוצעה';
         if (currentReportMode === 'cancel') statusToSet = 'בוטלה';
         if (currentReportMode === 'not_reported') statusToSet = 'טרם דווחה';
 
-        // קריאת הערך מהצ'קבוקס החדש בלבד (מחיקת התלות בייבוא אקסל)
         const unplannedCheckbox = document.getElementById('unplanned-flight-checkbox');
         const isUnplannedFlight = unplannedCheckbox ? unplannedCheckbox.checked : false;
 
@@ -780,49 +781,54 @@ export async function saveFlightForm(skipValidation = false) {
             ...currentForm,
             executionStatus: statusToSet,
             timestamp: window.getServerTimestamp(),
-            isUnplanned: isUnplannedFlight // השדה היחיד שיקבע אם הגיחה תיספר בתכנון
+            isUnplanned: isUnplannedFlight
         };
-
-        // מחיקה מוחלטת של השדה הישן כדי שלא יופיעו חיוויים שגויים במערכת
         delete dataToSave.isManualEntry;
+        delete dataToSave.flightId; // Remove internal tracker
 
-        // עדכון המסמך ב-Firebase
-        if (currentForm.flightId) {
-            const docRef = doc(collection(window.db, "flights"), currentForm.flightId);
-            delete dataToSave.flightId;
-            await updateDoc(docRef, dataToSave);
-            
-            // עדכון מקומי של הגיחה הקיימת בזיכרון הלקוח
-            if (window.savedFlights) {
-                const index = window.savedFlights.findIndex(f => f.id === currentForm.flightId);
-                if (index !== -1) {
-                    window.savedFlights[index] = { id: currentForm.flightId, ...dataToSave };
-                }
-            }
-            
-            // הסרה אוטומטית ממערך "טרם דווחה" אם הגיחה דווחה
-            if (window.pendingFlights && dataToSave.executionStatus !== 'טרם דווחה') {
-                window.pendingFlights = window.pendingFlights.filter(f => f.id !== currentForm.flightId);
-            }
-        } else {
-            const newDoc = await addDoc(collection(window.db, "flights"), dataToSave);
-            currentForm.flightId = newDoc.id;
-            
-            // דחיפת הגיחה החדשה למערך בזיכרון הלקוח
-            if (!window.savedFlights) window.savedFlights = [];
-            window.savedFlights.push({ id: newDoc.id, ...dataToSave });
-            
-            // אם הגיחה הוגדרה כ"טרם דווחה", נדחוף אותה גם למערך הממתינות
-            if (dataToSave.executionStatus === 'טרם דווחה') {
-                if (!window.pendingFlights) window.pendingFlights = [];
-                window.pendingFlights.push({ id: newDoc.id, ...dataToSave });
-            }
+        // 1. Generate or use existing ID
+        const isNewFlight = !currentForm.flightId;
+        const flightId = isNewFlight ? doc(collection(window.db, "flights")).id : currentForm.flightId; 
+        
+        const safePeriod = String(currentForm.period || "1/26").replace(/\//g, '-');
+        
+      const archiveRef = doc(window.db, `archive_periods/${safePeriod}/flights`, flightId);
+        batch.set(archiveRef, dataToSave, { merge: true });
+
+        // 3. Write to Recent Flights (With 30-day Auto-Delete Expiration)
+        const recentRef = doc(window.db, "recent_flights", flightId);
+        
+        // יצירת תאריך תפוגה אוטומטי לעוד 30 יום מעכשיו
+        const expirationDate = new Date();
+        expirationDate.setDate(expirationDate.getDate() + 30);
+        
+        const recentDataToSave = {
+            ...dataToSave,
+            expiresAt: expirationDate // השדה שישמש את פיירבייס למחיקה האוטומטית
+        };
+        
+        batch.set(recentRef, recentDataToSave, { merge: true });
+
+        // 4. Handle Pending Queue Lifecycle
+        const pendingRef = doc(window.db, "pending_flights", flightId);
+        if (statusToSet === "טרם דווחה") {
+            batch.set(pendingRef, dataToSave, { merge: true });
+        } else if (!isNewFlight) {
+            batch.delete(pendingRef); // Remove from queue once reported
         }
 
-        showToast('הגיחה נשמרה בהצלחה!', 'green');
+        // 5. Commit the batch
+        await batch.commit();
 
-        // מעבר מסך - כעת הנתונים מעודכנים בזיכרון ואין צורך למשוך אותם מהשרת
+        showToast('הגיחה נשמרה בהצלחה!', 'green');
+        
+        // Force refresh local caches
+        window.pendingFlights = [];
+        window.savedFlights = [];
+        
+        // Return to form screen
         showScreen('flight-form-screen');
+
     } catch (e) {
         console.error('Error saving flight:', e);
         showToast('שגיאה בשמירה.', 'red');

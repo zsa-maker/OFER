@@ -7,7 +7,200 @@ import missionDatabase from '../features/missionDatabase.js';
 import { initProfilePage } from '../features/profileManager.js';
 import { loadPersonnelLists, loadGoalsAndSystems } from '../features/adminManager.js';
 
+// --- הגדרות מצב עבודה (App Mode) ---
+window.appMode = 'daily'; // 'daily' | 'period'
+window.selectedArchivePeriod = null;
+window.showScreen = showScreen;
+
+window.configureSidebarForMode = function(mode) {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.remove('hidden');
+
+    const btnFlightForm = document.querySelector('button[data-screen-id="flight-form-screen"]');
+    const btnMissionDb  = document.querySelector('button[data-screen-id="mission-database-screen"]');
+    const btnFaultDb    = document.querySelector('button[data-screen-id="fault-database-screen"]');
+    const btnStats      = document.querySelector('button[data-screen-id="stats-screen"]');
+    const btnGoals      = document.querySelector('button[data-screen-id="goals-metrics-screen"]');
+    const btnProfile    = document.querySelector('button[data-screen-id="profile-screen"]');
+    const btnSimMgmt    = document.querySelector('button[data-screen-id="simulator-management-screen"]');
+    
+    // פילטרים שצריך לנעול במצב יומי
+    const faultStatusFilter = document.getElementById('fault-status-filter');
+    const statsFilterType = document.getElementById('stats-filter-type');
+    
+    if (mode === 'daily') {
+        // מציג טופס, מאגר גיחות, מאגר תקלות ותכנון מול ביצוע
+        if (btnFlightForm) btnFlightForm.classList.remove('hidden');
+        if (btnMissionDb)  btnMissionDb.classList.remove('hidden');
+        if (btnFaultDb)    btnFaultDb.classList.remove('hidden');
+        if (btnStats)      btnStats.classList.remove('hidden'); 
+        
+        // מסתיר את השאר
+        if (btnGoals)   btnGoals.classList.add('hidden');
+        if (btnProfile) btnProfile.classList.add('hidden');
+        if (btnSimMgmt) btnSimMgmt.classList.add('hidden');
+
+        // נעילת מסך תקלות ל"פתוחות בלבד"
+        if (faultStatusFilter) {
+            faultStatusFilter.value = 'OPEN';
+            faultStatusFilter.disabled = true;
+            faultStatusFilter.classList.add('bg-gray-100', 'cursor-not-allowed');
+        }
+
+        // נעילת מסך תכנון מול ביצוע ל"טווח תאריכים" (מבטל צבירה אוטומטית) של 30 יום
+        if (statsFilterType) {
+            statsFilterType.value = 'range';
+            statsFilterType.disabled = true;
+            statsFilterType.classList.add('bg-gray-100', 'cursor-not-allowed');
+            
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - 30);
+            
+            const startDateInput = document.getElementById('stats-date-start');
+            const endDateInput = document.getElementById('stats-date-end');
+            
+            if (startDateInput) {
+                startDateInput.value = start.toISOString().split('T')[0];
+                startDateInput.disabled = true;
+            }
+            if (endDateInput) {
+                endDateInput.value = end.toISOString().split('T')[0];
+                endDateInput.disabled = true;
+            }
+            
+            // חשיפת קבוצת התאריכים והסתרת התקופה בממשק הסטטיסטיקות
+            document.getElementById('filter-period-group')?.classList.add('hidden');
+            document.getElementById('filter-week-group')?.classList.add('hidden');
+            document.getElementById('filter-range-group')?.classList.remove('hidden');
+        }
+
+    } else if (mode === 'period') {
+        // מציג את כל מסכי האנליטיקה
+        if (btnMissionDb) btnMissionDb.classList.remove('hidden');
+        if (btnStats)     btnStats.classList.remove('hidden');
+        if (btnGoals)     btnGoals.classList.remove('hidden');
+        if (btnProfile)   btnProfile.classList.remove('hidden');
+        if (btnSimMgmt)   btnSimMgmt.classList.remove('hidden');
+        
+        // מסתיר מסכים תפעוליים
+        if (btnFlightForm) btnFlightForm.classList.add('hidden');
+        if (btnFaultDb)    btnFaultDb.classList.add('hidden');
+
+        // שחרור נעילות הפילטרים למנהל
+        if (faultStatusFilter) {
+            faultStatusFilter.disabled = false;
+            faultStatusFilter.classList.remove('bg-gray-100', 'cursor-not-allowed');
+        }
+        if (statsFilterType) {
+            statsFilterType.disabled = false;
+            statsFilterType.classList.remove('bg-gray-100', 'cursor-not-allowed');
+            statsFilterType.value = 'period';
+            document.getElementById('stats-date-start').disabled = false;
+            document.getElementById('stats-date-end').disabled = false;
+            
+            document.getElementById('filter-period-group')?.classList.remove('hidden');
+            document.getElementById('filter-range-group')?.classList.add('hidden');
+        }
+    }
+};
+
+window.enterDailyWorkflow = function() {
+    window.appMode = 'daily';
+    window.selectedArchivePeriod = null;
+    document.getElementById('period-view-banner')?.classList.add('hidden');
+    
+    // איפוס המטמון כדי לכפות משיכה חדשה של 30 הימים האחרונים בלבד
+    window.savedFlights = []; 
+    
+    window.showScreen('flight-form-screen'); 
+    import('../components/modals.js').then(m => m.showToast("חזרת למצב עבודה יומית", "green"));
+    
+    // ניקוי אוטומטי של גיחות ישנות מהמאגר היומי (מתבצע שקוף ברקע ע"י אדמין)
+    if (window.isAdmin && typeof window.cleanupOldRecentFlights === 'function') {
+        window.cleanupOldRecentFlights();
+    }
+};
+
+window.confirmPeriodView = function() {
+    const select = document.getElementById('home-period-select');
+    if(!select.value) return;
+
+    window.selectedArchivePeriod = select.value;
+    window.appMode = 'period';
+    
+    document.getElementById('period-selection-modal').classList.add('hidden');
+    document.getElementById('banner-period-name').textContent = `תקופה ${window.selectedArchivePeriod}`;
+    document.getElementById('period-view-banner').classList.remove('hidden');
+    
+    // איפוס המטמון כדי לכפות משיכה מלאה של כלל גיחות התקופה מהארכיון ההיסטורי!
+    window.savedFlights = []; 
+    
+    window.showScreen('mission-database-screen'); 
+};
+
+window.promptPeriodPassword = function() {
+    const modal = document.getElementById('period-password-modal');
+    const input = document.getElementById('period-password-input');
+    const error = document.getElementById('period-password-error');
+    
+    if (modal && input) {
+        input.value = ''; // ניקוי השדה מניסיונות קודמים
+        if (error) error.classList.add('hidden'); // העלמת הודעת שגיאה
+        modal.classList.remove('hidden');
+        
+        // פוקוס אוטומטי על שדה הטקסט (נוחות למשתמש)
+        setTimeout(() => input.focus(), 100);
+    }
+};
+
+window.verifyPeriodPassword = function() {
+    const input = document.getElementById('period-password-input');
+    const error = document.getElementById('period-password-error');
+    
+    // בדיקת הסיסמה שהוגדרה
+    if (input && input.value === 'ofer') {
+        // העלמת חלון הסיסמה
+        document.getElementById('period-password-modal').classList.add('hidden');
+        input.value = '';
+        if (error) error.classList.add('hidden');
+        
+        // מעבר ישיר לחלון בחירת התקופה
+        window.openPeriodSelectionModal();
+    } else {
+        // סיסמה שגויה - הצגת הודעת שגיאה
+        if (error) error.classList.remove('hidden');
+        input.value = ''; // מנקה את השדה כדי שינסו שוב
+        input.focus();
+    }
+};
+
+window.openPeriodSelectionModal = async function() {
+    const modal = document.getElementById('period-selection-modal');
+    const select = document.getElementById('home-period-select');
+    
+    const periodsSet = new Set();
+    const configs = window.planningSettings?.periodConfigs || {};
+    Object.keys(configs).forEach(p => periodsSet.add(p.trim()));
+    
+    const sortedPeriods = Array.from(periodsSet).sort((a, b) => {
+        const [pA, yA] = a.split('/').map(Number);
+        const [pB, yB] = b.split('/').map(Number);
+        return (yB + pB / 10) - (yA + pA / 10);
+    });
+
+    select.innerHTML = sortedPeriods.map(p => `<option value="${p}">${p}</option>`).join('');
+    
+    const currentPeriodName = typeof window.getPeriodName === 'function' ? window.getPeriodName(new Date()) : "";
+    if (sortedPeriods.includes(currentPeriodName)) {
+        select.value = currentPeriodName;
+    }
+    
+    modal.classList.remove('hidden');
+};
+
 // --- משתנים גלובליים (EXPORTS) ---
+
 export const trainingTemplates = {
     'GENERIC_FLIGHT': { goals: [], step2: [], step3: [] }
 };
@@ -59,25 +252,18 @@ export function setCurrentViewFlight(flight) {
  */
 export async function fetchPendingFlights(forceRefresh = false) {
     if (!window.currentUsername || typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') return;
-
     const now = Date.now();
 
-    // CACHE CHECK לגיחות הממתינות
     if (!forceRefresh && pendingFlights.length > 0 && (now - lastPendingFetchTime < FETCH_COOLDOWN)) {
         renderFlightTable();
         return;
     }
 
-    const { getDocs, collection, query, where , onSnapshot} = window.firestoreFunctions;
+    const { getDocs, collection } = window.firestoreFunctions;
 
     try {
-        // מביאים רק גיחות שהסטטוס שלהן מצריך טיפול!
-        const q = query(
-            collection(window.db, "flights"),
-            where("executionStatus", "==", "טרם דווחה")
-        );
-
-        const snapshot = await getDocs(q);
+        // Query the dedicated pending_flights collection directly! No .where() needed.
+        const snapshot = await getDocs(collection(window.db, "pending_flights"));
         const flights = snapshot.docs.map(doc => {
             const flight = doc.data();
             flight.id = doc.id;
@@ -113,7 +299,7 @@ export async function fetchFlights(forceRefresh = false) {
 
     const { getDocs, collection, query, where, onSnapshot } = window.firestoreFunctions;
 
-    try {
+   try {
         await Promise.all([
             loadPersonnelLists(),
             loadGoalsAndSystems()
@@ -122,11 +308,10 @@ export async function fetchFlights(forceRefresh = false) {
         if (window.personnelLists) {
             const sims = window.personnelLists.simulators || [];
             Object.keys(simulatorFaults).forEach(key => delete simulatorFaults[key]);
-            sims.forEach(sim => {
-                simulatorFaults[sim] = [];
-            });
+            sims.forEach(sim => simulatorFaults[sim] = []);
         }
 
+        // 1. Fetch resolutions
         try {
             const resSnapshot = await getDocs(collection(window.db, "fault_resolutions"));
             Object.keys(faultResolutionStatus).forEach(key => delete faultResolutionStatus[key]);
@@ -136,17 +321,32 @@ export async function fetchFlights(forceRefresh = false) {
             });
         } catch (e) { console.warn("Error loading fault resolutions:", e); }
 
-        // ייעול: שליפת גיחות רק מהשנה האחרונה (מוריד משמעותית את כמות המסמכים הנקראתים בסטטיסטיקות)
-        const limitDate = new Date();
-        limitDate.setMonth(limitDate.getMonth() - 12);
-        const dateStrLimit = limitDate.toISOString().split('T')[0];
+        // 2. Fetch Flights based on App Mode!
+       let snapshot;
+        if (window.appMode === 'period' && window.selectedArchivePeriod) {
+            // PERIOD MODE: Fetch only the selected period's subcollection
+            const safePeriod = window.selectedArchivePeriod.replace(/\//g, '-');
+            snapshot = await getDocs(collection(window.db, `archive_periods/${safePeriod}/flights`));
+        } else {
+            // DAILY WORKFLOW: Fetch recent flights (Limited to Last 30 Days)
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            
+            const y = thirtyDaysAgo.getFullYear();
+            const m = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
+            const d = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+            const dateStrLimit = `${y}-${m}-${d}`;
 
-        const flightsQuery = query(
-            collection(window.db, "flights"),
-            where("date", ">=", dateStrLimit)
-        );
+            // We MUST destructure query and where from window.firestoreFunctions at the top of this try block
+            const { query, where } = window.firestoreFunctions;
 
-        const snapshot = await getDocs(flightsQuery);
+            const q = query(
+                collection(window.db, "recent_flights"),
+                where("date", ">=", dateStrLimit)
+            );
+            snapshot = await getDocs(q);
+        }
+
         const flights = snapshot.docs.map(doc => {
             const flight = doc.data();
             flight.id = doc.id;
@@ -160,7 +360,7 @@ export async function fetchFlights(forceRefresh = false) {
         savedFlights.push(...flights);
         window.savedFlights = savedFlights;
 
-        lastFetchTime = now;
+        lastFetchTime = Date.now();
 
         if (window.processFaultsData) window.processFaultsData();
 
@@ -205,10 +405,32 @@ function refreshCurrentScreen() {
     else if (currentScreen === 'flight-form-screen') renderFlightTable();
 }
 
+let isInitialLoad = true;
+
 export async function showScreen(screenId) {
     if (!window.currentUsername) {
         document.getElementById('login-screen').classList.remove('hidden');
+        document.getElementById('sidebar')?.classList.add('hidden'); // מחביא סרגל כשהמשתמש לא מחובר
         return;
+    }
+
+    // 1. כפיית מסך הבית מיד לאחר ההתחברות (מבטל ניתובים אוטומטיים של auth.js)
+    if (isInitialLoad) {
+        screenId = 'home-screen';
+        isInitialLoad = false;
+    }
+
+    // 2. ניהול סרגל הניווט (Sidebar) בצורה קפדנית
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+        if (screenId === 'home-screen' || screenId === 'login-screen') {
+            sidebar.classList.add('hidden'); // מסתיר את הסרגל לחלוטין במסך הבית
+        } else {
+            sidebar.classList.remove('hidden'); // מציג את הסרגל בכל שאר המסכים
+            if (window.configureSidebarForMode) {
+                window.configureSidebarForMode(window.appMode); // מגדיר איזה כפתורים יראו
+            }
+        }
     }
 
     document.querySelectorAll('.screen').forEach(s => {
@@ -240,18 +462,15 @@ export async function showScreen(screenId) {
     // --- ליבת הייעול בניווט המסכים ---
     if (screenId === 'flight-form-screen') {
         populateFilters(screenId);
-        // טוען רק את הגיחות הקלות שטרם דווחו (אם עדיין לא נטענו)
         if (!window.pendingFlights || window.pendingFlights.length === 0) {
             fetchPendingFlights();
         } else {
             renderFlightTable();
         }
-    } else {
-        // טוען את ההיסטוריה עבור המסכים הגדולים שמצריכים אותה (אם טרם נטענה)
+    } else if (screenId !== 'home-screen') { // לא למשוך נתונים אם אנחנו במסך הבית
         if (!window.savedFlights || window.savedFlights.length === 0) {
             await fetchFlights();
         } else {
-            // אם כבר יש נתונים, פשוט נרנדר את המסך מחדש
             refreshCurrentScreen();
         }
     }
@@ -547,3 +766,99 @@ window.getPlanningSettings = getPlanningSettings;
 window.getPersonnelListsData = getPersonnelListsData;
 window.getAdvancedConfigData = getAdvancedConfigData;
 window.getCachedPopulations = getCachedPopulations;
+
+// TEMPORARY MIGRATION SCRIPT - REMOVE AFTER USE
+window.runDatabaseMigration = async function() {
+    const { collection, getDocs, writeBatch, doc } = window.firestoreFunctions;
+    console.log("Starting Migration...");
+    
+    const flightsSnap = await getDocs(collection(window.db, "flights"));
+    let batches = [];
+    let currentBatch = writeBatch(window.db);
+    let operationCount = 0;
+
+    // שינוי ל-30 יום אחורה במקום 60
+    const thirtyDaysAgo = Date.now() - (1000 * 60 * 60 * 24 * 30);
+
+    flightsSnap.forEach(flightDoc => {
+        const data = flightDoc.data();
+        const id = flightDoc.id;
+        
+        const safePeriod = String(data.period || "1/26").replace(/\//g, '-'); 
+        
+        // 1. Archive Subcollection
+        const archiveRef = doc(window.db, `archive_periods/${safePeriod}/flights`, id);
+        currentBatch.set(archiveRef, data);
+        operationCount++;
+
+        // 2. Recent Flights (Only if within the last 30 days)
+        const flightDate = data.flightStartTimestamp || (data.date ? new Date(data.date).getTime() : Date.now());
+        if (flightDate > thirtyDaysAgo) {
+            const recentRef = doc(window.db, "recent_flights", id);
+            
+            // חישוב תאריך התפוגה של הגיחה ההיסטורית (30 יום מזמן הגיחה המקורי)
+            const expiresAt = new Date(flightDate);
+            expiresAt.setDate(expiresAt.getDate() + 30);
+            
+            currentBatch.set(recentRef, { ...data, expiresAt: expiresAt });
+            operationCount++;
+        }
+
+        // 3. Pending Flights
+        if (data.executionStatus === "טרם דווחה") {
+            const pendingRef = doc(window.db, "pending_flights", id);
+            currentBatch.set(pendingRef, data);
+            operationCount++;
+        }
+
+        if (operationCount >= 450) {
+            batches.push(currentBatch);
+            currentBatch = writeBatch(window.db);
+            operationCount = 0;
+        }
+    });
+    
+    if (operationCount > 0) batches.push(currentBatch);
+    
+    for (let i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        console.log(`Committed batch ${i + 1} of ${batches.length}`);
+    }
+    console.log("Migration Successfully Completed!");
+};
+
+// פונקציה שקטה שמנקה את המאגר היומי מגיחות שעברו את ה-30 יום
+window.cleanupOldRecentFlights = async function() {
+    const { collection, getDocs, query, where, writeBatch, doc } = window.firestoreFunctions;
+    
+    // חישוב התאריך של לפני 30 יום בדיוק
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const y = thirtyDaysAgo.getFullYear();
+    const m = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
+    const d = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+    const dateStrLimit = `${y}-${m}-${d}`;
+
+    try {
+        // שליפת הגיחות שפג תוקפן במאגר היומי
+        const q = query(
+            collection(window.db, "recent_flights"),
+            where("date", "<", dateStrLimit)
+        );
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) return; // אין מה לנקות
+
+        // מחיקה מרוכזת של הגיחות הישנות (מהמאגר היומי בלבד!)
+        const batch = writeBatch(window.db);
+        snapshot.forEach(flightDoc => {
+            batch.delete(doc(window.db, "recent_flights", flightDoc.id));
+        });
+        
+        await batch.commit();
+        console.log(`[Janitor] נוקו אוטומטית ${snapshot.size} גיחות ישנות מקולקציית recent_flights.`);
+    } catch (error) {
+        console.error('[Janitor] שגיאה בניקוי גיחות ישנות:', error);
+    }
+};

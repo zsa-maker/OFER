@@ -1,5 +1,5 @@
 import { personnelLists, loadGoalsAndSystems, loadPersonnelLists } from './adminManager.js';
-import { fetchFlights } from '../core/global.js';
+import { fetchFlights, fetchAllData } from '../core/global.js';
 import { showToast } from '../components/modals.js';
 import { getEffectivePeriod } from '../core/util.js';
 
@@ -41,17 +41,51 @@ window.profileManager.initMatrixFilters = async function () {
     try {
         const typeSelect = document.getElementById('matrix-pop-type');
         const subPopSelect = document.getElementById('matrix-sub-pop');
-        const periodSelect = document.getElementById('matrix-period'); // הוספה
+        const periodSelect = document.getElementById('matrix-period');
         if (!typeSelect || !subPopSelect || !periodSelect) return;
 
         if (!typeSelect.dataset.listenerAttached) {
             typeSelect.addEventListener('change', () => this.initMatrixFilters());
-            periodSelect.addEventListener('change', () => this.initMatrixFilters()); // מאזין גם לתקופה!
+
+            periodSelect.addEventListener('change', async () => {
+                const selected = periodSelect.value;
+                if (selected && window.selectedArchivePeriod !== selected) {
+                    window.appMode = 'period';
+                    window.selectedArchivePeriod = selected;
+
+                    const banner = document.getElementById('period-view-banner');
+                    const bannerName = document.getElementById('banner-period-name');
+                    if (banner) banner.classList.remove('hidden');
+                    if (bannerName) bannerName.textContent = `תקופה ${selected}`;
+
+                    if (typeof window.configureSidebarForMode === 'function') {
+                        window.configureSidebarForMode('period');
+                    }
+
+                    import('../components/modals.js').then(m => m.showToast("מושך נתונים לתקופה המבוקשת...", "blue"));
+                    await fetchFlights(true);
+                    return; 
+                }
+                this.initMatrixFilters();
+            });
+
             subPopSelect.addEventListener('change', () => this.updateMatrix());
             typeSelect.dataset.listenerAttached = "true";
         }
 
         const selectedPeriod = periodSelect.value;
+
+        // --- התיקון קריטי: כפיית משיכה מהשרת אם הגיחות המלאות של התקופה אינן בזיכרון ---
+        if (selectedPeriod && window.selectedArchivePeriod !== selectedPeriod) {
+            window.appMode = 'period';
+            window.selectedArchivePeriod = selectedPeriod;
+            if (typeof window.configureSidebarForMode === 'function') {
+                window.configureSidebarForMode('period');
+            }
+            import('../components/modals.js').then(m => m.showToast("טוען גיחות של התקופה למטריצה...", "blue"));
+            await fetchFlights(true);
+            return; // הפונקציה תיקרא שוב אוטומטית לאחר סיום השליפה
+        }
 
         // טעינת אוכלוסיות דינמית לפי התקופה שנבחרה
         if (selectedPeriod) {
@@ -60,12 +94,13 @@ window.profileManager.initMatrixFilters = async function () {
                 window.pilotPopulations = popData;
             }
         } else {
-            // Fallback להגדרות הישנות (אם מדובר בתקופה שנוצרה לפני העדכון)
-            const oldRef = doc(window.db, "settings", "populations");
-            const oldSnap = await getDoc(oldRef);
-            window.pilotPopulations = oldSnap.exists() ? oldSnap.data() : { instructorGroups: [], courses: [] };
+            if (window.db && window.firestoreFunctions) {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const oldRef = doc(window.db, "settings", "populations");
+                const oldSnap = await getDoc(oldRef);
+                window.pilotPopulations = oldSnap.exists() ? oldSnap.data() : { instructorGroups: [], courses: [] };
+            }
         }
-
 
         const type = typeSelect.value;
         const populations = window.pilotPopulations || { instructorGroups: [], courses: [] };
@@ -424,21 +459,27 @@ async function populatePeriodSelector() {
 
     const optionsHtml = periods.map(p => `<option value="${p}">${p}</option>`).join('');
 
-    // --- התיקון קורה כאן למטה: ---
-
     // מעקב קבוצתי (מטריצה)
     if (matrixPeriodSelect) {
-        // שומרים את הערך שהמשתמש בחר עכשיו
         const currentMatrixVal = matrixPeriodSelect.value;
-
         matrixPeriodSelect.innerHTML = optionsHtml;
 
-        // מנסים להחזיר את הערך שנשמר. אם אין (טעינה ראשונה), נשים את התקופה הנוכחית
-        if (currentMatrixVal && periods.includes(currentMatrixVal)) {
-            matrixPeriodSelect.value = currentMatrixVal;
+        // התיקון: נעילת הסינון כאשר המערכת במצב 'צפיית תקופה'
+        if (window.appMode === 'period' && window.selectedArchivePeriod) {
+            matrixPeriodSelect.value = window.selectedArchivePeriod;
+            matrixPeriodSelect.disabled = true;
+            matrixPeriodSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
+            matrixPeriodSelect.title = "במצב צפייה בתקופה, המטריצה נעולה לתקופה הנוכחית";
         } else {
-            const currentPeriodName = window.getPeriodName(new Date());
-            matrixPeriodSelect.value = periods.includes(currentPeriodName) ? currentPeriodName : periods[0];
+            matrixPeriodSelect.disabled = false;
+            matrixPeriodSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
+            matrixPeriodSelect.title = "";
+            if (currentMatrixVal && periods.includes(currentMatrixVal)) {
+                matrixPeriodSelect.value = currentMatrixVal;
+            } else {
+                const currentPeriodName = window.getPeriodName(new Date());
+                matrixPeriodSelect.value = periods.includes(currentPeriodName) ? currentPeriodName : periods[0];
+            }
         }
     }
 
@@ -447,8 +488,19 @@ async function populatePeriodSelector() {
         const currentProfileVal = profilePeriodSelect.value;
         profilePeriodSelect.innerHTML = '<option value="all">כל התקופות (היסטוריה מלאה)</option>' + optionsHtml;
 
-        if (currentProfileVal) {
-            profilePeriodSelect.value = currentProfileVal;
+        // התיקון: נעילת הסינון כאשר המערכת במצב 'צפיית תקופה' גלובלי
+        if (window.appMode === 'period' && window.selectedArchivePeriod) {
+            profilePeriodSelect.value = window.selectedArchivePeriod;
+            profilePeriodSelect.disabled = true;
+            profilePeriodSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
+            profilePeriodSelect.title = "במצב צפייה בתקופה, הפרופיל נעול לתקופה הנוכחית";
+        } else {
+            profilePeriodSelect.disabled = false;
+            profilePeriodSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
+            profilePeriodSelect.title = "";
+            if (currentProfileVal) {
+                profilePeriodSelect.value = currentProfileVal;
+            }
         }
 
         // === התוספת הנדרשת כאן ===
@@ -609,11 +661,18 @@ export async function initProfilePage() {
     if (window.savedFlights?.length === 0) await fetchFlights();
     await loadPersonnelLists();
 
-    // === התוספת הנדרשת: טעינת רשימת התקופות מיד בעליית העמוד ===
     if (typeof populatePeriodSelector === 'function') {
         await populatePeriodSelector();
     }
-    // =========================================================
+
+    // --- הוסף את הבלוק הבא: ריענון המטריצה הקבוצתית אם היא פתוחה ---
+    const groupView = document.getElementById('group-view');
+    if (groupView && !groupView.classList.contains('hidden')) {
+        if (typeof window.profileManager.initMatrixFilters === 'function') {
+            window.profileManager.initMatrixFilters();
+        }
+    }
+    // -----------------------------------------------------------
 
     const allPilots = (personnelLists.pilots || []).sort();
     pilotInput.oninput = (e) => {
@@ -628,6 +687,9 @@ export async function initProfilePage() {
         const opt = e.target.closest('.pilot-option');
         if (opt) { pilotInput.value = opt.dataset.value; updatePilotProfile(opt.dataset.value); resultsMenu.classList.add('hidden'); }
     };
+    if (pilotInput.value) {
+        window.profileManager.triggerPilotProfileUpdate();
+    }
 }
 
 
