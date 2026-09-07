@@ -29,16 +29,16 @@ window.configureSidebarForMode = function(mode) {
     const statsFilterType = document.getElementById('stats-filter-type');
     
     if (mode === 'daily') {
-        // מציג טופס, מאגר גיחות, מאגר תקלות ותכנון מול ביצוע
+        // מציג טופס, מאגר גיחות, מאגר תקלות, תכנון מול ביצוע **ומנהל סימולטורים**
         if (btnFlightForm) btnFlightForm.classList.remove('hidden');
         if (btnMissionDb)  btnMissionDb.classList.remove('hidden');
         if (btnFaultDb)    btnFaultDb.classList.remove('hidden');
         if (btnStats)      btnStats.classList.remove('hidden'); 
+        if (btnSimMgmt)    btnSimMgmt.classList.remove('hidden'); // שורה שעודכנה
         
         // מסתיר את השאר
         if (btnGoals)   btnGoals.classList.add('hidden');
         if (btnProfile) btnProfile.classList.add('hidden');
-        if (btnSimMgmt) btnSimMgmt.classList.add('hidden');
 
         // נעילת מסך תקלות ל"פתוחות בלבד"
         if (faultStatusFilter) {

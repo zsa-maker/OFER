@@ -1740,127 +1740,135 @@ function disableEditMode() {
 }
 
 async function saveEditedFlight() {
-    // *** הגנה ***
-    if (!window.currentUsername) return;
+        if (!window.currentUsername) return;
+        if (!currentViewFlight) return;
+        const dataToUpdate = { ...currentViewFlight.data };
+        const goalsToUpdate = { ...currentViewFlight.goalsDetails };
+        const goalsStatusToUpdate = { ...currentViewFlight.goalsStatus };
 
-    // הלוגיקה המעודכנת לעריכה ושמירה
-    if (!currentViewFlight) return;
-
-    const dataToUpdate = { ...currentViewFlight.data };
-    const goalsToUpdate = { ...currentViewFlight.goalsDetails };
-    const goalsStatusToUpdate = { ...currentViewFlight.goalsStatus }; // *** אובייקט לסטטוס ***
-    let allRequiredFilled = true;
-
-    // 1. איסוף נתונים כלליים ופירוט יעדים
-    document.querySelectorAll('#flight-details-content [data-edit-field]').forEach(input => {
-        const key = input.dataset.editField;
-        // שימוש ב-value במקום ב-innerHTML או textContent
-        const value = input.value;
-
-        // הסרת סימון אדום לפני בדיקות ולידציה
-        input.classList.remove('border-red-500', 'ring-red-500', 'border-4');
-        input.classList.add('border-gray-300');
-
-
-        // טיפול בפירוט יעדים והפרדתם מה-data הכללי
-        if (key.startsWith('פירוט - ')) {
-            const goalName = key.replace('פירוט - ', '');
-            goalsToUpdate[goalName] = value;
-
-            // וולידציה לפירוט יעדים (חובה)
-            if (value.trim() === '') {
+        let allRequiredFilled = true;
+        document.querySelectorAll('#flight-details-content [data-edit-field]').forEach(input => {
+            const key = input.dataset.editField;
+            const value = input.value;
+            input.classList.add('border-gray-300');
+            
+            if (key.startsWith('יעד - ')) {
+                const goalName = key.replace('יעד - ', '');
+                goalsToUpdate[goalName] = value;
+                if (value.trim() === '') {
+                    allRequiredFilled = false;
+                    input.classList.add('border-red-500', 'ring-red-500', 'border-4');
+                    input.classList.remove('border-gray-300');
+                }
+            } else {
+                dataToUpdate[key] = value;
+            }
+            const requiredKeys = ['שם גיחה', 'סוג גיחה', 'תאריך', 'שעת התחלה', 'שעת סיום', 'מדריכה', 'סימולטור', 'טייס ימין', 'טייס שמאל'];
+            if (requiredKeys.includes(key) && (value.trim() === '' || value.trim() === '---')) {
                 allRequiredFilled = false;
-                input.classList.add('border-red-500', 'ring-red-500', 'border-4');
-                input.classList.remove('border-gray-300');
+                if (!key.startsWith('יעד - ')) {
+                    input.classList.add('border-red-500', 'ring-red-500', 'border-4');
+                    input.classList.remove('border-gray-300');
+                }
             }
-        } else {
-            // שמירת שדות נתונים כלליים
-            dataToUpdate[key] = value;
-        }
-
-        // וולידציה לשדות חובה גנריים
-        const requiredKeys = ['שם גיחה', 'סוג גיחה', 'תאריך', 'שעת התחלה', 'שעת סיום', 'מדריכה', 'סימולטור', 'טייס ימין', 'טייס שמאל'];
-        if (requiredKeys.includes(key) && (value.trim() === '' || value.trim() === '---')) {
-            allRequiredFilled = false;
-            // סימון שדה חובה שנערך וריק
-            if (!key.startsWith('פירוט - ')) { // פירוט מטופל למעלה
-                input.classList.add('border-red-500', 'ring-red-500', 'border-4');
-                input.classList.remove('border-gray-300');
-            }
-        }
-    });
-
-    // *** איסוף סטטוס היעדים המעודכן ***
-    document.querySelectorAll('.goal-status-edit-btn').forEach(button => {
-        const goal = button.dataset.editGoalStatus;
-        goalsStatusToUpdate[goal] = button.dataset.currentStatus;
-    });
-
-    if (!allRequiredFilled) {
-        showToast('יש למלא את כל שדות החובה כולל פירוט היעדים.', 'red');
-        return;
-    }
-
-
-    if (typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') {
-        showToast('שגיאה: Firebase לא מאותחל.', 'red');
-        return;
-    }
-
-    const { doc, updateDoc } = window.firestoreFunctions;
-
-    try {
-        const flightRef = doc(window.db, "flights", currentViewFlight.id);
-
-        // חישוב מחדש של ה-flightStartTimestamp אם התאריך/שעה השתנה
-        const flightDateString = dataToUpdate['תאריך'];
-        const startTimeStr = dataToUpdate['שעת התחלה'];
-        // מוודא שהערכים קיימים לפני החישוב
-        let flightStartTimestamp = currentViewFlight.flightStartTimestamp; // ברירת מחדל: הערך הישן
-        if (flightDateString && startTimeStr) {
-            const isoDateTimeStr = `${flightDateString}T${startTimeStr}:00`;
-            flightStartTimestamp = new Date(isoDateTimeStr).getTime();
-        }
-
-        // יש לחשב את שעות הטיסה מחדש אם הנתונים השתנו
-        const start = dataToUpdate['שעת התחלה'];
-        const end = dataToUpdate['שעת סיום'];
-        let durationMinutes = currentViewFlight.data['שעות טיסה (דקות)']; // שומר על הערך המקורי כברירת מחדל
-
-        if (start && end) {
-            const [startHour, startMinute] = start.split(':').map(Number);
-            const [endHour, endMinute] = end.split(':').map(Number);
-
-            const totalStartMinutes = startHour * 60 + startMinute;
-            let totalEndMinutes = endHour * 60 + endMinute;
-
-            if (totalEndMinutes < totalStartMinutes) {
-                totalEndMinutes += 24 * 60;
-            }
-
-            durationMinutes = totalEndMinutes - totalStartMinutes;
-            dataToUpdate['שעות טיסה (דקות)'] = durationMinutes; // עדכון הנתון לשמירה
-        }
-
-
-        await updateDoc(flightRef, {
-            data: dataToUpdate,
-            goalsDetails: goalsToUpdate,
-            goalsStatus: goalsStatusToUpdate, // *** שמירת הסטטוס המעודכן ***
-            flightStartTimestamp: flightStartTimestamp, // *** עדכון השדה ***
-            // faults: [שמירת התקלות אינה אפשרית כרגע במודל העריכה] - משאיר את הנתון הישן
-            timestamp: window.getServerTimestamp()
         });
 
-        showToast('הגיחה נשמרה ועדכנה בהצלחה!', 'green');
+        document.querySelectorAll('.goal-status-edit-btn').forEach(button => {
+            const goal = button.dataset.editGoalStatus;
+            goalsStatusToUpdate[goal] = button.dataset.currentStatus;
+        });
 
-        hideAllModals();
+        if (!allRequiredFilled) {
+            showToast('נא למלא את כל שדות החובה.', 'red');
+            return;
+        }
 
-    } catch (error) {
-        console.error('שגיאה בעדכון הגיחה:', error);
-        showToast('שגיאה בשמירת השינויים. בדוק את הקונסולה לפרטים.', 'red');
+        if (typeof window.db === 'undefined' || typeof window.firestoreFunctions === 'undefined') {
+            showToast('שגיאה: Firebase לא מאותחל.', 'red');
+            return;
+        }
+
+        // שימוש ב-Batch כדי לעדכן במקביל את הארכיונים והקולקציה היומית
+        const { doc, writeBatch } = window.firestoreFunctions;
+        try {
+            const flightDateString = dataToUpdate['תאריך'];
+            const startTimeStr = dataToUpdate['שעת התחלה'];
+            let flightStartTimestamp = currentViewFlight.flightStartTimestamp;
+            if (flightDateString && startTimeStr) {
+                const isoDateTimeStr = `${flightDateString}T${startTimeStr}:00`;
+                flightStartTimestamp = new Date(isoDateTimeStr).getTime();
+            }
+
+            const start = dataToUpdate['שעת התחלה'];
+            const end = dataToUpdate['שעת סיום'];
+            let durationMinutes = currentViewFlight.data['שעות טיסה (דקות)'];
+            if (start && end) {
+                const [startHour, startMinute] = start.split(':').map(Number);
+                const [endHour, endMinute] = end.split(':').map(Number);
+                const totalStartMinutes = startHour * 60 + startMinute;
+                let totalEndMinutes = endHour * 60 + endMinute;
+                if (totalEndMinutes < totalStartMinutes) {
+                    totalEndMinutes += 24 * 60;
+                }
+                durationMinutes = totalEndMinutes - totalStartMinutes;
+                dataToUpdate['שעות טיסה (דקות)'] = durationMinutes;
+            }
+
+            // זיהוי התקופה החדשה (למקרה שהמשתמש ביצע דריסה או שינה תאריך)
+            let newPeriod = dataToUpdate.manualPeriod || currentViewFlight.period;
+            if (!dataToUpdate.manualPeriod && flightDateString && window.getPeriodName) {
+                newPeriod = window.getPeriodName(new Date(flightDateString));
+            }
+            
+            const safeNewPeriod = String(newPeriod).replace(/\//g, '-');
+            const safeOldPeriod = String(currentViewFlight.period).replace(/\//g, '-');
+
+            const updatedFlightObj = {
+                ...currentViewFlight,
+                data: dataToUpdate,
+                goalsDetails: goalsToUpdate,
+                goalsStatus: goalsStatusToUpdate,
+                flightStartTimestamp: flightStartTimestamp,
+                period: newPeriod,
+                timestamp: window.getServerTimestamp()
+            };
+
+            const batch = writeBatch(window.db);
+
+            // 1. שמירה לארכיון התקופה החדשה
+            const newArchiveRef = doc(window.db, `archive_periods/${safeNewPeriod}/flights`, currentViewFlight.id);
+            batch.set(newArchiveRef, updatedFlightObj, { merge: true });
+
+            // 2. מחיקה מהארכיון הישן במידה והתקופה השתנתה
+            if (safeNewPeriod !== safeOldPeriod) {
+                const oldArchiveRef = doc(window.db, `archive_periods/${safeOldPeriod}/flights`, currentViewFlight.id);
+                batch.delete(oldArchiveRef);
+            }
+
+            // 3. שמירה למאגר היומי
+            const recentRef = doc(window.db, "recent_flights", currentViewFlight.id);
+            batch.set(recentRef, updatedFlightObj, { merge: true });
+
+            // 4. גיבוי לקולקציה הישנה לתאימות לאחור
+            const legacyRef = doc(window.db, "flights", currentViewFlight.id);
+            batch.set(legacyRef, updatedFlightObj, { merge: true });
+
+            await batch.commit();
+
+            showToast('הגיחה עודכנה בהצלחה!', 'green');
+            hideAllModals();
+            
+            // רענון המסך לאחר עדכון
+            window.savedFlights = []; 
+            if (typeof window.fetchFlights === 'function') {
+                await window.fetchFlights(true);
+            }
+
+        } catch (error) {
+            console.error('שגיאה בעדכון:', error);
+            showToast('שגיאה בשמירת הגיחה.', 'red');
+        }
     }
-}
 
 function initializeEventListeners() {
     // *** המאזינים להתחברות/התנתקות הועברו ל-auth.js ***
