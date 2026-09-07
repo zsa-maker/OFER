@@ -83,15 +83,21 @@
     </div>
 
     <div class="p-4 bg-gray-50 min-h-screen rtl">
-        <div class="mb-6 flex flex-wrap gap-4 items-end bg-white p-4 rounded-xl shadow-sm">
-        </div>
-
         <div id="stats-charts-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-min">
 
             <div id="stats-card-planning"
                 class="chart-card bg-white rounded-xl shadow-md p-4 cursor-pointer md:col-span-2 md:row-span-2 border-2 border-transparent hover:border-blue-400 transition-all duration-500 overflow-hidden"
                 onclick="window.statsManager.swapToMain('stats-card-planning')">
-                <h3 class="text-lg font-bold text-gray-700 mb-2 border-b pb-2">תכנון מול ביצוע (צבירה שבועית)</h3>
+                
+                <!-- תחילת בלוק הכותרת החדש עם רשימת השבועות -->
+                <div class="flex justify-between items-center mb-2 border-b pb-2">
+                    <h3 class="text-lg font-bold text-gray-700">תכנון מול ביצוע (גיחות)</h3>
+                    <select id="planning-internal-week-filter" onclick="event.stopPropagation()" onchange="window.statsManager.renderStatsDashboard()" class="text-sm font-bold border border-gray-300 rounded p-1 bg-gray-50 focus:ring-ofer-orange">
+                        <option value="all">כל החודש (30 יום)</option>
+                    </select>
+                </div>
+                <!-- סוף בלוק הכותרת -->
+
                 <div class="chart-wrapper h-[500px] w-full relative">
                     <canvas id="chart-planning-execution"></canvas>
                 </div>

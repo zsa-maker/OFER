@@ -113,7 +113,7 @@ window.switchFaultTab = function (tab) {
     document.getElementById('fault-tab-content-stats').classList.toggle('hidden', isTable);
 
     // הסתרה/הצגה של פילטר סטטוס סגירה (רק ברשימה)
-    const statusFilterContainer = document.getElementById('fault-status-filter-container');
+    const statusFilter = (window.appMode === 'daily') ? 'OPEN' : (document.getElementById('fault-status-filter')?.value || 'ALL');
     if (statusFilterContainer) {
         statusFilterContainer.classList.toggle('hidden', !isTable);
     }
@@ -581,7 +581,7 @@ export function populateFaultOptions(simulatorId) {
 
 export async function fetchStandaloneFaults(forceRefresh = false) {
     if (!window.db) return;
-    
+
     // עצירה אם הנתונים כבר נטענו ולא ביקשנו רענון כפוי
     if (!forceRefresh && window.standaloneFaults && window.standaloneFaults.length > 0) {
         processFaultsData();

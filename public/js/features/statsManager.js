@@ -91,6 +91,54 @@ export async function renderStatsDashboard() {
         finalFlights = finalFlights.filter(f => f.data && f.data['סוג גיחה'] === selectedFlightType);
     }
 
+    // --- סינון שבוע פנימי במצב עבודה יומית (משפיע על כל הגרפים) ---
+    const weekFilterSelect = document.getElementById('planning-internal-week-filter');
+    if (window.appMode === 'daily') {
+        const selectedChartWeek = weekFilterSelect ? weekFilterSelect.value : 'all';
+        const activePeriod = document.getElementById('stats-period-select')?.value || window.getPeriodName(new Date());
+
+        if (weekFilterSelect) {
+            weekFilterSelect.classList.remove('hidden');
+            const uniqueWeeks = new Set();
+            
+            // איסוף כל השבועות הזמינים ב-30 הימים האחרונים
+            timeFilteredFlights.forEach(f => {
+                if (f.date) {
+                    const w = window.calculateWeekNumber(new Date(f.date), activePeriod);
+                    if (w) uniqueWeeks.add(w);
+                }
+            });
+
+            // עדכון התפריט במידת הצורך
+            if (weekFilterSelect.options.length - 1 !== uniqueWeeks.size) { 
+                weekFilterSelect.innerHTML = '<option value="all">כל החודש (30 יום)</option>';
+                Array.from(uniqueWeeks).sort((a,b) => a-b).forEach(w => {
+                    const opt = document.createElement('option');
+                    opt.value = w;
+                    opt.textContent = `שבוע ${w}`;
+                    weekFilterSelect.appendChild(opt);
+                });
+                
+                // החזרת הבחירה אם היא עדיין רלוונטית
+                if (Array.from(weekFilterSelect.options).some(o => o.value === selectedChartWeek)) {
+                    weekFilterSelect.value = selectedChartWeek;
+                }
+            }
+        }
+
+        // חיתוך הגיחות כך שכל הגרפים במסך יציגו רק את השבוע הנבחר!
+        if (weekFilterSelect && weekFilterSelect.value !== 'all') {
+            finalFlights = finalFlights.filter(f => {
+                if (!f.date) return false;
+                const w = window.calculateWeekNumber(new Date(f.date), activePeriod);
+                return String(w) === weekFilterSelect.value;
+            });
+        }
+    } else {
+        if (weekFilterSelect) weekFilterSelect.classList.add('hidden');
+    }
+    // -------------------------------------------------------------
+
     currentFilteredFlights = finalFlights;
 
     const exportBtn = document.getElementById('export-report-btn');
@@ -663,7 +711,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (!lastFlightDate || d > lastFlightDate) lastFlightDate = d;
     });
 
-    // 1. תכנון מקורי - שואב ישירות מעמוד המנהל
+    // 1. תכנון מקורי
     if (!selectedFlightType && planningData?.dailyPlans) {
         Object.entries(planningData.dailyPlans).forEach(([dStr, dataVal]) => {
             if (dateFilterPredicate(createLocalMidnight(dStr))) {
@@ -681,13 +729,11 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         });
     }
 
-    // 2. תכנון עדכני 
+    // 2. תכנון עדכני
     const dbCounts = {};
     savedFlights.forEach(f => {
         if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
 
-        // מחיקה מוחלטת של ההתחשבות באופן ההזנה. 
-        // בודקים נטו אם הגיחה הוגדרה במפורש כ-"לא מתוכננת".
         if (f.isUnplanned !== true) {
             const dStr = getLocalDStr(f.date);
             dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
@@ -716,13 +762,12 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         }
     });
 
-    // 3. ביצוע בפועל - גיחות שסומנו כבוצעו או מופרעות (ללא צורך בביצוע נוסף)
+    // 3. ביצוע בפועל
     executedFlights.forEach(f => {
         if (!f.date) return;
         const status = getFlightStatus(f);
         const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
 
-        // תנאי מדויק: בוצעו במלואן או מופרעות שלא דורשות ביצוע חוזר
         if (status === 'full' || (status === 'partial' && !needsRepeat)) {
             const dStr = getLocalDStr(f.date);
             allDates.add(dStr);
@@ -732,16 +777,27 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     });
 
     const sortedDates = Array.from(allDates).sort();
+    let chartDatesToRender = sortedDates;
+    
+    // --- סינון ציר ה-X לפי שבוע פנימי במצב עבודה יומית ---
+    const weekFilterSelect = document.getElementById('planning-internal-week-filter');
+    if (window.appMode === 'daily' && weekFilterSelect && weekFilterSelect.value !== 'all') {
+        const activePeriod = document.getElementById('stats-period-select')?.value || window.getPeriodName(new Date());
+        chartDatesToRender = sortedDates.filter(dateStr => {
+            const w = window.calculateWeekNumber(new Date(dateStr), activePeriod);
+            return String(w) === weekFilterSelect.value;
+        });
+    }
+
     let labels, seriesPlanned, seriesCurrent, seriesActual;
 
-    if (isPeriodMode) {
-        // מצב תקופה: מציג 26 שבועות בצורה מצטברת
+    if (isPeriodMode && window.appMode !== 'daily') {
         labels = Array.from({ length: 26 }, (_, i) => `שבוע ${i + 1}`);
         seriesPlanned = new Array(26).fill(0);
         seriesCurrent = new Array(26).fill(0);
         seriesActual = new Array(26).fill(0);
 
-        sortedDates.forEach(dStr => {
+        chartDatesToRender.forEach(dStr => {
             const weekIdx = getWeekOfPeriod(createLocalMidnight(dStr), planningData) - 1;
             const safeWeekIdx = Math.min(Math.max(weekIdx, 0), 25);
             if (weekIdx >= 0) {
@@ -756,18 +812,17 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
             seriesCurrent[i] += seriesCurrent[i - 1];
             seriesActual[i] += seriesActual[i - 1];
         }
-    } else if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL") {
-        // מצב שבוע ספציפי: מציג פירוט לפי ימים בתוך אותו השבוע בלבד (ללא צבירה שגויה)
-        labels = sortedDates.map(d => d.split('-').reverse().slice(0, 2).join('/'));
-        seriesPlanned = sortedDates.map(d => dailyData[d].planned);
-        seriesCurrent = sortedDates.map(d => dailyData[d].current);
-        seriesActual = sortedDates.map(d => dailyData[d].actual);
+    } else if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL" && window.appMode !== 'daily') {
+        labels = chartDatesToRender.map(d => d.split('-').reverse().slice(0, 2).join('/'));
+        seriesPlanned = chartDatesToRender.map(d => dailyData[d].planned);
+        seriesCurrent = chartDatesToRender.map(d => dailyData[d].current);
+        seriesActual = chartDatesToRender.map(d => dailyData[d].actual);
     } else {
-        // ברירת מחדל יומית / טווח תאריכים
-        labels = sortedDates.map(d => d.split('-').reverse().slice(0, 2).join('/'));
-        seriesPlanned = sortedDates.map(d => dailyData[d].planned);
-        seriesCurrent = sortedDates.map(d => dailyData[d].current);
-        seriesActual = sortedDates.map(d => dailyData[d].actual);
+        // יומית (עם או בלי סינון שבוע) / טווח תאריכים
+        labels = chartDatesToRender.map(d => d.split('-').reverse().slice(0, 2).join('/'));
+        seriesPlanned = chartDatesToRender.map(d => dailyData[d].planned);
+        seriesCurrent = chartDatesToRender.map(d => dailyData[d].current);
+        seriesActual = chartDatesToRender.map(d => dailyData[d].actual);
     }
 
     const nakaPercent = planningData?.nakaPercentage ? parseFloat(planningData.nakaPercentage) : 85;
@@ -782,28 +837,23 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
 
     datasets.push({ label: 'ביצוע בפועל', data: seriesActual, borderColor: '#4BC0C0', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1 });
 
-    // -- 1. סינון וספירת גיחות חניכים בפועל מהמאגר --
     let actualTraineeFlights = 0;
     executedFlights.forEach(f => {
         if (!f.date) return;
         const status = getFlightStatus(f);
         const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
-        // זיהוי גיחת חניך
         const isTrainee = f.data?.['סוג גיחה'] === 'חניכים';
-
         if (status === 'full' || (status === 'partial' && !needsRepeat)) {
             if (isTrainee) actualTraineeFlights++;
         }
     });
 
-    // -- 2. שליפת ההגדרות לחניכים של התקופה --
     const currentPeriod = document.getElementById('stats-period-select')?.value || window.getPeriodName(new Date());
     const pConfig = planningData?.periodConfigs?.[currentPeriod] || {};
     const nakaStudents = pConfig.nakaStudents || 0;
     const targetStudents = pConfig.targetStudents || 0;
 
-    // -- 3. חישובים לנרמול (ממוצע רצוי) --
-    let totalWeeks = 26; // ברירת מחדל של אורך תקופה בחיל
+    let totalWeeks = 26; 
     let currentWeekNum = 1;
 
     if (pConfig.startDate && pConfig.endDate) {
@@ -812,10 +862,9 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         totalWeeks = Math.max(1, Math.ceil((eDate - sDate) / (1000 * 60 * 60 * 24 * 7)));
     }
 
-    if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL") {
+    if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL" && window.appMode !== 'daily') {
         currentWeekNum = parseInt(selectedWeekVal);
     } else {
-        // מציאת השבוע הנוכחי יחסית לתחילת התקופה
         const today = new Date();
         const start = pConfig.startDate ? new Date(pConfig.startDate) : new Date(today.getFullYear(), 0, 1);
         const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24));
@@ -823,12 +872,10 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (currentWeekNum > totalWeeks) currentWeekNum = totalWeeks;
     }
 
-    // נרמול התקדמות - בכל שבוע מוסיפים יחס שווה מתוך היעד התקופתי
     const weeklyTarget = totalWeeks > 0 ? (targetStudents / totalWeeks) : 0;
     const normalizedTarget = (weeklyTarget * currentWeekNum).toFixed(1);
     const adherence = normalizedTarget > 0 ? ((actualTraineeFlights / normalizedTarget) * 100).toFixed(1) : 0;
 
-    // -- 4. בניית הגרף (עם כיתוב מותאם ב-Tooltip רק לחניכים) --
     chartInstances.planning = new Chart(ctx, {
         type: 'line', data: { labels, datasets },
         options: {
@@ -852,7 +899,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         }
     });
 
-    // -- 5. מחיקת אלמנט הקוביות הישן (למקרה שהוא עדיין קיים ב-DOM) --
     document.getElementById('stats-planning-summary')?.remove();
 }
 

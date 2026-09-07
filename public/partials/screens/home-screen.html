@@ -1,4 +1,17 @@
-<div id="home-screen" class="screen">
-    <h1 class="text-3xl font-bold text-gray-800">ברוכים הבאים למערכת</h1>
-    <p class="mt-4 text-gray-600">אנא בחרו אפשרות מהתפריט הצדדי.</p>
+<div id="home-screen" class="screen flex w-full h-full flex-col items-center justify-center min-h-[80vh] mx-auto text-center overflow-hidden">
+    <img src="ofer-logo.png" alt="לוגו" class="w-40 mb-8 drop-shadow-md mx-auto" style="margin-top: 50px;">
+    <h1 class="text-4xl font-bold text-gray-800 mb-8 text-center w-full">ברוכים הבאים </h1>
+    
+    <div class="flex flex-col items-center space-y-4 w-full max-w-sm mx-auto">
+        <button onclick="window.enterDailyWorkflow()" 
+            class="w-full bg-ofer-primary-500 hover:bg-ofer-primary-600 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-transform transform hover:-translate-y-1 text-xl text-center">
+            המשך לעבודה יומית
+        </button>
+        
+        <button onclick="window.promptPeriodPassword()" 
+            class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-lg shadow transition-colors text-md border border-gray-300 flex items-center justify-center gap-2 mt-4 mx-auto">
+            <i class="fas fa-history"></i>
+            צפייה בנתוני תקופה מוגדרת
+        </button>
+    </div>
 </div>
