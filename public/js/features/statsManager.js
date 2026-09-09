@@ -639,6 +639,7 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     const isWeekMode = filterType === 'week';
     const selectedWeekVal = document.getElementById('stats-week-value')?.value;
     const selectedFlightType = document.getElementById('filter-flight-type')?.value;
+    const selectedPeriod = document.getElementById('stats-period-select')?.value;
 
     const dailyData = {};
     const allDates = new Set();
@@ -656,39 +657,32 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         return new Date(y, m - 1, d);
     };
 
-    let lastFlightDate = null;
-    savedFlights.forEach(f => {
-        if (!f.date) return;
-        const d = createLocalMidnight(getLocalDStr(f.date));
-        if (!lastFlightDate || d > lastFlightDate) lastFlightDate = d;
-    });
+    const isManualPeriod = (f) => {
+        return (f.manualPeriod && f.manualPeriod !== 'auto') || 
+               (f.data && f.data.manualPeriod && f.data.manualPeriod !== 'auto');
+    };
 
-    // 1. תכנון מקורי - שואב ישירות מעמוד המנהל
+    // 1. תכנון מקורי
     if (!selectedFlightType && planningData?.dailyPlans) {
         Object.entries(planningData.dailyPlans).forEach(([dStr, dataVal]) => {
             if (dateFilterPredicate(createLocalMidnight(dStr))) {
                 allDates.add(dStr);
                 if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
-
-                let count = 0;
-                if (typeof dataVal === 'object' && dataVal !== null) {
-                    count = dataVal.count !== undefined ? dataVal.count : 0;
-                } else {
-                    count = Number(dataVal) || 0;
-                }
-                dailyData[dStr].planned = count;
+                
+                let count = (typeof dataVal === 'object' && dataVal !== null) ? Number(dataVal.count) : Number(dataVal);
+                dailyData[dStr].planned = isNaN(count) ? 0 : count;
             }
         });
     }
 
-    // 2. תכנון עדכני 
+    // 2. תכנון עדכני (כולל רק גיחות מהמאגר, בניכוי "לא מתוכננות")
     const dbCounts = {};
     savedFlights.forEach(f => {
         if (!f.date || (selectedFlightType && f.data?.['סוג גיחה'] !== selectedFlightType)) return;
+        if (isManualPeriod(f)) return;
 
-        // מחיקה מוחלטת של ההתחשבות באופן ההזנה. 
-        // בודקים נטו אם הגיחה הוגדרה במפורש כ-"לא מתוכננת".
-        if (f.isUnplanned !== true) {
+        const isUnplanned = f.isUnplanned === true || String(f.isUnplanned).toLowerCase() === 'true';
+        if (!isUnplanned) {
             const dStr = getLocalDStr(f.date);
             dbCounts[dStr] = (dbCounts[dStr] || 0) + 1;
         }
@@ -702,27 +696,21 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (dateFilterPredicate(dObj)) {
             allDates.add(dStr);
             if (!dailyData[dStr]) dailyData[dStr] = { planned: 0, current: 0, actual: 0 };
-
-            if (selectedFlightType) {
-                dailyData[dStr].current = dbCounts[dStr] || 0;
-            } else {
-                if (lastFlightDate && dObj <= lastFlightDate) {
-                    dailyData[dStr].current = dbCounts[dStr] || 0;
-                } else {
-                    const calData = planningData?.dailyPlans?.[dStr];
-                    dailyData[dStr].current = (typeof calData === 'object') ? (Number(calData.count) || 0) : (Number(calData) || 0);
-                }
-            }
+            
+            // התכנון העדכני סופר *אך ורק* גיחות מתוכננות מהמאגר כפי שהגדרת. אין חזרה לתכנון ביומן.
+            dailyData[dStr].current = dbCounts[dStr] || 0;
         }
     });
 
-    // 3. ביצוע בפועל - גיחות שסומנו כבוצעו או מופרעות (ללא צורך בביצוע נוסף)
+    // 3. ביצוע בפועל
     executedFlights.forEach(f => {
         if (!f.date) return;
+        if (isManualPeriod(f)) return;
+
         const status = getFlightStatus(f);
         const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
 
-        // תנאי מדויק: בוצעו במלואן או מופרעות שלא דורשות ביצוע חוזר
+        // הוספה של גיחות שנעשו במלואן או גיחות מופרעות שלא נדרשות לביצוע שנית בלבד
         if (status === 'full' || (status === 'partial' && !needsRepeat)) {
             const dStr = getLocalDStr(f.date);
             allDates.add(dStr);
@@ -735,19 +723,17 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     let labels, seriesPlanned, seriesCurrent, seriesActual;
 
     if (isPeriodMode) {
-        // מצב תקופה: מציג 26 שבועות בצורה מצטברת
         labels = Array.from({ length: 26 }, (_, i) => `שבוע ${i + 1}`);
         seriesPlanned = new Array(26).fill(0);
         seriesCurrent = new Array(26).fill(0);
         seriesActual = new Array(26).fill(0);
 
         sortedDates.forEach(dStr => {
-            const weekIdx = getWeekOfPeriod(createLocalMidnight(dStr), planningData) - 1;
-            const safeWeekIdx = Math.min(Math.max(weekIdx, 0), 25);
-            if (weekIdx >= 0) {
-                seriesPlanned[safeWeekIdx] += dailyData[dStr].planned;
-                seriesCurrent[safeWeekIdx] += dailyData[dStr].current;
-                seriesActual[safeWeekIdx] += dailyData[dStr].actual;
+            const weekIdx = getWeekOfPeriod(createLocalMidnight(dStr), planningData, selectedPeriod) - 1;
+            if (weekIdx >= 0 && weekIdx < 26) {
+                seriesPlanned[weekIdx] += dailyData[dStr].planned;
+                seriesCurrent[weekIdx] += dailyData[dStr].current;
+                seriesActual[weekIdx] += dailyData[dStr].actual;
             }
         });
 
@@ -757,38 +743,38 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
             seriesActual[i] += seriesActual[i - 1];
         }
     } else if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL") {
-        // מצב שבוע ספציפי: מציג פירוט לפי ימים בתוך אותו השבוע בלבד (ללא צבירה שגויה)
         labels = sortedDates.map(d => d.split('-').reverse().slice(0, 2).join('/'));
         seriesPlanned = sortedDates.map(d => dailyData[d].planned);
         seriesCurrent = sortedDates.map(d => dailyData[d].current);
         seriesActual = sortedDates.map(d => dailyData[d].actual);
     } else {
-        // ברירת מחדל יומית / טווח תאריכים
         labels = sortedDates.map(d => d.split('-').reverse().slice(0, 2).join('/'));
         seriesPlanned = sortedDates.map(d => dailyData[d].planned);
         seriesCurrent = sortedDates.map(d => dailyData[d].current);
         seriesActual = sortedDates.map(d => dailyData[d].actual);
     }
 
-    const nakaPercent = planningData?.nakaPercentage ? parseFloat(planningData.nakaPercentage) : 85;
     const datasets = [];
-
     if (!selectedFlightType) {
         datasets.push({ label: 'תכנון מקורי', data: seriesPlanned, borderColor: '#36A2EB', fill: false, tension: 0.1 });
         datasets.push({ label: 'תכנון עדכני', data: seriesCurrent, borderColor: '#FF9F40', borderDash: [5, 5], fill: false, tension: 0.1 });
     } else {
         datasets.push({ label: 'תכנון במאגר', data: seriesCurrent, borderColor: '#FF9F40', borderDash: [5, 5], fill: false, tension: 0.1 });
     }
-
     datasets.push({ label: 'ביצוע בפועל', data: seriesActual, borderColor: '#4BC0C0', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1 });
 
-    // -- 1. סינון וספירת גיחות חניכים בפועל מהמאגר --
+    // חישובי ה-Tooltip של החניכים
     let actualTraineeFlights = 0;
-    executedFlights.forEach(f => {
+    window.savedFlights.forEach(f => {
         if (!f.date) return;
+        if (isManualPeriod(f)) return;
+        if (!dateFilterPredicate(f)) return;
+
+        const statusLabel = f.executionStatus;
+        if (statusLabel === 'טרם דווחה' || statusLabel === 'בוטלה' || statusLabel === 'גיחה בוטלה') return;
+
         const status = getFlightStatus(f);
         const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
-        // זיהוי גיחת חניך
         const isTrainee = f.data?.['סוג גיחה'] === 'חניכים';
 
         if (status === 'full' || (status === 'partial' && !needsRepeat)) {
@@ -796,14 +782,12 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         }
     });
 
-    // -- 2. שליפת ההגדרות לחניכים של התקופה --
     const currentPeriod = document.getElementById('stats-period-select')?.value || window.getPeriodName(new Date());
     const pConfig = planningData?.periodConfigs?.[currentPeriod] || {};
     const nakaStudents = pConfig.nakaStudents || 0;
     const targetStudents = pConfig.targetStudents || 0;
 
-    // -- 3. חישובים לנרמול (ממוצע רצוי) --
-    let totalWeeks = 26; // ברירת מחדל של אורך תקופה בחיל
+    let totalWeeks = 26; 
     let currentWeekNum = 1;
 
     if (pConfig.startDate && pConfig.endDate) {
@@ -815,7 +799,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
     if (isWeekMode && selectedWeekVal && selectedWeekVal !== "ALL") {
         currentWeekNum = parseInt(selectedWeekVal);
     } else {
-        // מציאת השבוע הנוכחי יחסית לתחילת התקופה
         const today = new Date();
         const start = pConfig.startDate ? new Date(pConfig.startDate) : new Date(today.getFullYear(), 0, 1);
         const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24));
@@ -823,12 +806,10 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         if (currentWeekNum > totalWeeks) currentWeekNum = totalWeeks;
     }
 
-    // נרמול התקדמות - בכל שבוע מוסיפים יחס שווה מתוך היעד התקופתי
     const weeklyTarget = totalWeeks > 0 ? (targetStudents / totalWeeks) : 0;
     const normalizedTarget = (weeklyTarget * currentWeekNum).toFixed(1);
     const adherence = normalizedTarget > 0 ? ((actualTraineeFlights / normalizedTarget) * 100).toFixed(1) : 0;
 
-    // -- 4. בניית הגרף (עם כיתוב מותאם ב-Tooltip רק לחניכים) --
     chartInstances.planning = new Chart(ctx, {
         type: 'line', data: { labels, datasets },
         options: {
@@ -836,9 +817,9 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
             plugins: {
                 tooltip: {
                     callbacks: {
-                        footer: (tooltipItems) => {
+                        footer: () => {
                             return '\n-----------------------\n' +
-                                `📌 נתוני חניכים (מצטבר לשבוע ${currentWeekNum}):\n` +
+                                `📌 נתוני חניכים טייסתים (מצטבר לשבוע ${currentWeekNum}):\n` +
                                 `נק"ע חניכים מוגדר: ${nakaStudents}%\n` +
                                 `יעד גיחות (תקופתי): ${targetStudents}\n` +
                                 `ביצוע חניכים בפועל: ${actualTraineeFlights}\n` +
@@ -852,7 +833,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         }
     });
 
-    // -- 5. מחיקת אלמנט הקוביות הישן (למקרה שהוא עדיין קיים ב-DOM) --
     document.getElementById('stats-planning-summary')?.remove();
 }
 
@@ -936,10 +916,30 @@ function countByKey(items, keyExtractor) {
     }, {});
 }
 
-function getWeekOfPeriod(date, planningData) {
-    const periodName = window.getPeriodName(date);
-    const calculatedWeek = window.calculateWeekNumber(date, periodName);
-    return calculatedWeek ? calculatedWeek : 1; // 1 כברירת מחדל אם משהו חסר
+function getWeekOfPeriod(date, planningData, forcePeriod) {
+    const periodName = forcePeriod || (window.getPeriodName ? window.getPeriodName(date) : getPeriodDisplay(date));
+    const pConfig = planningData?.periodConfigs?.[periodName];
+    
+    if (pConfig && pConfig.startDate) {
+        const getStartSunday = (d) => {
+            const s = new Date(d);
+            s.setHours(0, 0, 0, 0);
+            s.setDate(s.getDate() - s.getDay());
+            return s;
+        };
+        const flightSunday = getStartSunday(date);
+        
+        let startDateObj = new Date(pConfig.startDate);
+        if(typeof pConfig.startDate === 'string' && pConfig.startDate.includes('-')) {
+            const [y, m, dStr] = pConfig.startDate.split('-');
+            startDateObj = new Date(y, m - 1, dStr);
+        }
+        const startSunday = getStartSunday(startDateObj);
+        
+        const diffDays = Math.round((flightSunday - startSunday) / (1000 * 60 * 60 * 24));
+        return Math.floor(diffDays / 7) + 1;
+    }
+    return window.calculateWeekNumber ? window.calculateWeekNumber(date, periodName) : 1;
 }
 
 function populateStatsWeekSelect() {
@@ -1037,33 +1037,50 @@ function populateStatsPeriodSelect(flights) {
 function getDateFilterPredicate() {
     const elFilterType = document.getElementById('stats-filter-type');
     const filterType = elFilterType ? elFilterType.value : 'period';
+    const selectedVal = document.getElementById('stats-period-select')?.value;
+
+    // פונקציית עזר לפענוח תאריכים בטוח ללא הסטות של אזור זמן
+    const parseLocal = (item) => {
+        let val = (item && item.date) ? item.date : item;
+        if (typeof val === 'string' && val.includes('-')) {
+            const [y, m, d] = val.split('T')[0].split('-');
+            return new Date(y, m - 1, d);
+        }
+        return new Date(val);
+    };
 
     if (filterType === 'period') {
-        const selectedVal = document.getElementById('stats-period-select')?.value;
         if (!selectedVal) return () => false;
         return (item) => {
-            // שליפה חכמה: אם זה אובייקט גיחה נשתמש ב-Effective, אחרת רק תאריך
+            const dateObj = parseLocal(item);
+            
+            // שיוך לפי השבוע השלם - מבטיח שגם אם התקופה מתחילה באמצע שבוע,
+            // הימים שלפניה השייכים לאותו שבוע ייכללו בגרף ולא ייחתכו
+            if (cachedPlanningData && cachedPlanningData.periodConfigs) {
+                const weekIdx = getWeekOfPeriod(dateObj, cachedPlanningData, selectedVal);
+                if (weekIdx >= 1 && weekIdx <= 26) return true;
+            }
+
             const fPeriod = (item && typeof item === 'object' && item.date) ? getEffectivePeriod(item) : getPeriodDisplay(item);
             return fPeriod === selectedVal;
         };
     }
 
     if (filterType === 'week') {
-        const selectedPeriod = document.getElementById('stats-period-select')?.value;
         const elWeek = document.getElementById('stats-week-value');
         if (!elWeek) return () => false;
         const selectedWeekVal = elWeek.value;
 
         return (item) => {
-            const dateObj = (item && item.date) ? new Date(item.date) : new Date(item);
-            const fPeriod = (item && typeof item === 'object' && item.date) ? getEffectivePeriod(item) : (window.getPeriodName ? window.getPeriodName(dateObj) : getPeriodDisplay(dateObj));
-
-            if (selectedPeriod && fPeriod !== selectedPeriod) return false;
-
+            const dateObj = parseLocal(item);
+            
             if (selectedWeekVal && selectedWeekVal !== "ALL") {
-                const weekOfPeriod = window.calculateWeekNumber ? window.calculateWeekNumber(dateObj, fPeriod) : 1;
+                const weekOfPeriod = getWeekOfPeriod(dateObj, cachedPlanningData, selectedVal);
                 return weekOfPeriod === parseInt(selectedWeekVal);
             }
+            
+            const fPeriod = (item && typeof item === 'object' && item.date) ? getEffectivePeriod(item) : (window.getPeriodName ? window.getPeriodName(dateObj) : getPeriodDisplay(dateObj));
+            if (selectedVal && fPeriod !== selectedVal) return false;
             return true;
         };
     }
@@ -1077,7 +1094,7 @@ function getDateFilterPredicate() {
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(23, 59, 59, 999);
         return (item) => {
-            const d = new Date((item && item.date) ? item.date : item);
+            const d = parseLocal(item);
             return d >= startDate && d <= endDate;
         };
     }
