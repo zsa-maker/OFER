@@ -489,24 +489,49 @@ function renderCancellationReasonsChart(flights) {
         }
     });
 
-    // 4. הגדרת הצבעים והגרף
-    const bgColors = ['#f0c5c5', '#af7c7c', '#701f1f', '#fa0101', '#835757', '#3b0202'];
+    // 4. הגדרת הצבעים והגרף - הוספת התאמת צבעים דינמית
+    const labels = Object.keys(counts);
+    const dataValues = Object.values(counts);
+    
+    // פלטת הצבעים המקורית (גווני אדום/חום)
+    const defaultBgColors = ['#f0c5c5', '#af7c7c', '#701f1f', '#fa0101', '#835757', '#3b0202'];
+    
+    // בניית מערך צבעים מותאם לתוויות
+    const bgColors = labels.map((label, index) => {
+        if (label.includes('טכני')) {
+            return '#10B981'; // ירוק בולט
+        }
+        return defaultBgColors[index % defaultBgColors.length];
+    });
 
     chartInstances.cancellation = new Chart(ctx, {
         type: 'pie',
         data: {
-            labels: Object.keys(counts),
-            datasets: [{ data: Object.values(counts), backgroundColor: bgColors }]
+            labels: labels,
+            datasets: [{ data: dataValues, backgroundColor: bgColors }]
         },
         options: {
             responsive: true, maintainAspectRatio: false,
+            // הוספת onClick כדי לטפל בלחיצה על פלח
+            onClick: (event, elements) => {
+                if (elements && elements.length > 0) {
+                    const index = elements[0].index;
+                    const selectedReason = labels[index];
+                    
+                    // סינון הגיחות השייכות לסיבה הספציפית
+                    const relatedFlights = allCancelledFlights.filter(f => {
+                        const reason = f.data?.['סיבת ביטול'] || 'לא צוינה סיבה';
+                        return reason === selectedReason;
+                    });
+                    
+                    showCancellationDetailsPopup(selectedReason, relatedFlights, flightIdToFaults);
+                }
+            },
             plugins: {
                 tooltip: {
                     callbacks: {
                         afterBody: (tooltipItems) => {
                             const label = tooltipItems[0].label;
-
-                            // התנאי החדש: הצג פירוט רק אם הלייבל מכיל "טכני"
                             if (label.includes('טכני')) {
                                 const techFlights = allCancelledFlights.filter(f =>
                                     f.data?.['סיבת ביטול']?.includes('טכני')
@@ -527,16 +552,120 @@ function renderCancellationReasonsChart(flights) {
                                     Object.entries(techBreakdown).forEach(([sys, count]) => {
                                         extra.push(`  • ${sys}: ${count}`);
                                     });
+                                    // הוספת רמז למשתמש שאפשר ללחוץ
+                                    extra.push('', '💡 לחץ על הפלח לפירוט הגיחות המלא');
                                     return extra;
                                 }
                             }
-                            // אם לא "טכני", לא מחזירים כלום (או הודעה כללית)
-                            return [];
+                            return ['💡 לחץ על הפלח לפירוט הגיחות המלא'];
                         }
                     }
                 }
             }
         }
+    });
+}
+
+// פונקציית עזר ליצירת חלון קופץ המציג את פירוט הביטולים
+function showCancellationDetailsPopup(reason, flights, faultsMap) {
+    // מחיקת פופאפ קודם אם קיים
+    const existingPopup = document.getElementById('cancellation-popup');
+    if (existingPopup) {
+        existingPopup.remove();
+    }
+
+    // בניית טבלת הנתונים
+    let tableHtml = `
+        <table class="min-w-full divide-y divide-gray-200 mt-4 text-sm" dir="rtl">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">תאריך</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">שם הגיחה</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">מדריך.ה</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">חניך.ה / טייס.ת</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">הערות / תקלות</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+    `;
+
+    flights.forEach(f => {
+        const d = f.data || {};
+        const dateStr = f.date ? new Date(f.date).toLocaleDateString('he-IL') : 'לא ידוע';
+        const name = d['שם גיחה'] || '---';
+        const instructor = d['מדריכה'] || d['מדריך'] || d['instructor-name-1'] || '---';
+        const trainee = d['טייס ימין'] || d['טייס שמאל'] || d['pilot-right'] || '---';
+        
+        let notes = d['הערות כלליות'] || d['הערות ביטול'] || '';
+        
+        // אם זה טכני, ננסה לשלוף את המערכת שהתקלקלה
+        if (reason.includes('טכני')) {
+            const fId = f.id || f.flightId;
+            const faults = [...(faultsMap[fId] || []), ...(f.faults || [])];
+            if (faults.length > 0) {
+                const faultSystems = faults.map(fault => fault.systemClassification || fault.classification || 'ללא סיווג');
+                const systemsText = `מערכות מדווחות: ${faultSystems.join(', ')}`;
+                notes = notes ? `${notes} | ${systemsText}` : systemsText;
+            }
+        }
+        
+        if (!notes) notes = 'אין הערות';
+
+        tableHtml += `
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-2 text-gray-700">${dateStr}</td>
+                <td class="px-4 py-2 font-medium text-gray-900">${name}</td>
+                <td class="px-4 py-2 text-gray-700">${instructor}</td>
+                <td class="px-4 py-2 text-gray-700">${trainee}</td>
+                <td class="px-4 py-2 text-gray-500">${notes}</td>
+            </tr>
+        `;
+    });
+
+    tableHtml += `</tbody></table>`;
+
+    // יצירת הקונטיינר של הפופאפ
+    const overlay = document.createElement('div');
+    overlay.id = 'cancellation-popup';
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity';
+    
+    const isTech = reason.includes('טכני');
+    const headerColor = isTech ? 'bg-green-600' : 'bg-red-600';
+
+    overlay.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl w-11/12 md:w-3/4 max-h-[80vh] flex flex-col overflow-hidden dir-rtl" dir="rtl">
+            <!-- כותרת -->
+            <div class="${headerColor} px-6 py-4 flex justify-between items-center text-white">
+                <h3 class="text-xl font-bold">גיחות שבוטלו - ${reason} (${flights.length})</h3>
+                <button id="close-cancellation-popup" class="text-white hover:text-gray-200 focus:outline-none">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- תוכן -->
+            <div class="px-6 py-4 overflow-y-auto flex-1">
+                ${flights.length > 0 ? tableHtml : '<p class="text-center text-gray-500 my-8">אין נתונים להצגה</p>'}
+            </div>
+            
+            <!-- כפתור סגירה תחתון -->
+            <div class="bg-gray-50 px-6 py-3 flex justify-end border-t border-gray-200">
+                <button id="close-cancellation-btn-bottom" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-medium transition-colors">סגור</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // הוספת מאזינים לסגירה
+    const closeFn = () => overlay.remove();
+    document.getElementById('close-cancellation-popup').addEventListener('click', closeFn);
+    document.getElementById('close-cancellation-btn-bottom').addEventListener('click', closeFn);
+    
+    // סגירה בלחיצה מחוץ לפופאפ
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeFn();
     });
 }
 

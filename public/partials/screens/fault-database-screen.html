@@ -37,6 +37,14 @@
             </div>
 
             <div>
+                <label class="block text-sm font-medium text-gray-700"> סיווג סגירה:</label>
+                <select id="fault-category-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+                    onchange="window.onFaultFilterChange()">
+                    <option value="ALL">כל סיווגי הסגירה</option>
+                </select>
+            </div>
+
+            <div>
                 <label class="block text-sm font-medium text-gray-700">סנן זמן לפי:</label>
                 <select id="fault-time-filter-type"
                     onchange="window.toggleFaultTimeFilters(this.value); window.onFaultFilterChange();"
@@ -74,6 +82,7 @@
                     </div>
                 </div>
             </div>
+
             <button id="add-new-fault-db-btn" onclick="window.openManualFaultModal()"
                 class="bg-gray-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors text-xs ml-2">
                 <i class="fas fa-plus"></i> הוסף תקלה חדשה

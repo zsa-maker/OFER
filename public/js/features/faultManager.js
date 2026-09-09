@@ -284,6 +284,7 @@ function createFaultChart(canvasId, type, labels, data, colors) {
 
     faultChartInstances[canvasId] = new Chart(ctx, {
         type: type,
+        plugins: [ChartDataLabels], // הוספת פלאגין להצגת מספרים על הפלחים
         data: {
             labels: labels,
             datasets: [{ data: data, backgroundColor: colors }]
@@ -300,15 +301,27 @@ function createFaultChart(canvasId, type, labels, data, colors) {
                         padding: 8,
                         font: { size: 10 }
                     }
+                },
+                // עיצוב המספרים והאחוזים על הגרף
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 12 },
+                    textAlign: 'center',
+                    formatter: (value, context) => {
+                        if (value === 0) return '';
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((value / total) * 100).toFixed(1) + "%";
+                        // מציג את המספר ואת האחוז מתחתיו
+                        return `${value}\n(${percentage})`;
+                    }
                 }
             },
             layout: {
-                padding: { top: 5, bottom: 5, left: 5, right: 5 }
+                padding: { top: 15, bottom: 15, left: 15, right: 15 } // מונע חיתוך של טקסט שגולש
             }
         }
     });
 }
-
 export async function initFaultDatabase() {
     const simSelect = document.getElementById('fault-simulator-filter');
     if (!simSelect) return;
@@ -429,6 +442,11 @@ export function processFaultsData() {
             .filter(f => f.simulator === sim && !f.status.isResolved)
             .map(f => f.description);
     });
+
+    // --- השורה שצריך להוסיף ממש בסוף הפונקציה ---
+    if (typeof window.populateFaultCategoryFilter === 'function') {
+        window.populateFaultCategoryFilter();
+    }
 }
 
 function buildDropdownMenu(systems, onSelect) {
@@ -581,7 +599,7 @@ export function populateFaultOptions(simulatorId) {
 
 export async function fetchStandaloneFaults(forceRefresh = false) {
     if (!window.db) return;
-    
+
     // עצירה אם הנתונים כבר נטענו ולא ביקשנו רענון כפוי
     if (!forceRefresh && window.standaloneFaults && window.standaloneFaults.length > 0) {
         processFaultsData();
@@ -631,18 +649,29 @@ export function renderFaultDatabaseTable() {
 
     const simulatorFilter = document.getElementById('fault-simulator-filter')?.value || 'ALL';
     const statusFilter = document.getElementById('fault-status-filter')?.value || 'ALL';
+    const categoryFilter = document.getElementById('fault-category-filter')?.value || 'ALL'; // <<< קריאת הסיווג
     const timeFilterType = document.getElementById('fault-time-filter-type')?.value || 'all';
 
     let filteredFaults = Object.values(window.unifiedFaultsDatabase);
 
     if (simulatorFilter !== 'ALL') {
         filteredFaults = filteredFaults.filter(f => (f.simulator || '').toUpperCase().includes(simulatorFilter));
-    } if (statusFilter !== 'ALL') {
+    }
+
+    if (statusFilter !== 'ALL') {
         filteredFaults = filteredFaults.filter(f => {
             if (statusFilter === 'OPEN') return !f.status.isResolved;
             if (statusFilter === 'RESOLVED') return f.status.isResolved && !f.status.isClosedWithPermission;
             if (statusFilter === 'PERMISSION') return f.status.isResolved && f.status.isClosedWithPermission;
             return true;
+        });
+    }
+
+    // סינון לפי סיווג סגירה
+    if (categoryFilter !== 'ALL') {
+        filteredFaults = filteredFaults.filter(f => {
+            const cat = f.status?.faultCategory || 'לא סווג';
+            return cat === categoryFilter;
         });
     }
 
@@ -713,10 +742,7 @@ export function renderFaultDatabaseTable() {
     tableBody.innerHTML = filteredFaults.map(fault => {
         const isResolved = fault.status.isResolved;
         const isChecked = faultSelectedSet.has(fault.key);
-        // מניעת שבירת Syntax ב-HTML באמצעות Escaping מחמיר
         const safeKey = fault.key ? fault.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
-
-        // עיצוב שונה לתקלה פתוחה שמשביתה את המאמן
         const isDowntime = fault.isDowntime && !isResolved;
         const rowBg = isDowntime ? 'bg-red-50 border-r-4 border-red-500 hover:bg-red-100' : 'bg-white hover:bg-ofer-primary-50';
 
@@ -740,6 +766,51 @@ ${isResolved ?
         </tr>`;
     }).join('');
 }
+
+// פונקציה חדשה ששואבת את סיווגי הסגירה מהמאגר
+window.populateFaultCategoryFilter = function () {
+    const select = document.getElementById('fault-category-filter');
+    if (!select) return;
+
+    const currentVal = select.value;
+    const categories = new Set();
+
+    // סריקת כל התקלות ואיסוף סיווגי הסגירה שלהן
+    const allFaults = Object.values(window.unifiedFaultsDatabase || {});
+    allFaults.forEach(f => {
+        if (f.status && f.status.isResolved && f.status.faultCategory) {
+            categories.add(f.status.faultCategory.trim());
+        }
+    });
+
+    // אפשרויות ברירת מחדל שבטוח נרצה להציג גם אם המאגר ריק כרגע
+    const defaultCategories = ["תקלה", "תפעול", "הועבר לצוות פיתוח", "לא תקלה"];
+    defaultCategories.forEach(cat => categories.add(cat));
+
+    // בניית האפשרויות לתפריט
+    let html = '<option value="ALL">כל סיווגי הסגירה</option>';
+
+    Array.from(categories).sort().forEach(cat => {
+        if (cat && cat !== 'לא סווג') {
+            html += `<option value="${cat}">${cat}</option>`;
+        }
+    });
+
+    // נוסיף תמיד בסוף את "לא סווג" לתקלות ישנות
+    html += '<option value="לא סווג">לא סווג (ישן / בהיתר)</option>';
+
+    // מעדכנים את ה-HTML רק אם הוא השתנה, כדי לא לדרוס בחירה קיימת של המשתמש
+    if (select.innerHTML !== html) {
+        select.innerHTML = html;
+
+        // החזרת הערך המסומן הקודם (אם הוא עדיין קיים ברשימה)
+        if (currentVal && (categories.has(currentVal) || currentVal === 'ALL' || currentVal === 'לא סווג')) {
+            select.value = currentVal;
+        } else {
+            select.value = 'ALL';
+        }
+    }
+};
 
 export async function showFaultDetailsModal(faultKey) {
     const fault = window.unifiedFaultsDatabase[faultKey];
