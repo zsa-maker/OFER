@@ -37,38 +37,53 @@ window.profileManager.switchMainTab = function (tab) {
 /**
  * אתחול הפילטרים למטריצה הקבוצתית - כולל עדכון דינמי
  */
+
 window.profileManager.initMatrixFilters = async function () {
     try {
+        // 1. אכלוס התקופות מראש
+        if (typeof populatePeriodSelector === 'function') {
+            await populatePeriodSelector();
+        }
+
         const typeSelect = document.getElementById('matrix-pop-type');
         const subPopSelect = document.getElementById('matrix-sub-pop');
-        const periodSelect = document.getElementById('matrix-period'); // הוספה
+        const periodSelect = document.getElementById('matrix-period');
+        
         if (!typeSelect || !subPopSelect || !periodSelect) return;
 
+        // 2. חיבור מאזינים (כולל כפתורי הרדיו של מדריך/חניך)
         if (!typeSelect.dataset.listenerAttached) {
-            typeSelect.addEventListener('change', () => this.initMatrixFilters());
-            periodSelect.addEventListener('change', () => this.initMatrixFilters()); // מאזין גם לתקופה!
-            subPopSelect.addEventListener('change', () => this.updateMatrix());
+            typeSelect.addEventListener('change', () => window.profileManager.initMatrixFilters());
+            periodSelect.addEventListener('change', () => window.profileManager.initMatrixFilters());
+            subPopSelect.addEventListener('change', () => window.profileManager.updateMatrix());
+            
+            // מאזין קריטי לכפתורי הרדיו כדי שהטבלה תתעדכן כשמחליפים בין גיחות הדרכה לכשירות
+            document.querySelectorAll('input[name="ins-flight-type"]').forEach(radio => {
+                radio.addEventListener('change', () => window.profileManager.updateMatrix());
+            });
+
             typeSelect.dataset.listenerAttached = "true";
         }
 
         const selectedPeriod = periodSelect.value;
 
-        // טעינת אוכלוסיות דינמית לפי התקופה שנבחרה
+        // 3. טעינת אוכלוסיות עם הגנה מפני קריסות (null)
         if (selectedPeriod) {
             const popData = await window.getCachedPopulations(selectedPeriod);
-            if (popData) {
-                window.pilotPopulations = popData;
-            }
+            window.pilotPopulations = popData || { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
         } else {
-            // Fallback להגדרות הישנות (אם מדובר בתקופה שנוצרה לפני העדכון)
-            const oldRef = doc(window.db, "settings", "populations");
-            const oldSnap = await getDoc(oldRef);
-            window.pilotPopulations = oldSnap.exists() ? oldSnap.data() : { instructorGroups: [], courses: [] };
+            if (window.firestoreFunctions && window.db) {
+                const { doc, getDoc } = window.firestoreFunctions;
+                const oldRef = doc(window.db, "settings", "populations");
+                const oldSnap = await getDoc(oldRef);
+                window.pilotPopulations = oldSnap.exists() ? oldSnap.data() : { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
+            } else {
+                window.pilotPopulations = { instructorGroups: [], courses: [], conversionGroups: [], flightMapping: {} };
+            }
         }
 
-
         const type = typeSelect.value;
-        const populations = window.pilotPopulations || { instructorGroups: [], courses: [] };
+        const populations = window.pilotPopulations;
 
         let list = [];
         if (type === 'instructors') list = populations.instructorGroups || [];
@@ -76,11 +91,13 @@ window.profileManager.initMatrixFilters = async function () {
         else list = populations.courses || [];
 
         let optionsHtml = '<option value="ALL">כל תתי האוכלוסיות</option>';
-        optionsHtml += list.map(item => `<option value="${item.name.trim()}">${item.name}</option>`).join('');
+        optionsHtml += list.map(item => `<option value="${(item.name || '').trim().replace(/"/g, '&quot;')}">${item.name || ''}</option>`).join('');
 
         subPopSelect.innerHTML = optionsHtml;
+        subPopSelect.value = "ALL"; // בחירה ודאית של ברירת המחדל
 
-        this.updateMatrix();
+        // 4. קריאה מפורשת לרינדור הטבלה מיד בסיום הטעינה!
+        window.profileManager.updateMatrix();
     } catch (error) {
         console.error("Error initializing matrix filters:", error);
     }
@@ -123,14 +140,19 @@ window.profileManager.updateMatrix = function () {
 
     const allFlights = window.savedFlights || [];
     const filteredFlights = allFlights.filter(f => {
-        // שימוש בפונקציה החכמה שתופסת גם דריסות וגם אישורים ידניים
-        const rawPeriod = window.getEffectivePeriod ? window.getEffectivePeriod(f) : f.period;
+        // התיקון קריטי: שימוש בפונקציה המיובאת ישירות מבלי לחפש אותה ב-window
+        // זה מבטיח שהגיחות עם תקופה ידנית יקבלו את הערך הנכון
+        const rawPeriod = getEffectivePeriod(f);
         const periodOfFlight = String(rawPeriod || '').trim();
 
         const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
         const isNotCancelled = f.executionStatus !== 'בוטלה';
         const isNotPending = f.executionStatus !== 'טרם דווחה';
-        return isSamePeriod && isNotCancelled && isNotPending;
+        
+        // התוספת החדשה: גיחה מופרעת שדורשת ביצוע חוזר לא תיספר כירוקה
+        const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
+
+        return isSamePeriod && isNotCancelled && isNotPending && !needsRepeat;
     });
 
     const type = typeSelect.value;
@@ -162,7 +184,6 @@ window.profileManager.updateMatrix = function () {
     if (subPopName === "ALL") {
         groups.forEach(g => {
             let members = g.members || g.students || [];
-            // סינון לא-פעילים
             if (g.inactiveStudents) {
                 members = members.filter(m => !g.inactiveStudents.includes(m));
             }
@@ -173,7 +194,6 @@ window.profileManager.updateMatrix = function () {
         const group = groups.find(g => g.name.trim().replace(/["']/g, '"') === subPopName);
         if (group) {
             let members = group.members || group.students || [];
-            // סינון לא-פעילים לקורס הספציפי
             if (group.inactiveStudents) {
                 members = members.filter(m => !group.inactiveStudents.includes(m));
             }
@@ -182,11 +202,18 @@ window.profileManager.updateMatrix = function () {
     }
 
     const showQuotas = type === 'instructors' && insFlightType === 'instructor';
-    
-    // משיכת היעדים (תמיכה גם בפורמט הישן וגם בחדש מהאדמין)
     const quotas = {
         min: parseInt(periodConfig.minFlights || periodConfig.min) || 0,
         target: parseInt(periodConfig.targetFlights || periodConfig.target) || 0
+    };
+
+    // --- פונקציית עזר להבטחה שכלל סוגי הטייסים והמדריכות ייכנסו לספירה במטריצה ---
+    const getFlightPilots = (d) => {
+        return [
+            d['טייס ימין'], d['טייס שמאל'], d['pilot-right'], d['pilot-left'],
+            d['מדריך'], d['instructor-main'], d['מדריכה'], d['instructor-name-1'], 
+            d['מדריכה נוספת'], d['instructor-name-2']
+        ].map(n => n?.toString().trim()).filter(Boolean);
     };
 
     // בניית כותרת הטבלה (Thead)
@@ -226,15 +253,15 @@ window.profileManager.updateMatrix = function () {
 
         const bonusCount = filteredFlights.filter(f => {
             const d = f.data || {};
-            const names = [d['טייס ימין'], d['טייס שמאל'], d['מדריך']].map(n => n?.toString().trim());
-            return names.includes(cleanPilot) && (d['שם גיחה'] || '').includes('בונוס');
+            const pilots = getFlightPilots(d);
+            return pilots.includes(cleanPilot) && (d['שם גיחה'] || '').includes('בונוס');
         }).length;
 
         let totalForQuotas = 0;
         const cells = relevantFlights.map(flightName => {
             const flightsForCell = filteredFlights.filter(f => {
                 const d = f.data || {};
-                const pilots = [d['טייס ימין'], d['טייס שמאל'], d['מדריך']].map(n => n?.toString().trim());
+                const pilots = getFlightPilots(d);
                 return pilots.includes(cleanPilot) && (d['שם גיחה'] || '').trim() === flightName.trim();
             });
 
@@ -267,7 +294,6 @@ window.profileManager.updateMatrix = function () {
 
         }).join('');
 
-        // --- התיקון: שימוש בסך הגיחות הכולל עבור הצבעים ועמידה ביעד ---
         const totalFlightsCount = totalForQuotas + bonusCount;
 
         let quotasHtml = '';
@@ -467,12 +493,6 @@ async function populatePeriodSelector() {
         }
     }
 }
-
-const originalInitMatrixFilters = window.profileManager.initMatrixFilters;
-window.profileManager.initMatrixFilters = async function () {
-    await populatePeriodSelector();
-    await originalInitMatrixFilters.call(this);
-};
 
 function updateProfileChart(pilotName) {
     const chartTypeSelect = document.getElementById('profile-chart-type-select');
