@@ -1322,7 +1322,7 @@ async function createAndDownloadPDFReport(reportsData, periodName, customData = 
                 }
 
                 // הסרת כפילויות לחלוטין (ניקוי רווחים וסינון כפולות)
-                const uniqueGoals = [...new Set(report.metGoalsList.map(g => g.trim()))];
+                const uniqueGoals = [...new Set(report.metGoalsList.map(g => g.trim()))]; 
 
                 // --- התיקון: פונקציית עזר לסידור מספרים ורווחים במנוע ה-PDF ---
                 const fixPdfRtl = (text) => {

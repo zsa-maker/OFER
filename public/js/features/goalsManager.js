@@ -13,6 +13,10 @@ window.goalsManager.initGoalsScreen = async function () {
     const weekSelect = document.getElementById('goals-week-select');
     const periodSelect = document.getElementById('goals-period-select');
     const typeSelect = document.getElementById('goals-filter-flight-type');
+    
+    // הוספת משתנים לאוכלוסיות
+    const popTypeSelect = document.getElementById('goals-pop-type');
+    const subPopSelect = document.getElementById('goals-sub-pop');
 
     // 2. אכלוס הרשימות מראש (חובה לעשות לפני הוספת מאזינים)
     await populateGoalsPeriodSelect();
@@ -27,21 +31,26 @@ window.goalsManager.initGoalsScreen = async function () {
                 const weekLabel = document.querySelector('label[for="goals-week-select"]');
                 if (weekLabel) weekLabel.style.display = isAll ? 'none' : 'block';
             }
+            window.goalsManager.updateGoalsSubPops(); // רענון אוכלוסיות בעת שינוי תקופה
             window.goalsManager.populateWeekSelect();
             window.goalsManager.refreshGoalsAndMetrics();
         });
     }
 
     if (weekSelect) {
-        weekSelect.addEventListener('change', () => {
-            window.goalsManager.refreshGoalsAndMetrics();
-        });
+        weekSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
     }
 
     if (typeSelect) {
-        typeSelect.addEventListener('change', () => {
-            window.goalsManager.refreshGoalsAndMetrics();
-        });
+        typeSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
+    }
+
+    // מאזינים לשינוי באוכלוסיות
+    if (popTypeSelect) {
+        popTypeSelect.addEventListener('change', () => window.goalsManager.updateGoalsSubPops());
+    }
+    if (subPopSelect) {
+        subPopSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
     }
 
     // 4. חישוב והגדרת התקופה הנוכחית
@@ -54,8 +63,7 @@ window.goalsManager.initGoalsScreen = async function () {
     // 5. אכלוס שבועות רלוונטיים
     window.goalsManager.populateWeekSelect();
 
-    // 6. הטריגר ההתחלתי: משתמשים בהשהייה קלה (150ms) כדי לתת ל-HTML להירנדר
-    // ואז משגרים אירוע 'change' שמפעיל את שרשרת הרינדור בדיוק כאילו המשתמש ביצע סינון.
+    // 6. הטריגר ההתחלתי
     setTimeout(() => {
         console.log("DEBUG: Triggering initial render...");
         if (periodSelect) {
@@ -227,12 +235,15 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
 
     const periodSelect = document.getElementById('goals-period-select');
     const weekSelect = document.getElementById('goals-week-select');
-    // הוספת קריאה לאלמנט של סוג הגיחה
     const typeSelect = document.getElementById('goals-filter-flight-type');
+    const popTypeSelect = document.getElementById('goals-pop-type');
+    const subPopSelect = document.getElementById('goals-sub-pop');
 
     const selectedPeriod = periodSelect?.value;
     const selectedWeek = weekSelect?.value;
-    const selectedType = typeSelect?.value; // קריאת סוג הגיחה הנבחר
+    const selectedType = typeSelect?.value;
+    const popType = popTypeSelect?.value;
+    const subPopName = subPopSelect?.value?.trim().replace(/["']/g, '"') || "ALL";
 
     try {
         let filtered = (window.savedFlights || []).filter(f =>
@@ -251,17 +262,61 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
         if (selectedWeek && selectedWeek !== "ALL" && selectedWeek !== "") {
             filtered = filtered.filter(f => {
                 const fPeriod = window.getPeriodName ? window.getPeriodName(f.date) : f.period;
-                // מתעלמים מהמסד (f.week) ומחשבים על המקום
                 const flightWeek = window.calculateWeekNumber ? window.calculateWeekNumber(f.date, fPeriod) : f.week;
                 return String(flightWeek) === String(selectedWeek);
             });
         }
 
-        // 3. הוספת הסינון לפי סוג גיחה (התיקון)
+        // 3. סינון לפי סוג גיחה
         if (selectedType && selectedType !== "ALL" && selectedType !== "") {
             filtered = filtered.filter(f => {
                 return String(f.data?.['סוג גיחה'] || '').trim() === selectedType.trim();
             });
+        }
+
+        // 4. סינון לפי אוכלוסייה (הבלוק החסר שהוסף)
+        if (popType && popType !== "") {
+            let popData = await getPopDataForPeriod(selectedPeriod);
+
+            if (popData) {
+                let groups = [];
+                if (popType === 'instructors') groups = popData.instructorGroups || [];
+                else if (popType === 'conversion') groups = popData.conversionGroups || [];
+                else groups = popData.courses || [];
+
+                const cleanSubPopName = subPopName === "ALL" ? "ALL" : subPopName;
+
+                let relevantPilots = [];
+                if (cleanSubPopName === "ALL" || cleanSubPopName === "") {
+                    groups.forEach(g => {
+                        let members = g.members || g.students || [];
+                        if (g.inactiveStudents) members = members.filter(m => !g.inactiveStudents.includes(m));
+                        relevantPilots.push(...members);
+                    });
+                    relevantPilots = [...new Set(relevantPilots)];
+                } else {
+                    const group = groups.find(g => {
+                        const gName = g.name ? g.name.trim().replace(/["']/g, '"') : "";
+                        return gName === cleanSubPopName;
+                    });
+                    if (group) {
+                        let members = group.members || group.students || [];
+                        if (group.inactiveStudents) members = members.filter(m => !group.inactiveStudents.includes(m));
+                        relevantPilots = members;
+                    }
+                }
+
+                const cleanRelevantPilots = relevantPilots.map(p => p?.trim()).filter(Boolean);
+
+                filtered = filtered.filter(f => {
+                    const fData = f.data || {};
+                    const pilotsInFlight = [
+                        fData['טייס ימין'], fData['טייס שמאל'], fData['pilot-right'], fData['pilot-left']
+                    ].map(p => p?.toString().trim()).filter(Boolean);
+
+                    return cleanRelevantPilots.length > 0 && pilotsInFlight.some(p => cleanRelevantPilots.includes(p));
+                });
+            }
         }
 
         console.log("DEBUG: Filtered count after all filters:", filtered.length);
@@ -274,6 +329,7 @@ window.goalsManager.refreshGoalsAndMetrics = async function () {
         console.error("CRITICAL ERROR in refreshGoalsAndMetrics:", error);
     }
 };
+
 // פונקציית עזר מאוחדת לחישוב מספר שבוע לפי תקופה
 window.goalsManager.getWeekNumber = function (dateVal, periodName) {
     if (window.calculateWeekNumber) {
