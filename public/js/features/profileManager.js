@@ -124,7 +124,7 @@ window.profileManager.updateMatrix = function () {
     const allFlights = window.savedFlights || [];
     const filteredFlights = allFlights.filter(f => {
         // שימוש בפונקציה החכמה שתופסת גם דריסות וגם אישורים ידניים
-        const rawPeriod = getEffectivePeriod(f);
+        const rawPeriod = window.getEffectivePeriod ? window.getEffectivePeriod(f) : f.period;
         const periodOfFlight = String(rawPeriod || '').trim();
 
         const isSamePeriod = periodOfFlight === selectedPeriodName.trim();
@@ -182,9 +182,11 @@ window.profileManager.updateMatrix = function () {
     }
 
     const showQuotas = type === 'instructors' && insFlightType === 'instructor';
+    
+    // משיכת היעדים (תמיכה גם בפורמט הישן וגם בחדש מהאדמין)
     const quotas = {
-        min: parseInt(periodConfig.min) || 0,
-        target: parseInt(periodConfig.target) || 0
+        min: parseInt(periodConfig.minFlights || periodConfig.min) || 0,
+        target: parseInt(periodConfig.targetFlights || periodConfig.target) || 0
     };
 
     // בניית כותרת הטבלה (Thead)
@@ -195,6 +197,9 @@ window.profileManager.updateMatrix = function () {
         </th>
         <th class="border p-0 text-sm h-32 w-12 min-w-[48px] text-center align-bottom whitespace-nowrap">
             <div class="vertical-header inline-block font-bold">אוכלוסייה</div>
+        </th>
+        <th class="border p-0 text-xs h-32 w-12 min-w-[48px] text-center align-bottom bg-yellow-100">
+            <div class="vertical-header inline-block font-bold text-yellow-800">סה"כ</div>
         </th>
         <th class="border p-0 text-xs h-32 w-12 min-w-[48px] text-center align-bottom">
             <div class="vertical-header inline-block">בונוס</div>
@@ -262,14 +267,17 @@ window.profileManager.updateMatrix = function () {
 
         }).join('');
 
+        // --- התיקון: שימוש בסך הגיחות הכולל עבור הצבעים ועמידה ביעד ---
+        const totalFlightsCount = totalForQuotas + bonusCount;
+
         let quotasHtml = '';
         if (showQuotas) {
             quotasHtml = `
-                <td class="border p-0 w-12 min-w-[48px] text-center align-middle ${totalForQuotas >= quotas.min ? 'bg-green-500' : 'bg-red-500'}">
-                    <span class="text-white font-bold text-xs">${totalForQuotas}/${quotas.min}</span>
+                <td class="border p-0 w-12 min-w-[48px] text-center align-middle ${totalFlightsCount >= quotas.min ? 'bg-green-500' : 'bg-red-500'}">
+                    <span class="text-white font-bold text-xs">${totalFlightsCount}/${quotas.min}</span>
                 </td>
-                <td class="border p-0 w-12 min-w-[48px] text-center align-middle ${totalForQuotas >= quotas.target ? 'bg-green-500' : 'bg-red-500'}">
-                    <span class="text-white font-bold text-xs">${totalForQuotas}/${quotas.target}</span>
+                <td class="border p-0 w-12 min-w-[48px] text-center align-middle ${totalFlightsCount >= quotas.target ? 'bg-green-500' : 'bg-red-500'}">
+                    <span class="text-white font-bold text-xs">${totalFlightsCount}/${quotas.target}</span>
                 </td>
             `;
         }
@@ -277,6 +285,7 @@ window.profileManager.updateMatrix = function () {
         return `<tr>
             <td class="border p-2 font-bold sticky right-0 z-10 bg-white w-12 min-w-[48px] text-center whitespace-nowrap">${pilot}</td>
             <td class="border p-2 text-gray-600 text-sm w-12 min-w-[48px] text-center whitespace-nowrap">${subPop}</td>
+            <td class="border p-2 text-center font-bold text-yellow-800 text-sm bg-yellow-50 w-12 min-w-[48px]">${totalFlightsCount}</td>
             <td class="border p-2 text-center font-bold text-blue-600 text-sm bg-gray-50 w-12 min-w-[48px]">${bonusCount}</td>
             ${quotasHtml}${cells}
         </tr>`;
