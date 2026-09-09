@@ -3,7 +3,6 @@ import { savedFlights } from '../core/global.js';
 window.goalsManager = window.goalsManager || {};
 
 window.goalsManager.initGoalsScreen = async function () {
-    // 1. ווידוא טעינת נתונים בסיסית מול השרת/מטמון
     if (typeof window.statsManager?.ensureDataLoaded === 'function') {
         await window.statsManager.ensureDataLoaded();
     }
@@ -13,57 +12,59 @@ window.goalsManager.initGoalsScreen = async function () {
     const weekSelect = document.getElementById('goals-week-select');
     const periodSelect = document.getElementById('goals-period-select');
     const typeSelect = document.getElementById('goals-filter-flight-type');
-    
-    // הוספת משתנים לאוכלוסיות
     const popTypeSelect = document.getElementById('goals-pop-type');
     const subPopSelect = document.getElementById('goals-sub-pop');
 
-    // 2. אכלוס הרשימות מראש (חובה לעשות לפני הוספת מאזינים)
     await populateGoalsPeriodSelect();
     window.goalsManager.populateFlightTypeSelect();
 
-    // 3. הגדרת מאזינים (Event Listeners)
     if (periodSelect) {
-        periodSelect.addEventListener('change', () => {
+        // שינוי: הפכנו ל-async והסרנו את הקריאה הכפולה ל-refresh
+        periodSelect.addEventListener('change', async () => {
             const isAll = periodSelect.value === 'ALL';
             if (weekSelect) {
                 weekSelect.style.display = isAll ? 'none' : 'block';
                 const weekLabel = document.querySelector('label[for="goals-week-select"]');
                 if (weekLabel) weekLabel.style.display = isAll ? 'none' : 'block';
             }
-            window.goalsManager.updateGoalsSubPops(); // רענון אוכלוסיות בעת שינוי תקופה
             window.goalsManager.populateWeekSelect();
-            window.goalsManager.refreshGoalsAndMetrics();
+            await window.goalsManager.updateGoalsSubPops(); 
         });
     }
 
-    if (weekSelect) {
-        weekSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
+    if (weekSelect) weekSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
+    if (typeSelect) typeSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
+    if (popTypeSelect) popTypeSelect.addEventListener('change', () => window.goalsManager.updateGoalsSubPops());
+    if (subPopSelect) subPopSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
+
+    // --- תוספת חדשה: מאזינים לסלקטורים של הגרפים כדי שיגיבו מיידית ---
+    const goalSelector = document.getElementById('stats-goal-flight-selector');
+    if (goalSelector) {
+        goalSelector.addEventListener('change', () => {
+            if (typeof window.goalsManager.refreshGoalsChart === 'function') {
+                window.goalsManager.refreshGoalsChart();
+            }
+        });
     }
 
-    if (typeSelect) {
-        typeSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
+    const metricSelector = document.getElementById('stats-metric-selector');
+    if (metricSelector) {
+        metricSelector.addEventListener('change', () => {
+            if (typeof window.goalsManager.refreshMetricsChart === 'function') {
+                window.goalsManager.refreshMetricsChart();
+            }
+        });
     }
+    // -------------------------------------------------------------
 
-    // מאזינים לשינוי באוכלוסיות
-    if (popTypeSelect) {
-        popTypeSelect.addEventListener('change', () => window.goalsManager.updateGoalsSubPops());
-    }
-    if (subPopSelect) {
-        subPopSelect.addEventListener('change', () => window.goalsManager.refreshGoalsAndMetrics());
-    }
-
-    // 4. חישוב והגדרת התקופה הנוכחית
     if (periodSelect) {
         const currentPeriod = (window.getPeriodName ? window.getPeriodName(new Date()) : "").trim();
         const optionExists = [...periodSelect.options].some(o => o.value.trim() === currentPeriod);
         periodSelect.value = optionExists ? currentPeriod : 'ALL';
     }
 
-    // 5. אכלוס שבועות רלוונטיים
     window.goalsManager.populateWeekSelect();
 
-    // 6. הטריגר ההתחלתי
     setTimeout(() => {
         console.log("DEBUG: Triggering initial render...");
         if (periodSelect) {
@@ -170,20 +171,64 @@ async function populateGoalsPeriodSelect() {
 
 window.goalsManager.populateFlightTypeSelect = function() {
     const typeSelect = document.getElementById('goals-filter-flight-type');
-    if (!typeSelect) {
-        console.warn("Dropdown 'goals-filter-flight-type' not found.");
-        return;
+    if (!typeSelect) return;
+
+    const predefinedTypes = window.personnelLists?.flightTypes || ["יום אימון", "חניכים", "הסבת מדריכים", "צ'ק", "השכלה", "פנימי", "אבלואציה"];
+    
+    const typesWithGraphData = new Set();
+    const existingTypes = new Set(); // גיבוי לכל סוגי הגיחות הקיימים
+
+    (window.savedFlights || []).forEach(f => {
+        // חילוץ בטוח של סוג הגיחה (מונע קריסה אם השדה ריק)
+        const flightType = String(f.data?.['סוג גיחה'] || '').trim();
+        if (!flightType) return;
+        
+        existingTypes.add(flightType);
+
+        let hasData = false;
+
+        // 1. בדיקת נתונים לגרף היעדים
+        if (f.goalsStatus && typeof f.goalsStatus === 'object') {
+            const statuses = Object.values(f.goalsStatus).map(s => String(s).trim());
+            if (statuses.includes('עמד.ה') || statuses.includes('לא עמד.ה')) {
+                hasData = true;
+            }
+        }
+
+        // 2. בדיקת נתונים לגרף המדדים (אם עדיין לא מצאנו ביעדים)
+        if (!hasData) {
+            const selectedMetrics = Array.isArray(f.data?.['מדדי ביצוע']) ? f.data['מדדי ביצוע'] : [];
+            if (selectedMetrics.some(m => m && m.main && m.value)) {
+                hasData = true;
+            }
+        }
+
+        if (hasData) {
+            typesWithGraphData.add(flightType);
+        }
+    });
+
+    let typesToDisplay = [];
+    
+    // מנגנון חכם להצגת הקטגוריות:
+    if (typesWithGraphData.size > 0) {
+        // מצב א': יש לפחות גיחה אחת עם נתוני גרפים - נציג *רק* את הקטגוריות שיש להן נתונים
+        typesToDisplay = predefinedTypes.filter(t => typesWithGraphData.has(t));
+        typesWithGraphData.forEach(t => { if (!typesToDisplay.includes(t)) typesToDisplay.push(t); });
+    } 
+    else if (existingTypes.size > 0) {
+        // מצב ב': אין אף נתון לגרפים במערכת, אבל יש גיחות מתוכננות/ללא סטטוס
+        typesToDisplay = predefinedTypes.filter(t => existingTypes.has(t));
+        existingTypes.forEach(t => { if (!typesToDisplay.includes(t)) typesToDisplay.push(t); });
+    } 
+    else {
+        // מצב ג': המאגר ריק לגמרי מגיחות - נציג ברירת מחדל כדי שהתפריט לא יהיה ריק לחלוטין
+        typesToDisplay = predefinedTypes;
     }
 
-    // גישה לרשימה מתוך המשתנה הגלובלי שהוגדר ב-adminManager
-    // אם window.personnelLists לא זמין, נוודא שיש גיבוי או נבצע Import
-    const types = window.personnelLists?.flightTypes || ["יום אימון", "חניכים", "הסבת מדריכים", "צ'ק", "השכלה", "פנימי", "אבלואציה"];
-
-    // בניית האופציות
+    // בניית האופציות בסלקטור
     typeSelect.innerHTML = '<option value="ALL">כל הסוגים</option>' +
-        types.map(type => `<option value="${type}">${type}</option>`).join('');
-    
-    console.log("DEBUG: Flight types dropdown populated.");
+        typesToDisplay.map(type => `<option value="${type}">${type}</option>`).join('');
 };
 
 // 2. עדכון רשימת תתי-האוכלוסיות (קורסים/קבוצות)
@@ -349,18 +394,27 @@ function renderGoalsChart(flights) {
     const ctx = document.getElementById(id);
     const selector = document.getElementById('stats-goal-flight-selector');
     
-    // הגנת קריסה: אם אין קנבס או שאין סלקטור, לא להמשיך!
-    if (!ctx || !selector) {
-        console.warn("DEBUG: renderGoalsChart missing canvas or selector. Aborting.");
-        return;
-    }
+    if (!ctx || !selector) return;
 
     destroyChartIfExists('goals', id);
 
     const currentSelectedName = selector.value || "";
     const namesSet = new Set();
+    
+    // שינוי: הוספת גיחה לרשימה רק אם קיימים עבורה נתוני יעדים במציאות
     flights.forEach(f => {
-        if (f.data?.['שם גיחה']) namesSet.add(f.data['שם גיחה']);
+        if (f.data?.['שם גיחה']) {
+            let hasGoals = false;
+            if (f.goalsStatus && typeof f.goalsStatus === 'object') {
+                const statuses = Object.values(f.goalsStatus);
+                if (statuses.includes('עמד.ה') || statuses.includes('לא עמד.ה')) {
+                    hasGoals = true;
+                }
+            }
+            if (hasGoals) {
+                namesSet.add(f.data['שם גיחה']);
+            }
+        }
     });
 
     const newHtml = '<option value="">כל הגיחות</option>' +
@@ -368,6 +422,11 @@ function renderGoalsChart(flights) {
 
     if (selector.innerHTML !== newHtml) {
         selector.innerHTML = newHtml;
+    }
+    
+    // אם הגיחה שנבחרה קודם הוסרה (כי היא ריקה), נאפס ל"כל הגיחות"
+    if (currentSelectedName && !namesSet.has(currentSelectedName)) {
+        selector.value = "";
     }
 
     const activeFlightName = selector.value;
@@ -384,26 +443,30 @@ function renderGoalsChart(flights) {
         }
     });
 
-    // המשך בניית הגרף (Chart.js)...
+    // טיפול חזותי במצב ללא נתונים
+    const hasData = met > 0 || notMet > 0;
+
     chartInstances.goals = new Chart(ctx, {
         type: 'pie',
         plugins: [ChartDataLabels],
         data: {
-            labels: ['עמד.ה ביעדים', 'לא עמד.ה ביעדים'],
+            labels: hasData ? ['עמד.ה ביעדים', 'לא עמד.ה ביעדים'] : ['אין נתונים'],
             datasets: [{
-                data: [met, notMet],
-                backgroundColor: ['#10B981', '#EF4444'],
+                data: hasData ? [met, notMet] : [1],
+                backgroundColor: hasData ? ['#10B981', '#EF4444'] : ['#e5e7eb'],
+                borderWidth: hasData ? 1 : 0
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
+                tooltip: { enabled: hasData },
                 datalabels: {
                     color: '#fff',
                     font: { weight: 'bold', size: 14 },
                     formatter: (value, ctx) => {
-                        if (value === 0) return '';
+                        if (!hasData || value === 0) return '';
                         if (!showAsPercent) return value;
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                         return ((value / total) * 100).toFixed(1) + "%";
@@ -470,13 +533,10 @@ function renderMetricsUtilizationChart(flights) {
     const selector = document.getElementById('stats-metric-selector');
     if (!ctx || !selector) return;
 
-    console.log("DEBUG: Rendering Metrics Chart. Flights count:", flights.length);
-
     destroyChartIfExists('metrics', id);
 
     const metricsData = {};
     flights.forEach(f => {
-        // וודאי שאנחנו מחפשים בשדה הנכון - המדדים נמצאים בתוך f.data['מדדי ביצוע']
         const selectedMetrics = Array.isArray(f.data?.['מדדי ביצוע']) ? f.data['מדדי ביצוע'] : [];
         selectedMetrics.forEach(m => {
             if (m && m.main && m.value) {
@@ -485,8 +545,6 @@ function renderMetricsUtilizationChart(flights) {
             }
         });
     });
-
-    console.log("DEBUG: Metrics Data keys:", Object.keys(metricsData));
 
     const currentSelected = selector.value;
     const newHtml = Object.keys(metricsData).map(m =>
@@ -497,9 +555,22 @@ function renderMetricsUtilizationChart(flights) {
         selector.innerHTML = newHtml;
     }
 
+    // שינוי: אם המדד שהיה מסומן קודם סונן החוצה, בחר אוטומטית במדד הראשון הקיים
+    if (currentSelected && !metricsData[currentSelected] && Object.keys(metricsData).length > 0) {
+        selector.value = Object.keys(metricsData)[0];
+    }
+
     const activeMetric = selector.value;
 
-    if (!activeMetric || !metricsData[activeMetric]) return;
+    if (!activeMetric || !metricsData[activeMetric]) {
+        // מציג עיגול אפור במקרה של 0 מדדים מדווחים (במקום קנבס שקוף וקפוא)
+        chartInstances.metrics = new Chart(ctx, {
+            type: 'pie',
+            data: { labels: ['אין נתונים'], datasets: [{ data: [1], backgroundColor: ['#e5e7eb'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { enabled: false }, datalabels: { formatter: () => '' } } }
+        });
+        return;
+    }
 
     const subLabels = Object.keys(metricsData[activeMetric]);
     const subValues = Object.values(metricsData[activeMetric]);
