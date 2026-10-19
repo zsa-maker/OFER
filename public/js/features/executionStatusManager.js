@@ -36,11 +36,10 @@ export function getExecutionStatusBadge(flight) {
                 </span>`;
     }
 
-    // 3. מקרה "גיחה מופרעת" (כתום) - התיקון הנדרש
     // בודק אם הגיחה דווחה/בוצעה ידנית, אבל סוג הביצוע סומן כ"חלקי"
-    if (executionType === 'מופרעת' || executionType === 'ביצוע חלקי' || status === 'גיחה מופרעת' || executionType === 'חלקי') {
+    if (executionType === 'מופרעת' || executionType === 'ביצוע חלקי' || status === 'גיחה מופרעת' || executionType === 'חלקי' || status === 'גיחה חלקית' ) {
         return `<span class="${baseClasses} bg-orange-100 text-orange-800">
-                    גיחה מופרעת
+                    גיחה חלקית
                 </span>`;
     }
 

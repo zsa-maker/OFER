@@ -432,11 +432,11 @@ function renderExecutionStatusChart(flights) {
     if (!ctx) return;
     destroyChartIfExists('execution', id);
 
-    let counts = { 'בוצעו במלואן': 0, 'גיחות מופרעות': 0, 'בוטלו': 0 };
+    let counts = { 'בוצעו במלואן': 0, 'גיחות חלקיות': 0, 'בוטלו': 0 };
     flights.forEach(f => {
         const status = getFlightStatus(f);
         if (status === 'full') counts['בוצעו במלואן']++;
-        else if (status === 'partial') counts['גיחות מופרעות']++;
+        else if (status === 'partial') counts['גיחות חלקיות']++;
         else if (status === 'cancelled') counts['בוטלו']++;
     });
 
@@ -599,22 +599,49 @@ function showCancellationDetailsPopup(reason, flights, faultsMap) {
         let notes = d['הערות כלליות'] || d['הערות ביטול'] || '';
         
         // אם זה טכני, ננסה לשלוף את המערכת שהתקלקלה
-        if (reason.includes('טכני')) {
+       if (reason.includes('טכני')) {
             const fId = f.id || f.flightId;
-            const faults = [...(faultsMap[fId] || []), ...(f.faults || [])];
-            if (faults.length > 0) {
-                const faultSystems = faults.map(fault => fault.systemClassification || fault.classification || 'ללא סיווג');
+            // משיכת התקלות מתוך המאגר המאוחד (כדי שיהיה לנו את מפתח התקלה האמיתי)
+            const unifiedFaults = faultsMap[fId] || [];
+            
+            if (unifiedFaults.length > 0) {
+                // יצירת כפתורים עבור כל תקלה מקושרת
+                const faultButtonsHtml = unifiedFaults.map(fault => {
+                    const safeKey = fault.key ? fault.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
+                    const sys = fault.systemClassification || fault.classification || 'ללא סיווג';
+                    const shortDesc = fault.description ? fault.description.replace(/"/g, '&quot;') : '';
+                    
+                    return `
+                        <button onclick="document.getElementById('cancellation-popup').remove(); window.showFaultDetailsModal('${safeKey}')" 
+                                class="inline-flex items-center gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 rounded text-[11px] font-medium transition-colors ml-1 mt-1 border border-blue-200"
+                                title="${shortDesc}">
+                            <span>🔧 צפה בתקלה (${sys})</span>
+                        </button>`;
+                }).join('');
+                
+                notes = notes ? `${notes} <div class="mt-2 flex flex-wrap gap-1">${faultButtonsHtml}</div>` : `<div class="flex flex-wrap gap-1">${faultButtonsHtml}</div>`;
+            } else if (f.faults && f.faults.length > 0) {
+                // גיבוי לגיחות ישנות שבהן התקלה לא עלתה למאגר המאוחד
+                const faultSystems = f.faults.map(fault => fault.systemClassification || fault.classification || 'ללא סיווג');
                 const systemsText = `מערכות מדווחות: ${faultSystems.join(', ')}`;
                 notes = notes ? `${notes} | ${systemsText}` : systemsText;
             }
         }
-        
-        if (!notes) notes = 'אין הערות';
+       if (!notes) notes = 'אין הערות';
+
+        // המזהה של הגיחה
+        const flightIdForClick = f.id || f.flightId;
 
         tableHtml += `
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-2 text-gray-700">${dateStr}</td>
-                <td class="px-4 py-2 font-medium text-gray-900">${name}</td>
+                <td class="px-4 py-2 font-medium">
+                    <button onclick="document.getElementById('cancellation-popup').remove(); window.showFlightDetails('${flightIdForClick}')" 
+                            class="text-blue-600 hover:text-blue-800 hover:underline transition-colors focus:outline-none text-right font-bold"
+                            title="לחץ לתצוגת פרטי הגיחה">
+                        ${name}
+                    </button>
+                </td>
                 <td class="px-4 py-2 text-gray-700">${instructor}</td>
                 <td class="px-4 py-2 text-gray-700">${trainee}</td>
                 <td class="px-4 py-2 text-gray-500">${notes}</td>
@@ -839,7 +866,6 @@ function renderPlanningVsExecutionChart(executedFlights, planningData, dateFilte
         const status = getFlightStatus(f);
         const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
 
-        // הוספה של גיחות שנעשו במלואן או גיחות מופרעות שלא נדרשות לביצוע שנית בלבד
         if (status === 'full' || (status === 'partial' && !needsRepeat)) {
             const dStr = getLocalDStr(f.date);
             allDates.add(dStr);
@@ -1033,7 +1059,7 @@ function getFlightStatus(flight) {
     const d = flight.data || {};
     const flightType = d['סוג גיחה'] || '';
     if (status === 'בוטלה' || status === 'גיחה בוטלה' || d['סיבת ביטול'] || flightType === 'ביטול גיחה') return 'cancelled';
-    if (flightType === 'ביצוע גיחה מופרעת' || d['סוג ביצוע'] === 'מופרעת' || d['סוג ביצוע'] === 'חלקי' || flightType === 'גיחה חלקי') return 'partial';
+    if (flightType === 'ביצוע גיחה מופרעת' || d['סוג ביצוע'] === 'מופרעת' || d['סוג ביצוע'] === 'חלקי' || flightType === 'גיחה חלקי'|| flightType === 'גיחה חלקית') return 'partial';
     return 'full';
 }
 

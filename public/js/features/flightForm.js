@@ -360,7 +360,7 @@ function setupReportMode(flightStatus, flightData) {
 
     let mode = 'full'; // ברירת מחדל לגיחה חדשה
     if (flightStatus === 'ביטול גיחה' || (flightData && flightData.executionStatus === 'בוטלה')) mode = 'cancel';
-    else if (flightStatus === 'ביצוע גיחה מופרעת' || (flightData && flightData.data && (flightData.data['סוג ביצוע'] === 'מופרעת' || flightData.data['סוג ביצוע'] === 'חלקי'))) mode = 'partial';
+    else if (flightStatus === 'ביצוע גיחה מופרעת' || flightStatus === 'ביצוע גיחה חלקית' || (flightData && flightData.data && (flightData.data['סוג ביצוע'] === 'מופרעת' || flightData.data['סוג ביצוע'] === 'חלקי'))) mode = 'partial';
 
     if (mode === 'cancel' && flightData) {
         const reason = flightData.data['סיבת ביטול'];
@@ -407,7 +407,7 @@ export function setReportMode(mode) {
             saveButton.textContent = 'דווח גיחה';
             saveButton.classList.add('bg-green-600', 'hover:bg-green-700');
         } else if (mode === 'partial') {
-            saveButton.textContent = 'אשר וסיים גיחה מופרעת';
+            saveButton.textContent = 'אשר וסיים גיחה חלקית';
             saveButton.classList.add('bg-ofer-light-orange', 'hover:bg-ofer-orange');
         } else if (mode === 'cancel') {
             saveButton.textContent = 'אשר ביטול גיחה';
@@ -723,7 +723,7 @@ export async function handleReportFlight() {
         } else {
             currentForm.data['נדרש ביצוע חוזר'] = 'לא';
         }
-        currentForm.data['סוג ביצוע'] = 'מופרעת';
+        currentForm.data['סוג ביצוע'] = 'חלקי';
     } else if (currentReportMode === 'full' || currentReportMode === 'unplanned') {
         // התייחסות לגיחה לא מתוכננת כאל ביצוע מלא
         currentForm.data['סוג ביצוע'] = 'מלא';

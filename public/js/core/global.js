@@ -21,8 +21,7 @@ export const simulatorFaults = {};
 let isPendingSelectionMode = false;
 let pendingSelectedSet = new Set();
 
-// הערה: נשמרה הטרמינולוגיה "גיחה מופרעת" בהתאם לבקשתך ההיסטורית
-export const flightTypes = ['גיחה רגילה', 'גיחה מופרעת', 'ביטול גיחה'];
+export const flightTypes = ['גיחה רגילה', 'גיחה חלקית', 'ביטול גיחה'];
 
 // משתנים גלובליים דינמיים
 export let savedFlights = [];

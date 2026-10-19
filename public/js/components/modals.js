@@ -170,7 +170,7 @@ export async function showFlightDetailsModal(flightId) {
     }
 
     // בדיקה אם הגיחה בוצעה חלקית
-    const isPartial = flight.data['סוג ביצוע'] === 'מופרעת' || flight.data['סוג גיחה'] === 'גיחה מופרעת';
+    const isPartial = flight.data['סוג ביצוע'] === 'חלקי' || flight.data['סוג גיחה'] === 'גיחה חלקית';
     if (isPartial) {
         const repeatRequired = flight.data['נדרש ביצוע חוזר'] === 'כן';
         const repeatText = flight.data['נדרש ביצוע חוזר'] || 'לא צוין';
@@ -178,7 +178,7 @@ export async function showFlightDetailsModal(flightId) {
         statusHtml += `
             <div class="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-sm">
                 <h3 class="text-lg font-bold text-orange-800 mb-2 flex items-center">
-                    <span class="text-2xl mr-2">⚠️</span> ביצוע מופרע
+                    <span class="text-2xl mr-2">⚠️</span> ביצוע חלקי
                 </h3>
                 <div class="grid grid-cols-1 gap-3 text-sm">
                     <div class="flex items-center">

@@ -149,7 +149,6 @@ window.profileManager.updateMatrix = function () {
         const isNotCancelled = f.executionStatus !== 'בוטלה';
         const isNotPending = f.executionStatus !== 'טרם דווחה';
         
-        // התוספת החדשה: גיחה מופרעת שדורשת ביצוע חוזר לא תיספר כירוקה
         const needsRepeat = f.data?.['נדרש ביצוע חוזר'] === 'כן';
 
         return isSamePeriod && isNotCancelled && isNotPending && !needsRepeat;

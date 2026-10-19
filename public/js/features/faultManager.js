@@ -17,31 +17,32 @@ let faultSelectedSet = new Set();
  */
 window.openManualFaultModal = function () {
     const simSelect = document.getElementById('manual-fault-sim');
-    const techSelect = document.getElementById('manual-fault-instructor'); // זהו השדה של הדיווח
-    const sysSelect = document.getElementById('manual-sys-input');
+    const techSelect = document.getElementById('manual-fault-instructor');
+    
+    // החלפת שדה ה-SELECT הקיים במבנה דינמי לאקורדיון
+    const sysSelectContainer = document.getElementById('manual-sys-input')?.parentElement;
+    if (sysSelectContainer && document.getElementById('manual-sys-input').tagName === 'SELECT') {
+        sysSelectContainer.innerHTML = `
+            <label class="block text-xs font-bold mb-1">סיווג מערכת (חובה)</label>
+            <div class="relative">
+                <div id="manual-sys-trigger" class="w-full border rounded p-2 bg-white cursor-pointer flex justify-between items-center transition-colors">
+                    <span id="manual-sys-display">בחר סיווג מערכת...</span>
+                    <i class="fas fa-chevron-down text-gray-500 text-xs"></i>
+                </div>
+                <div id="manual-sys-menu" class="hidden absolute z-[100] w-full mt-1 bg-white border rounded shadow-lg max-h-64 overflow-y-auto"></div>
+                <input type="hidden" id="manual-sys-input" value="">
+            </div>
+        `;
+    }
 
     if (simSelect && window.personnelLists?.simulators) {
         simSelect.innerHTML = '<option value="" disabled selected>בחר מאמן...</option>' +
             window.personnelLists.simulators.map(s => `<option value="${s}">${s}</option>`).join('');
     }
 
-    // תיקון: שימוש ברשימת הטכנאים (technicians) במקום מדריכות
     if (techSelect && window.personnelLists?.technicians) {
         techSelect.innerHTML = '<option value="" disabled selected>בחר טכנאי מדווח...</option>' +
             window.personnelLists.technicians.map(t => `<option value="${t}">${t}</option>`).join('');
-    }
-
-    if (sysSelect && window.systemClassifications) {
-        let sysOptions = '<option value="">ללא סיווג</option>';
-        Object.keys(window.systemClassifications).sort().forEach(category => {
-            const subItems = window.systemClassifications[category] || [];
-            if (subItems.length > 0) {
-                subItems.forEach(sub => { sysOptions += `<option value="${category} - ${sub}">${category} - ${sub}</option>`; });
-            } else {
-                sysOptions += `<option value="${category}">${category}</option>`;
-            }
-        });
-        sysSelect.innerHTML = sysOptions;
     }
 
     const timeInput = document.getElementById('manual-fault-time');
@@ -51,21 +52,29 @@ window.openManualFaultModal = function () {
         timeInput.value = now.toISOString().slice(0, 16);
     }
 
+    // הפעלת האקורדיון
+    setupCustomDropdown('manual-sys-trigger', 'manual-sys-menu', 'manual-sys-input', 'manual-sys-display', '');
+
     document.getElementById('manual-fault-modal')?.classList.remove('hidden');
 };
 
 window.saveManualFault = async function () {
     const sim = document.getElementById('manual-fault-sim').value;
-    const instructor = document.getElementById('manual-fault-instructor').value; // יכול להיות ריק
+    const instructor = document.getElementById('manual-fault-instructor').value; 
     const desc = document.getElementById('manual-fault-desc').value.trim();
     const sysClass = document.getElementById('manual-sys-input').value;
     const severity = document.getElementById('manual-fault-severity').value;
     const isDowntime = document.getElementById('manual-fault-downtime').checked;
     const timeStr = document.getElementById('manual-fault-time').value;
 
-    if (!sim || !desc || !timeStr) {
-        import('../components/modals.js').then(m => m.showToast("נא למלא תאריך, מאמן ותיאור", "yellow"));
+    if (!sim || !desc || !timeStr || !sysClass) {
+        if (!sysClass) {
+            document.getElementById('manual-sys-trigger')?.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+        }
+        import('../components/modals.js').then(m => m.showToast("נא למלא את כל שדות החובה", "yellow"));
         return;
+    } else {
+        document.getElementById('manual-sys-trigger')?.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
     }
 
     const faultData = {
@@ -81,11 +90,7 @@ window.saveManualFault = async function () {
 
     try {
         const { collection, addDoc } = window.firestoreFunctions;
-
-        // שמירה במסד הנתונים וקבלת ה-ID החדש
         const docRef = await addDoc(collection(window.db, "standalone_faults"), faultData);
-
-        // עדכון המערך המקומי כדי שהטבלה תתעדכן מיד
         const newFaultWithId = { id: docRef.id, ...faultData };
         if (!window.standaloneFaults) window.standaloneFaults = [];
         window.standaloneFaults.push(newFaultWithId);
@@ -95,7 +100,6 @@ window.saveManualFault = async function () {
             m.hideAllModals();
         });
 
-        // עיבוד מחדש ורינדור של הטבלה
         if (typeof window.processFaultsData === 'function') window.processFaultsData();
         if (typeof window.renderFaultDatabaseTable === 'function') window.renderFaultDatabaseTable();
 
@@ -104,6 +108,7 @@ window.saveManualFault = async function () {
         import('../components/modals.js').then(m => m.showToast("שגיאה בשמירה", "red"));
     }
 };
+
 /**
  * אתחול מאגר התקלות - הגדרת פילטרים וביצוע רינדור ראשוני
  */
@@ -451,34 +456,58 @@ export function processFaultsData() {
 
 function buildDropdownMenu(systems, onSelect) {
     const menuContainer = document.createElement('div');
-    menuContainer.className = "flex flex-col text-right text-sm bg-white border border-gray-200 shadow-lg rounded-md";
+    menuContainer.className = "flex flex-col text-right text-sm bg-white";
 
     Object.keys(systems).sort().forEach(category => {
         const subItems = systems[category] || [];
         const hasSubs = subItems.length > 0;
         const itemContainer = document.createElement('div');
-        itemContainer.className = "relative group border-b border-gray-100 last:border-0";
+        itemContainer.className = "border-b border-gray-100 last:border-0";
 
         const row = document.createElement('div');
-        row.className = `flex justify-between items-center px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors`;
+        row.className = `flex justify-between items-center px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors font-bold text-gray-700`;
         row.innerHTML = `<span>${category}</span>`;
 
         if (hasSubs) {
-            row.innerHTML += `<i class="fas fa-chevron-left text-gray-400 text-[10px]"></i>`;
+            row.innerHTML += `<i class="fas fa-chevron-down text-gray-400 text-xs transition-transform duration-200"></i>`;
             const subMenu = document.createElement('div');
-            subMenu.className = "hidden group-hover:block absolute top-0 right-full w-48 bg-white border border-gray-200 shadow-xl rounded-md z-[1000]";
+            subMenu.className = "hidden bg-gray-50 border-t border-gray-100";
+            
             subItems.forEach(sub => {
                 const subRow = document.createElement('div');
-                subRow.className = "px-4 py-2 hover:bg-ofer-primary-50 cursor-pointer text-gray-700 hover:text-ofer-orange transition-colors border-b border-gray-50 last:border-0";
+                subRow.className = "px-6 py-2 hover:bg-ofer-primary-50 cursor-pointer text-gray-600 hover:text-ofer-orange transition-colors border-b border-gray-50 last:border-0 text-xs";
                 subRow.textContent = sub;
-                subRow.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onSelect(`${category} - ${sub}`); };
+                subRow.onclick = (e) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation(); 
+                    onSelect(`${category} - ${sub}`); 
+                };
                 subMenu.appendChild(subRow);
             });
+            
+            row.onclick = (e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                const isHidden = subMenu.classList.contains('hidden');
+                if(isHidden) {
+                    subMenu.classList.remove('hidden');
+                    row.querySelector('i').style.transform = 'rotate(180deg)';
+                } else {
+                    subMenu.classList.add('hidden');
+                    row.querySelector('i').style.transform = 'rotate(0deg)';
+                }
+            };
+            
+            itemContainer.appendChild(row);
             itemContainer.appendChild(subMenu);
         } else {
-            row.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onSelect(category); };
+            row.onclick = (e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                onSelect(category); 
+            };
+            itemContainer.appendChild(row);
         }
-        itemContainer.appendChild(row);
         menuContainer.appendChild(itemContainer);
     });
     return menuContainer;
@@ -491,12 +520,24 @@ export function setupCustomDropdown(triggerId, menuId, inputId, displayId, initi
     const display = document.getElementById(displayId);
     if (!trigger || !menu || !input || !display) return;
 
-    if (initialValue) { input.value = initialValue; display.textContent = initialValue; }
-    else { input.value = ""; display.textContent = "בחר מערכת..."; }
+    if (initialValue) { 
+        input.value = initialValue; 
+        display.textContent = initialValue; 
+    } else { 
+        input.value = ""; 
+        display.textContent = "בחר סיווג מערכת..."; 
+    }
 
     const systems = window.systemClassifications || {};
     menu.innerHTML = '';
-    const handleSelect = (value) => { input.value = value; display.textContent = value; menu.classList.add('hidden'); };
+    
+    const handleSelect = (value) => { 
+        input.value = value; 
+        display.textContent = value; 
+        menu.classList.add('hidden');
+        trigger.classList.remove('border-red-500', 'ring-1', 'ring-red-500'); // הסרת שגיאה אדומה אם קיימת
+    };
+    
     menu.appendChild(buildDropdownMenu(systems, handleSelect));
 
     trigger.onclick = (e) => {
@@ -506,9 +547,18 @@ export function setupCustomDropdown(triggerId, menuId, inputId, displayId, initi
         if (isHidden) menu.classList.remove('hidden');
     };
 
-    document.addEventListener('click', (e) => {
-        if (!trigger.contains(e.target) && !menu.contains(e.target)) menu.classList.add('hidden');
-    });
+    if (!window.accordionListenerAttached) {
+        document.addEventListener('click', (e) => {
+            document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                const trigId = m.id.replace('-menu', '-trigger');
+                const trig = document.getElementById(trigId);
+                if (trig && !trig.contains(e.target) && !m.contains(e.target)) {
+                    m.classList.add('hidden');
+                }
+            });
+        });
+        window.accordionListenerAttached = true;
+    }
 }
 
 export function toggleOtherFaultInput(selectElement) {
@@ -995,30 +1045,12 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
     const currentTime = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
     const currentDate = now.toISOString().split('T')[0];
 
-    // חילוץ תאריך ושעת פתיחת התקלה
     const firstReportDate = new Date(faultData.firstReportTimestamp);
     const openDateStr = firstReportDate.toLocaleDateString('he-IL');
     const openTimeStr = firstReportDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
 
     const techOptions = (window.personnelLists?.technicians || [])
         .map(t => `<option value="${t}">${t}</option>`).join('');
-
-    // בניית אפשרויות סיווג מערכת (לשינוי סיווג קיים)
-    const systems = window.systemClassifications || {};
-    let sysOptions = '<option value="">ללא סיווג / בחר מערכת...</option>';
-    Object.keys(systems).sort().forEach(category => {
-        const subItems = systems[category] || [];
-        if (subItems.length > 0) {
-            subItems.forEach(sub => {
-                const val = `${category} - ${sub}`;
-                const selected = (faultData.systemClassification === val) ? 'selected' : '';
-                sysOptions += `<option value="${val}" ${selected}>${val}</option>`;
-            });
-        } else {
-            const selected = (faultData.systemClassification === category) ? 'selected' : '';
-            sysOptions += `<option value="${category}" ${selected}>${category}</option>`;
-        }
-    });
 
     let existingData = {};
     if (isEditMode && faultData.status) {
@@ -1047,10 +1079,15 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
             </div>
 
             <div>
-                <label class="block text-xs font-bold mb-1">סיווג מערכת (ניתן לשינוי)</label>
-                <select id="res-system-class" class="w-full border rounded p-2 focus:ring-ofer-primary-500 focus:border-ofer-primary-500">
-                    ${sysOptions}
-                </select>
+                <label class="block text-xs font-bold mb-1">סיווג מערכת (חובה)</label>
+                <div class="relative text-right">
+                    <div id="res-sys-trigger" class="w-full border rounded p-2 bg-white cursor-pointer flex justify-between items-center transition-colors">
+                        <span id="res-sys-display">בחר סיווג מערכת...</span>
+                        <i class="fas fa-chevron-down text-gray-500 text-xs"></i>
+                    </div>
+                    <div id="res-sys-menu" class="hidden absolute z-[100] w-full mt-1 bg-white border rounded shadow-lg max-h-64 overflow-y-auto"></div>
+                    <input type="hidden" id="res-system-class" value="${faultData.systemClassification || ''}">
+                </div>
             </div>
 
             <div>
@@ -1090,7 +1127,7 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
                 </select>
             </div>
 
-<div id="verified-section">
+            <div id="verified-section">
                 <label class="block text-xs font-bold mb-1">האם התקלה אומתה? (חובה)</label>
                 <div class="flex gap-4 p-2 border rounded bg-gray-50">
                     <label class="flex items-center gap-1 cursor-pointer">
@@ -1149,6 +1186,9 @@ function openResolutionForm(faultKey, faultData, isEditMode = false) {
         if (existingData.faultCategory) document.getElementById('res-category').value = existingData.faultCategory;
     }
 
+    // חיבור מנגנון האקורדיון
+    setupCustomDropdown('res-sys-trigger', 'res-sys-menu', 'res-system-class', 'res-sys-display', faultData.systemClassification || '');
+
     modal.classList.remove('hidden');
     window.updateResolutionFieldsVisibility();
 }
@@ -1181,18 +1221,34 @@ async function processFaultClosure(faultKey) {
     const isPermission = document.getElementById('res-permission').checked;
     const isFinalClosure = document.getElementById('res-final-closure')?.checked;
 
-    // אם המשתמש סימן שזה טופל סופית - התקלה כבר אינה מוגדרת פתוחה תחת היתר
     const finalIsClosedWithPermission = isFinalClosure ? false : isPermission;
+
+    if (finalIsClosedWithPermission) {
+        const confirmPermission = confirm('האם יש אישור של מנהל אתר / מפקד מה"ד?');
+        if (!confirmPermission) return;
+    }
+
+    // ולידציה לשדה האקורדיון של סיווג המערכת
+    const systemClassInput = document.getElementById('res-system-class');
+    const systemClassTrigger = document.getElementById('res-sys-trigger');
+    const systemClassVal = systemClassInput ? systemClassInput.value : '';
+
+    if (!systemClassVal) {
+        if (systemClassTrigger) systemClassTrigger.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+        showToast("יש לבחור סיווג מערכת", "red");
+        return;
+    } else {
+        if (systemClassTrigger) systemClassTrigger.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+    }
 
     const verifiedRadio = document.querySelector('input[name="verified-status"]:checked');
     const description = document.getElementById('res-desc').value.trim();
     const faultCategoryVal = document.getElementById('res-category').value;
-    const systemClassVal = document.getElementById('res-system-class').value;
+    
     const isEditMode = document.getElementById('res-final-closure') !== null;
 
     if (!technician) { showToast("יש לבחור טכנאי", "red"); return; }
 
-    // בדיקת ולידציה של אופן הטיפול רק אם זו לא סגירה רגילה בהיתר
     if (!finalIsClosedWithPermission) {
         if (!verifiedRadio) { showToast("יש לסמן האם התקלה אומתה", "red"); return; }
         if (!description) { showToast("יש להזין פירוט על הטיפול", "red"); return; }
@@ -1209,7 +1265,7 @@ async function processFaultClosure(faultKey) {
         isVerified: verifiedRadio ? verifiedRadio.value === 'true' : false,
         resolutionDescription: description || "נסגר בהיתר - ללא פירוט",
         isClosedWithPermission: finalIsClosedWithPermission,
-        wasClosedWithPermission: isEditMode ? true : isPermission, // סימון לטובת המדדים אם עבר היתר
+        wasClosedWithPermission: isEditMode ? true : isPermission,
         permissionNote: finalIsClosedWithPermission ? document.getElementById('res-permission-note').value : "",
         date: dateVal,
         time: timeVal,
@@ -1225,16 +1281,16 @@ async function processFaultClosure(faultKey) {
 
         if (window.unifiedFaultsDatabase[faultKey]) {
             window.unifiedFaultsDatabase[faultKey].status = closureData;
-            window.unifiedFaultsDatabase[faultKey].systemClassification = systemClassVal; // עדכון מקומי של סיווג המערכת
+            window.unifiedFaultsDatabase[faultKey].systemClassification = systemClassVal;
         }
 
         showToast("התקלה נסגרה/עודכנה בהצלחה", "green");
-        hideAllModals();
+        if(typeof window.hideAllModals === 'function') window.hideAllModals();
 
         if (window.currentScreen === 'simulator-management-screen' && window.renderSimulatorDashboard) {
             window.renderSimulatorDashboard();
         } else {
-            renderFaultDatabaseTable();
+            if(typeof window.renderFaultDatabaseTable === 'function') window.renderFaultDatabaseTable();
         }
 
     } catch (e) {
