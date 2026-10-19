@@ -231,6 +231,22 @@ export function setupFormEvents() {
             }
             return;
         }
+
+        // --- שינוי ברדיו "האם היה מופרע?" בגיחה מלאה ---
+        if (target && target.name === 'flight-disturbed') {
+            const distContainer = document.getElementById('disturbance-details-container');
+            const distLevel = document.getElementById('disturbance-level-select');
+            const distInput = document.getElementById('disturbance-details-input');
+
+            if (target.value === 'yes') {
+                if (distContainer) distContainer.classList.remove('hidden');
+            } else {
+                if (distContainer) distContainer.classList.add('hidden');
+                if (distLevel) distLevel.value = '';
+                if (distInput) distInput.value = '';
+            }
+            return;
+        }
     });
     console.log('Flight form events initialized (Delegation Mode)');
 }

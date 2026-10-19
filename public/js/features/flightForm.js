@@ -346,21 +346,43 @@ function restoreFormValues() {
 }
 
 function setupReportMode(flightStatus, flightData) {
+    ensureFullFlightDisturbanceSection();
+
     const partialSection = document.getElementById('partial-flight-section');
     const cancellationSection = document.getElementById('cancellation-section');
+    const disturbanceSection = document.getElementById('full-flight-disturbance-section');
     const statusSelector = document.getElementById('future-flight-status-selector');
 
     if (partialSection) partialSection.classList.add('hidden');
     if (cancellationSection) cancellationSection.classList.add('hidden');
+    if (disturbanceSection) disturbanceSection.classList.add('hidden');
 
     if (statusSelector) {
-        // התיקון: תמיד להציג את הבורר כשנמצאים בטופס הגיחה (במקום להסתיר בגיחה חדשה)
         statusSelector.classList.remove('hidden');
     }
 
-    let mode = 'full'; // ברירת מחדל לגיחה חדשה
+    let mode = 'full';
     if (flightStatus === 'ביטול גיחה' || (flightData && flightData.executionStatus === 'בוטלה')) mode = 'cancel';
     else if (flightStatus === 'ביצוע גיחה מופרעת' || flightStatus === 'ביצוע גיחה חלקית' || (flightData && flightData.data && (flightData.data['סוג ביצוע'] === 'מופרעת' || flightData.data['סוג ביצוע'] === 'חלקי'))) mode = 'partial';
+
+    // איפוס ושחזור נתוני "האם היה מופרע?" בגיחה מלאה
+    const noRadio = document.querySelector('input[name="flight-disturbed"][value="no"]');
+    const yesRadio = document.querySelector('input[name="flight-disturbed"][value="yes"]');
+    const detailsContainer = document.getElementById('disturbance-details-container');
+    const levelSelect = document.getElementById('disturbance-level-select');
+    const detailsInput = document.getElementById('disturbance-details-input');
+
+    if (flightData && flightData.data && flightData.data['האם היה מופרע'] === 'כן') {
+        if (yesRadio) yesRadio.checked = true;
+        if (detailsContainer) detailsContainer.classList.remove('hidden');
+        if (levelSelect) levelSelect.value = flightData.data['רמת הפרעה'] || '';
+        if (detailsInput) detailsInput.value = flightData.data['פירוט הפרעה'] || '';
+    } else {
+        if (noRadio) noRadio.checked = true;
+        if (detailsContainer) detailsContainer.classList.add('hidden');
+        if (levelSelect) levelSelect.value = '';
+        if (detailsInput) detailsInput.value = '';
+    }
 
     if (mode === 'cancel' && flightData) {
         const reason = flightData.data['סיבת ביטול'];
@@ -376,22 +398,29 @@ function setupReportMode(flightStatus, flightData) {
             }
         }
     }
+
+    setReportMode(mode);
 }
 
 export function setReportMode(mode) {
     currentReportMode = mode;
+    ensureFullFlightDisturbanceSection();
+
     const partialSection = document.getElementById('partial-flight-section');
     const cancellationSection = document.getElementById('cancellation-section');
+    const disturbanceSection = document.getElementById('full-flight-disturbance-section');
     const saveButton = document.getElementById('save-flight-btn');
 
     if (partialSection) partialSection.classList.toggle('hidden', mode !== 'partial');
     if (cancellationSection) cancellationSection.classList.toggle('hidden', mode !== 'cancel');
-    if (mode === 'not_reported') {
+    // הצגת סקשן "האם היה מופרע?" כאשר נבחרה גיחה מלאה
+    if (disturbanceSection) disturbanceSection.classList.toggle('hidden', mode !== 'full');
+
+    if (mode === 'not_reported' && saveButton) {
         saveButton.textContent = 'שמור כטרם דווחה';
         saveButton.classList.add('bg-gray-600', 'hover:bg-gray-700');
     }
 
-    // הוספת הצבע הסגול (purple) לטבעת הסימון של גיחה לא מתוכננת
     document.querySelectorAll('.flight-report-status-btn').forEach(btn => {
         btn.classList.remove('ring-4', 'ring-offset-2', 'ring-red-500', 'ring-ofer-light-orange', 'ring-green-600', 'ring-purple-500');
         if (btn.dataset.reportStatus === mode) {
@@ -413,7 +442,6 @@ export function setReportMode(mode) {
             saveButton.textContent = 'אשר ביטול גיחה';
             saveButton.classList.add('bg-red-500', 'hover:bg-red-600');
         } else if (mode === 'unplanned') {
-            // הגדרת הטקסט והצבע לכפתור השמירה במצב לא מתוכנן
             saveButton.textContent = 'דווח גיחה לא מתוכננת';
             saveButton.classList.add('bg-purple-500', 'hover:bg-purple-600');
         } else {
@@ -724,9 +752,43 @@ export async function handleReportFlight() {
             currentForm.data['נדרש ביצוע חוזר'] = 'לא';
         }
         currentForm.data['סוג ביצוע'] = 'חלקי';
+        delete currentForm.data['האם היה מופרע'];
+        delete currentForm.data['רמת הפרעה'];
+        delete currentForm.data['פירוט הפרעה'];
     } else if (currentReportMode === 'full' || currentReportMode === 'unplanned') {
-        // התייחסות לגיחה לא מתוכננת כאל ביצוע מלא
         currentForm.data['סוג ביצוע'] = 'מלא';
+
+        if (currentReportMode === 'full') {
+            const disturbedRadio = document.querySelector('input[name="flight-disturbed"]:checked');
+            if (disturbedRadio && disturbedRadio.value === 'yes') {
+                const levelSelect = document.getElementById('disturbance-level-select');
+                const detailsInput = document.getElementById('disturbance-details-input');
+                const levelVal = levelSelect ? levelSelect.value : '';
+                const detailsVal = detailsInput ? detailsInput.value.trim() : '';
+
+                if (!levelVal) {
+                    levelSelect?.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                    return showToast('חובה לבחור רמת הפרעה (קל / בינוני).', 'red');
+                } else {
+                    levelSelect?.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+                }
+
+                if (!detailsVal) {
+                    detailsInput?.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                    return showToast('חובה להזין פירוט עבור ההפרעה.', 'red');
+                } else {
+                    detailsInput?.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+                }
+
+                currentForm.data['האם היה מופרע'] = 'כן';
+                currentForm.data['רמת הפרעה'] = levelVal;
+                currentForm.data['פירוט הפרעה'] = detailsVal;
+            } else {
+                currentForm.data['האם היה מופרע'] = 'לא';
+                delete currentForm.data['רמת הפרעה'];
+                delete currentForm.data['פירוט הפרעה'];
+            }
+        }
     }
 
     if (!validateForm(false)) return;
@@ -960,6 +1022,50 @@ function collectMetricsData() {
     });
     if (!currentForm.data) currentForm.data = {};
     currentForm.data['מדדי ביצוע'] = selectedMetrics;
+}
+
+function ensureFullFlightDisturbanceSection() {
+    let section = document.getElementById('full-flight-disturbance-section');
+    if (section) return section;
+
+    const partialSection = document.getElementById('partial-flight-section');
+    const statusSelector = document.getElementById('future-flight-status-selector');
+    const anchor = partialSection || statusSelector;
+    if (!anchor || !anchor.parentNode) return null;
+
+    section = document.createElement('div');
+    section.id = 'full-flight-disturbance-section';
+    section.className = 'hidden mt-4 p-4 border rounded-lg bg-orange-50 border-orange-200';
+    section.dir = 'rtl';
+    section.innerHTML = `
+        <label class="block text-sm font-bold text-gray-800 mb-2">האם היה מופרע?</label>
+        <div class="flex items-center gap-6 mb-3">
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="flight-disturbed" value="no" checked class="text-ofer-orange focus:ring-ofer-orange">
+                <span class="text-sm font-medium">לא</span>
+            </label>
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="flight-disturbed" value="yes" class="text-ofer-orange focus:ring-ofer-orange">
+                <span class="text-sm font-medium">כן</span>
+            </label>
+        </div>
+        <div id="disturbance-details-container" class="hidden space-y-3 border-t border-orange-200 pt-3 mt-2">
+            <div>
+                <label for="disturbance-level-select" class="block text-xs font-bold text-gray-700 mb-1">רמת הפרעה (חובה):</label>
+                <select id="disturbance-level-select" class="w-full md:w-1/3 border border-gray-300 rounded-md p-2 text-sm bg-white focus:ring-ofer-orange">
+                    <option value="" disabled selected>בחר רמת הפרעה...</option>
+                    <option value="קל">קל</option>
+                    <option value="בינוני">בינוני</option>
+                </select>
+            </div>
+            <div>
+                <label for="disturbance-details-input" class="block text-xs font-bold text-gray-700 mb-1">פירוט ההפרעה (טקסט חופשי):</label>
+                <textarea id="disturbance-details-input" rows="2" class="w-full border border-gray-300 rounded-md p-2 text-sm bg-white focus:ring-ofer-orange" placeholder="הזן פירוט בנוגע להפרעה בגיחה..."></textarea>
+            </div>
+        </div>
+    `;
+    anchor.parentNode.insertBefore(section, anchor);
+    return section;
 }
 
 window.handleRemarkTypeChange = function (value) {

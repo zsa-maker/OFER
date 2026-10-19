@@ -61,9 +61,14 @@
         </div>
     </div>
 
-<div id="simulators-dashboard-container" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">    </div>
+    <div id="simulators-dashboard-container" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6"></div>
 
-    <div class="flex justify-end border-t pt-4 gap-4">
+    <div class="flex flex-wrap justify-end border-t pt-4 gap-4">
+        <!-- כפתור חדש להפקת דוח תקופתי -->
+        <button onclick="window.openSimulatorPeriodicReportModal()"
+            class="bg-ofer-orange hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2 transition">
+            <i class="fas fa-table"></i> הפקת דוח תקופתי
+        </button>
         <button onclick="window.openSimulatorHoursModal()"
             class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2">
             <i class="fas fa-clock"></i> הצג שעות פעילות מאמנים
@@ -72,5 +77,42 @@
             class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2">
             <i class="fas fa-power-off"></i> סגירת מאמן
         </button>
+    </div>
+
+    <!-- מודאל דוח תקופתי מחולק לשבועות -->
+    <div id="simulator-periodic-report-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 z-50 flex justify-center items-center p-3" dir="rtl">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-[98vw] max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="p-4 bg-gray-100 border-b flex flex-wrap justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-black text-gray-800">דוח מאמנים תקופתי (חלוקה לשבועות)</h2>
+                    <p class="text-xs text-gray-500">ריכוז כלל מדדי ההפעלה, הגיחות, התקלות והזמינות לפי שבועות בתקופה</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div>
+                        <label class="text-xs font-bold text-gray-700 ml-1">תקופה:</label>
+                        <select id="sim-report-period-select" onchange="window.generateSimulatorPeriodicReport()" class="border rounded px-3 py-1.5 text-sm bg-white font-bold"></select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-700 ml-1">מאמן:</label>
+                        <select id="sim-report-sim-select" onchange="window.generateSimulatorPeriodicReport()" class="border rounded px-3 py-1.5 text-sm bg-white font-bold"></select>
+                    </div>
+                    <button onclick="window.exportSimulatorPeriodicReportCSV()" class="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-4 rounded shadow flex items-center gap-1">
+                        <i class="fas fa-file-excel"></i> ייצוא לאקסל (CSV)
+                    </button>
+                    <button onclick="window.printSimulatorPeriodicReport()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-4 rounded shadow flex items-center gap-1">
+                        <i class="fas fa-print"></i> הדפסה
+                    </button>
+                    <button onclick="document.getElementById('simulator-periodic-report-modal').classList.add('hidden')" class="text-gray-500 hover:text-red-600 text-2xl font-bold px-2">&times;</button>
+                </div>
+            </div>
+
+            <div class="overflow-auto flex-grow p-3 custom-scrollbar">
+                <table id="sim-periodic-report-table" class="min-w-full border-collapse border border-gray-300 text-[11px] text-center">
+                    <thead id="sim-periodic-report-thead" class="bg-gray-200 text-gray-800 sticky top-0 z-20"></thead>
+                    <tbody id="sim-periodic-report-tbody" class="divide-y divide-gray-200 bg-white"></tbody>
+                    <tfoot id="sim-periodic-report-tfoot" class="bg-orange-100 font-bold text-gray-900 sticky bottom-0 z-20 border-t-2 border-gray-400"></tfoot>
+                </table>
+            </div>
+        </div>
     </div>
 </div>

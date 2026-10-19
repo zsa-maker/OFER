@@ -581,7 +581,7 @@ function showCancellationDetailsPopup(reason, flights, faultsMap) {
                 <tr>
                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">תאריך</th>
                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">שם הגיחה</th>
-                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">מדריך.ה</th>
+                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">מדריכה</th>
                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">חניך.ה / טייס.ת</th>
                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">הערות / תקלות</th>
                 </tr>

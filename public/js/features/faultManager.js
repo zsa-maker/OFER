@@ -920,7 +920,36 @@ export async function showFaultDetailsModal(faultKey) {
         editBtn.onclick = () => window.openResolutionForm(faultKey, fault, true);
         content.appendChild(editBtn);
     }
+// בדיקת תקלה חוזרת (אוטומטית או טיוב ידני של מנהל)
+    const recurringMap = typeof window.computeRecurringFaultsMap === 'function' ? window.computeRecurringFaultsMap() : {};
+    const isRecurring = Boolean(recurringMap[faultKey]);
+    const manualOverride = fault.status?.manualRecurringOverride;
+    const safeKeyForOverride = faultKey ? faultKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
 
+    html += `
+        <div class="p-3 border rounded-lg bg-purple-50 border-purple-200 flex justify-between items-center mt-2">
+            <div>
+                <strong>תקלה חוזרת:</strong>
+                <span class="font-bold ${isRecurring ? 'text-red-600' : 'text-green-700'}">
+                    ${isRecurring ? 'כן (תקלה חוזרת)' : 'לא'}
+                </span>
+                <span class="text-xs text-gray-500 mr-1">
+                    ${manualOverride !== undefined && manualOverride !== null ? '(נקבע ידנית ע"י מנהל)' : '(חושב אוטומטית)'}
+                </span>
+            </div>
+            ${window.isAdmin ? `
+            <div class="flex items-center gap-2">
+                <label class="text-xs font-bold text-purple-900">טיוב מנהל:</label>
+                <select onchange="window.setManualRecurringFaultOverride('${safeKeyForOverride}', this.value)"
+                        class="border border-purple-300 rounded px-2 py-1 text-xs bg-white font-bold">
+                    <option value="auto" ${manualOverride === undefined || manualOverride === null ? 'selected' : ''}>אוטומטי (48 שעות / 5 גיחות)</option>
+                    <option value="true" ${manualOverride === true ? 'selected' : ''}>סמן כתקלה חוזרת</option>
+                    <option value="false" ${manualOverride === false ? 'selected' : ''}>סמן כלא חוזרת</option>
+                </select>
+            </div>
+            ` : ''}
+        </div>
+    `;
     modal.classList.remove('hidden');
 }
 
@@ -1002,7 +1031,7 @@ export async function saveFaultResolutionStatus(faultKey, onlyUpdateClassificati
 
         showToast(onlyUpdateClassification ? 'סיווג עודכן' : 'התקלה טופלה', 'green');
         hideAllModals();
-        irenderFaultDatabaseTable();
+        renderFaultDatabaseTable();
     } catch (e) {
         console.error('Save failed:', e);
         showToast('שגיאה בשמירת הנתונים', 'red');
@@ -1493,7 +1522,38 @@ window.updateResolutionFieldsVisibility = () => {
     }
 };
 
+window.setManualRecurringFaultOverride = async function (faultKey, val) {
+    if (!window.isAdmin) {
+        showToast("פעולה זו מורשית למשתמש מנהל בלבד", "red");
+        return;
+    }
+    const overrideVal = val === 'auto' ? null : (val === 'true');
 
+    if (!window.faultResolutionStatus) window.faultResolutionStatus = {};
+    const statusObj = window.faultResolutionStatus[faultKey] || { isResolved: false };
+    statusObj.manualRecurringOverride = overrideVal;
+    window.faultResolutionStatus[faultKey] = statusObj;
+
+    if (window.unifiedFaultsDatabase && window.unifiedFaultsDatabase[faultKey]) {
+        window.unifiedFaultsDatabase[faultKey].status = statusObj;
+    }
+
+    if (window.firestoreFunctions && window.db) {
+        try {
+            const { doc, setDoc } = window.firestoreFunctions;
+            await setDoc(doc(window.db, "fault_resolutions", faultKey), {
+                manualRecurringOverride: overrideVal
+            }, { merge: true });
+
+            showToast("טיוב תקלה חוזרת נשמר בהצלחה", "green");
+            window.showFaultDetailsModal(faultKey);
+            if (typeof window.renderSimulatorDashboard === 'function') window.renderSimulatorDashboard();
+        } catch (err) {
+            console.error("Error saving recurring fault override:", err);
+            showToast("שגיאה בשמירת טיוב תקלה חוזרת", "red");
+        }
+    }
+};
 
 // חשיפת פונקציות גלובליות
 window.processFaultsData = processFaultsData;

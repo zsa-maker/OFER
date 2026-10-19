@@ -6,14 +6,9 @@ import { showFaultDetailsModal } from './faultManager.js';
 window.facilityCloseTimes = {};
 
 let isListenerAttached = false;
-// משתני פילטר מקומיים
-let currentFilter = {
-    period: '',
-    month: ''
-};
+let lastGeneratedPeriodicReport = null; // שמירת נתוני הדוח האחרון לייצוא לאקסל
 
 export async function initSimulatorManager() {
-    // טעינת הגדרות תקופה (עבור חישובי השבועות)
     if (!window.planningSettings && window.db) {
         try {
             const { doc, getDoc } = window.firestoreFunctions;
@@ -22,15 +17,253 @@ export async function initSimulatorManager() {
         } catch (e) { console.error("Failed to load planning settings", e); }
     }
     setupFilters();
-    await fetchFacilityCloseTimes(); // משיכת שעות הסגירה מהדאטהבייס
+    await fetchFacilityCloseTimes();
     renderSimulatorDashboard();
-    checkMissingCloseTimes(); // בדיקה אם שכחו לסגור אתמול
+    checkMissingCloseTimes();
 
     if (!isListenerAttached) {
         window.addEventListener('personnelListsUpdated', () => renderSimulatorDashboard());
         isListenerAttached = true;
     }
 }
+
+// ============================================================================
+// פונקציות עזר מתוקנות לזיהוי תקופה, שבוע, משך גיחה וסטטוס ביצוע
+// ============================================================================
+
+function getEffectivePeriodName(dateInput, flightObj = null) {
+    if (flightObj?.data?.manualPeriod && flightObj.data.manualPeriod !== 'auto') {
+        return String(flightObj.data.manualPeriod).trim();
+    }
+    if (flightObj?.isAdminAdded && flightObj?.period) {
+        return String(flightObj.period).trim();
+    }
+    if (typeof window.getPeriodName === 'function' && dateInput) {
+        return String(window.getPeriodName(dateInput)).trim();
+    }
+    return dateInput ? getPeriodDisplay(new Date(dateInput)) : '';
+}
+
+function getStartSundayOfDate(d) {
+    if (!d) return null;
+    const s = new Date(d);
+    s.setHours(0, 0, 0, 0);
+    s.setDate(s.getDate() - s.getDay());
+    return s;
+}
+
+function getPeriodStartSunday(periodName) {
+    const planning = window.planningSettings || {};
+    const config = planning.periodConfigs?.[periodName];
+
+    if (config && config.startDate) {
+        return getStartSundayOfDate(new Date(config.startDate));
+    }
+
+    if (planning.periodCurrStart && getEffectivePeriodName(planning.periodCurrStart) === periodName) {
+        return getStartSundayOfDate(new Date(planning.periodCurrStart));
+    }
+    if (planning.periodPrevStart && getEffectivePeriodName(planning.periodPrevStart) === periodName) {
+        return getStartSundayOfDate(new Date(planning.periodPrevStart));
+    }
+    if (planning.periodNextStart && getEffectivePeriodName(planning.periodNextStart) === periodName) {
+        return getStartSundayOfDate(new Date(planning.periodNextStart));
+    }
+
+    if (periodName && periodName.includes('/')) {
+        const [pNum, pYear] = periodName.split('/');
+        const fullYear = 2000 + parseInt(pYear);
+        if (!isNaN(fullYear)) {
+            return pNum === "1"
+                ? getStartSundayOfDate(new Date(fullYear - 1, 11, 15))
+                : getStartSundayOfDate(new Date(fullYear, 5, 15));
+        }
+    }
+    return null;
+}
+
+export function getWeekNumberInPeriod(dateInput, periodName) {
+    if (!dateInput) return 1;
+    const dSunday = getStartSundayOfDate(new Date(dateInput));
+    const startSunday = getPeriodStartSunday(periodName);
+    if (!dSunday || !startSunday) return 1;
+    const diffDays = Math.round((dSunday.getTime() - startSunday.getTime()) / (1000 * 60 * 60 * 24));
+    return Math.max(1, Math.floor(diffDays / 7) + 1);
+}
+
+/**
+ * חישוב שעות גיחה מתוך 'שעות טיסה (דקות)' או מתוך 'שעת התחלה' ו-'שעת סיום'
+ */
+export function getFlightHours(flight) {
+    if (!flight || !flight.data) return 0;
+    const d = flight.data;
+
+    const explicitMins = parseFloat(d['שעות טיסה (דקות)']);
+    if (!isNaN(explicitMins) && explicitMins > 0) {
+        return explicitMins / 60;
+    }
+
+    const start = (d['שעת התחלה'] || '').trim();
+    const end = (d['שעת סיום'] || '').trim();
+    if (!start || !end || !start.includes(':') || !end.includes(':')) return 0;
+
+    let diff = (new Date(`1970-01-01T${end}:00`) - new Date(`1970-01-01T${start}:00`)) / 60000;
+    if (isNaN(diff)) return 0;
+    if (diff < 0) diff += 1440;
+    return diff / 60;
+}
+
+export function isFlightCancelled(f) {
+    if (!f) return false;
+    const d = f.data || {};
+    return f.executionStatus === 'בוטלה' || f.executionStatus === 'גיחה בוטלה' || Boolean(d['סיבת ביטול']) || d['סוג גיחה'] === 'ביטול גיחה';
+}
+
+export function isFlightPartial(f) {
+    if (!f || isFlightCancelled(f)) return false;
+    const d = f.data || {};
+    const execType = d['סוג ביצוע'] || '';
+    return execType === 'חלקי' || execType === 'מופרעת' || execType === 'ביצוע חלקי' ||
+        f.executionStatus === 'בוצעה חלקית' || f.executionStatus === 'גיחה חלקית' || f.executionStatus === 'גיחה מופרעת';
+}
+
+export function isFlightExecuted(f) {
+    if (!f || isFlightCancelled(f)) return false;
+    if (f.executionStatus === 'טרם דווחה') return false;
+    return ['בוצעה', 'דווחה', 'בוצעה ידנית', 'בוצעה חלקית', 'גיחה חלקית', 'גיחה מופרעת'].includes(f.executionStatus);
+}
+
+/**
+ * חישוב זמן השבתה שסומן בגיחה או עקב ביטול טכני (בשעות)
+ */
+export function getFlightDowntimeHours(f) {
+    if (!f || !f.data) return 0;
+    const d = f.data;
+
+    // 1. אם הוזן שדה מפורש של זמן השבתה בטופס הגיחה
+    if (d['זמן השבתה (דקות)'] !== undefined && d['זמן השבתה (דקות)'] !== '') {
+        return (parseFloat(d['זמן השבתה (דקות)']) || 0) / 60;
+    }
+    if (d['זמן השבתה'] !== undefined && d['זמן השבתה'] !== '') {
+        const val = parseFloat(d['זמן השבתה']) || 0;
+        return val > 10 ? val / 60 : val;
+    }
+
+    // 2. אם הגיחה בוטלה מסיבה טכנית - משך הגיחה נחשב כזמן השבתה
+    const cancelReason = (d['סיבת ביטול'] || '').trim();
+    if (isFlightCancelled(f) && cancelReason.includes('טכני')) {
+        return getFlightHours(f);
+    }
+
+    // 3. אם בגיחה דווחה תקלה משביתה (isDowntime) והגיחה חלקית עם דרישה לביצוע חוזר
+    const hasDowntimeFault = Array.isArray(f.faults) && f.faults.some(fl => fl.isDowntime);
+    if (hasDowntimeFault && isFlightPartial(f) && d['נדרש ביצוע חוזר'] === 'כן') {
+        return getFlightHours(f);
+    }
+
+    return 0;
+}
+
+/**
+ * חישוב זמן אימון חלקי (בשעות) עבור נוסחת הזמינות החוזית
+ */
+export function getFlightPartialHours(f) {
+    if (!f || !isFlightPartial(f)) return 0;
+    const d = f.data || {};
+
+    if (d['זמן אימון חלקי (דקות)'] !== undefined && d['זמן אימון חלקי (דקות)'] !== '') {
+        return (parseFloat(d['זמן אימון חלקי (דקות)']) || 0) / 60;
+    }
+    if (d['זמן אימון חלקי'] !== undefined && d['זמן אימון חלקי'] !== '') {
+        const val = parseFloat(d['זמן אימון חלקי']) || 0;
+        return val > 10 ? val / 60 : val;
+    }
+
+    // ברירת מחדל: משך הגיחה החלקית
+    return getFlightHours(f);
+}
+
+/**
+ * זיהוי תקלות חוזרות בכל המאגר:
+ * תקלה באותה תת-קבוצה של סיווג מערכת (או מערכת אם אין תת-מערכת) באותו מאמן
+ * בהפרש של פחות מ-48 שעות או בפחות מ-5 גיחות מהתקלה האחרונה בתת-המערכת,
+ * כולל תמיכה בטיוב ידני של משתמש מנהל בלבד (manualRecurringOverride).
+ */
+export function computeRecurringFaultsMap() {
+    if (typeof window.processFaultsData === 'function') {
+        window.processFaultsData();
+    }
+
+    const allFaults = Object.values(window.unifiedFaultsDatabase || {});
+    const executedFlights = (window.savedFlights || []).filter(f => isFlightExecuted(f));
+
+    // מיון גיחות שבוצעו לפי חותמת זמן
+    const flightsTimeline = executedFlights.map(f => {
+        const datePart = typeof f.date === 'string' ? f.date.split('T')[0] : new Date(f.date).toISOString().split('T')[0];
+        const startStr = (f.data?.['שעת התחלה'] || '00:00').trim();
+        const ts = f.flightStartTimestamp || new Date(`${datePart}T${startStr}:00`).getTime() || new Date(f.date).getTime();
+        return {
+            id: f.id,
+            sim: (f.data?.['סימולטור'] || '').trim().toUpperCase(),
+            ts: ts
+        };
+    }).sort((a, b) => a.ts - b.ts);
+
+    // מיון כל התקלות בסדר כרונולוגי עולה
+    const sortedFaults = [...allFaults].sort((a, b) => (a.firstReportTimestamp || 0) - (b.firstReportTimestamp || 0));
+
+    const lastFaultBySimAndSubsys = {};
+    const recurringResult = {};
+
+    sortedFaults.forEach(fault => {
+        const key = fault.key;
+        const category = fault.status?.faultCategory || '';
+
+        // 1. בדיקת טיוב ידני ע"י מנהל
+        if (fault.status && fault.status.manualRecurringOverride !== undefined && fault.status.manualRecurringOverride !== null) {
+            recurringResult[key] = Boolean(fault.status.manualRecurringOverride);
+        } else if (category === 'לא תקלה') {
+            recurringResult[key] = false;
+        } else {
+            const sim = (fault.simulator || '').trim().toUpperCase();
+            const sysRaw = (fault.systemClassification || fault.status?.systemClassification || '').trim();
+            const groupKey = `${sim}|${sysRaw || 'ללא_סיווג'}`;
+            const currentTs = fault.firstReportTimestamp || 0;
+
+            const prevFault = lastFaultBySimAndSubsys[groupKey];
+            if (prevFault && currentTs > 0 && prevFault.ts > 0) {
+                const diffHours = (currentTs - prevFault.ts) / (1000 * 60 * 60);
+
+                // ספירת גיחות שבוצעו במאמן זה בין התקלה הקודמת לתקלה הנוכחית
+                const flightsBetween = flightsTimeline.filter(fl =>
+                    fl.sim === sim && fl.ts > prevFault.ts && fl.ts <= currentTs
+                ).length;
+
+                recurringResult[key] = (diffHours < 48 || flightsBetween < 5);
+            } else {
+                recurringResult[key] = false;
+            }
+        }
+
+        // עדכון התקלה האחרונה באותה תת-מערכת (כל עוד אינה "לא תקלה")
+        if (category !== 'לא תקלה') {
+            const sim = (fault.simulator || '').trim().toUpperCase();
+            const sysRaw = (fault.systemClassification || fault.status?.systemClassification || '').trim();
+            const groupKey = `${sim}|${sysRaw || 'ללא_סיווג'}`;
+            lastFaultBySimAndSubsys[groupKey] = {
+                ts: fault.firstReportTimestamp || 0,
+                key: key
+            };
+        }
+    });
+
+    return recurringResult;
+}
+window.computeRecurringFaultsMap = computeRecurringFaultsMap;
+
+// ============================================================================
+// ניהול שעות סגירה וסינונים בעמוד המאמנים
+// ============================================================================
 
 async function fetchFacilityCloseTimes() {
     if (!window.db || !window.firestoreFunctions) return;
@@ -39,10 +272,8 @@ async function fetchFacilityCloseTimes() {
         const snap = await getDocs(collection(window.db, "facility_status"));
         snap.forEach(doc => {
             const data = doc.data();
-            // תמיכה במבנה החדש ששומר שעת סגירה פרטנית לכל מאמן
             window.facilityCloseTimes[doc.id] = data.simulators || {};
 
-            // תאימות לאחור (אם יש שעת סגירה גלובלית ישנה במערכת)
             if (data.closeTime && Object.keys(window.facilityCloseTimes[doc.id]).length === 0) {
                 window.facilityCloseTimes[doc.id] = { 'FFS': data.closeTime, 'VIPT': data.closeTime };
             }
@@ -50,49 +281,36 @@ async function fetchFacilityCloseTimes() {
     } catch (e) { console.error("Failed to fetch close times", e); }
 }
 
-
 function checkMissingCloseTimes() {
     if (!window.savedFlights || window.savedFlights.length === 0) return;
 
     const today = new Date();
 
-    // נסרוק 7 ימים אחורה, מהישן לחדש (כדי לטפל קודם בחובות ישנים של השבוע שעבר)
     for (let i = 7; i >= 0; i--) {
         const checkDate = new Date();
         checkDate.setDate(today.getDate() - i);
 
-        // תיקון אזורי זמן כדי לקבל את התאריך המקומי המדויק YYYY-MM-DD
         const y = checkDate.getFullYear();
         const m = String(checkDate.getMonth() + 1).padStart(2, '0');
         const d = String(checkDate.getDate()).padStart(2, '0');
         const dateStr = `${y}-${m}-${d}`;
 
-        // עבור היום הנוכחי, נבקש סגירה רק אם השעה אחרי 21:00
         if (i === 0 && today.getHours() < 21) continue;
 
-        // בדיקה האם היו גיחות אמיתיות באותו תאריך
         const hasFlownFlights = window.savedFlights.some(f => {
             if (!f.date || !f.data) return false;
-
-            // סינון גיחות שבוטלו
-            const isCancelled = f.executionStatus === 'בוטלה' ||
-                f.executionStatus === 'גיחה בוטלה' ||
-                f.data['סוג גיחה'] === 'ביטול גיחה';
-
-            if (isCancelled) return false;
+            if (!isFlightExecuted(f)) return false;
             if (!f.data['שעת התחלה']) return false;
 
-            // התאמת פורמט התאריך למקרה שיש בו חותמת זמן
-            let fDateStr = f.date;
+            let fDateStr = typeof f.date === 'string' ? f.date : new Date(f.date).toISOString();
             if (fDateStr.includes('T')) fDateStr = fDateStr.split('T')[0];
 
             return fDateStr === dateStr;
         });
 
-        // אם היו גיחות ואין שעת סגירה רשומה
         if (hasFlownFlights && !window.facilityCloseTimes[dateStr]) {
             showMissingCloseModal(dateStr);
-            return; // עוצרים אחרי המודאל הראשון כדי לא להציף את המשתמש בכמה פופאפים בבת אחת
+            return;
         }
     }
 }
@@ -108,16 +326,6 @@ function showMissingCloseModal(dateStr) {
     }
 }
 
-function getLocalPeriodDisplay(dateInput) {
-    if (!dateInput) return null;
-    const d = new Date(dateInput);
-    let year = d.getFullYear();
-    const month = d.getMonth();
-    if (month === 11) { year++; return `1/${year.toString().slice(-2)}`; }
-    return `${month < 5 ? "1" : "2"}/${year.toString().slice(-2)}`;
-}
-
-
 export function renderSimulatorDashboard() {
     const container = document.getElementById('simulators-dashboard-container');
     if (!container) return;
@@ -130,10 +338,8 @@ export function renderSimulatorDashboard() {
         return;
     }
 
-    // בניית הכרטיסים עם הנתונים המסוננים
     container.innerHTML = simulators.map((sim, index) => createSimulatorCardHTML(sim, index)).join('');
 
-    // רינדור גרפים
     simulators.forEach((sim, index) => {
         try { renderSimulatorCharts(sim, index); } catch (e) { console.error(e); }
     });
@@ -158,41 +364,29 @@ window.toggleSimTimeFilters = function (type) {
     }
 };
 
-function isDateInSimFilter(dateObj) {
+function isDateInSimFilter(dateObj, flightObj = null) {
     const timeFilterType = document.getElementById('sim-time-filter-type')?.value || 'all';
     const d = new Date(dateObj);
     d.setHours(0, 0, 0, 0);
 
+    const itemPeriod = getEffectivePeriodName(d, flightObj);
+
     if (timeFilterType === 'period') {
         const selectedPeriod = document.getElementById('sim-period-select')?.value;
-        return getPeriodDisplay(d) === selectedPeriod;
+        return itemPeriod === selectedPeriod;
     }
     else if (timeFilterType === 'month') {
         const selectedPeriod = document.getElementById('sim-period-select')?.value;
         const selectedMonth = parseInt(document.getElementById('sim-month-select')?.value);
-        return getPeriodDisplay(d) === selectedPeriod && d.getMonth() === selectedMonth;
+        return itemPeriod === selectedPeriod && d.getMonth() === selectedMonth;
     }
     else if (timeFilterType === 'week') {
         const selectedWeek = parseInt(document.getElementById('sim-week-select')?.value);
         const selectedPeriod = document.getElementById('sim-period-select')?.value;
-        const planning = window.planningSettings || {};
-
-        if (selectedWeek && selectedPeriod) {
-            let baseDateStr = null;
-            if (selectedPeriod === getPeriodDisplay(new Date(planning.periodCurrStart))) baseDateStr = planning.periodCurrStart;
-            else if (selectedPeriod === getPeriodDisplay(new Date(planning.periodPrevStart))) baseDateStr = planning.periodPrevStart;
-            else if (selectedPeriod === getPeriodDisplay(new Date(planning.periodNextStart))) baseDateStr = planning.periodNextStart;
-
-            if (baseDateStr) {
-                const baseDate = new Date(baseDateStr);
-                baseDate.setHours(0, 0, 0, 0);
-                baseDate.setDate(baseDate.getDate() - baseDate.getDay());
-                const diffDays = Math.round((d - baseDate) / (1000 * 60 * 60 * 24));
-                const weekNum = Math.floor(diffDays / 7) + 1;
-                return weekNum === selectedWeek;
-            }
-        }
-        return true;
+        if (!selectedPeriod) return true;
+        if (itemPeriod !== selectedPeriod) return false;
+        if (!selectedWeek) return true;
+        return getWeekNumberInPeriod(d, selectedPeriod) === selectedWeek;
     }
     else if (timeFilterType === 'range') {
         const startStr = document.getElementById('sim-date-start')?.value;
@@ -208,24 +402,40 @@ function isDateInSimFilter(dateObj) {
     return true;
 }
 
+function getAllAvailablePeriods() {
+    const periods = new Set();
+    if (window.planningSettings?.periodConfigs) {
+        Object.keys(window.planningSettings.periodConfigs).forEach(p => periods.add(p.trim()));
+    }
+    (window.savedFlights || []).forEach(f => {
+        if (f.date) {
+            const p = getEffectivePeriodName(f.date, f);
+            if (p) periods.add(p);
+        }
+    });
+    Object.values(window.unifiedFaultsDatabase || {}).forEach(f => {
+        if (f.firstReportTimestamp) {
+            const p = getEffectivePeriodName(new Date(f.firstReportTimestamp));
+            if (p) periods.add(p);
+        }
+    });
+
+    return Array.from(periods).sort((a, b) => {
+        const [pA, yA] = a.split('/').map(Number);
+        const [pB, yB] = b.split('/').map(Number);
+        return yA !== yB ? yA - yB : pA - pB;
+    });
+}
+
 function setupFilters() {
     const periodSelect = document.getElementById('sim-period-select');
     if (periodSelect) {
-        const periods = new Set();
-        (window.savedFlights || []).forEach(f => {
-            if (f.date) { const p = getPeriodDisplay(new Date(f.date)); if (p) periods.add(p); }
-        });
-        Object.values(window.unifiedFaultsDatabase || {}).forEach(f => {
-            if (f.firstReportTimestamp) { const p = getPeriodDisplay(new Date(f.firstReportTimestamp)); if (p) periods.add(p); }
-        });
-        const sortedPeriods = Array.from(periods).sort((a, b) => {
-            const [pA, yA] = a.split('/');
-            const [pB, yB] = b.split('/');
-            return yA !== yB ? Number(yA) - Number(yB) : Number(pA) - Number(pB);
-        });
-
+        const sortedPeriods = getAllAvailablePeriods();
         periodSelect.innerHTML = sortedPeriods.map(p => `<option value="${p}">${p}</option>`).join('');
-        if (sortedPeriods.length > 0) periodSelect.value = sortedPeriods[sortedPeriods.length - 1];
+        if (sortedPeriods.length > 0) {
+            const currP = getEffectivePeriodName(new Date());
+            periodSelect.value = sortedPeriods.includes(currP) ? currP : sortedPeriods[sortedPeriods.length - 1];
+        }
     }
 
     const weekSelect = document.getElementById('sim-week-select');
@@ -235,7 +445,6 @@ function setupFilters() {
         weekSelect.innerHTML = html;
     }
 }
-
 
 function getFilteredFaults(simName) {
     const allFaults = window.unifiedFaultsDatabase || {};
@@ -250,36 +459,94 @@ function getFilteredFlights(simName) {
     let flights = (window.savedFlights || []).filter(f => f.data && f.data['סימולטור'] === simName);
     return flights.filter(f => {
         if (!f.date) return false;
-        return isDateInSimFilter(new Date(f.date));
+        return isDateInSimFilter(new Date(f.date), f);
     });
 }
 
+// ============================================================================
+// חישוב מדדים מתוקן לכרטיסי המאמנים בעמוד הראשי
+// ============================================================================
+
+function calculateSimulatorMetrics(simName, faults, filteredFlights) {
+    // גיחות מתוכננות (ללא גיחות שסומנו כלא מתוכננות)
+    const plannedFlights = filteredFlights.filter(f => !f.isUnplanned);
+    const totalPlannedHours = plannedFlights.reduce((acc, f) => acc + getFlightHours(f), 0);
+
+    // גיחות שבוצעו בפועל (כולל 'בוצעה', 'דווחה', 'בוצעה ידנית', ולמעט גיחה חלקית שדורשת ביצוע חוזר)
+    const actualFlights = filteredFlights.filter(f => {
+        if (!isFlightExecuted(f)) return false;
+        if (isFlightPartial(f) && f.data?.['נדרש ביצוע חוזר'] === 'כן') return false;
+        return true;
+    });
+    const actualHours = actualFlights.reduce((acc, f) => acc + getFlightHours(f), 0);
+
+    // זמן השבתה
+    const downtimeHours = filteredFlights.reduce((acc, f) => acc + getFlightDowntimeHours(f), 0);
+
+    // ספירת תקלות אמיתיות (ללא "לא תקלה")
+    const validFaults = faults.filter(f => f.status?.faultCategory !== 'לא תקלה');
+
+    // תקלות מפעיל (תקלות תפעול / שדווחו בטופס גיחה ע"י מדריכה ולא ידנית ע"י טכנאי)
+    const operatorFaults = validFaults.filter(f => f.status?.faultCategory === 'תפעול' || !f.isManualEntry);
+
+    // ביטולים (גיחות שבוטלו + גיחות חלקיות שדורשות ביצוע חוזר)
+    const cancelledOrRepeatCount = plannedFlights.filter(f =>
+        isFlightCancelled(f) || (isFlightPartial(f) && f.data?.['נדרש ביצוע חוזר'] === 'כן')
+    ).length;
+
+    const availability = totalPlannedHours > 0
+        ? Math.max(0, ((totalPlannedHours - downtimeHours) / totalPlannedHours) * 100).toFixed(1)
+        : "100.0";
+
+    const cancellationRate = plannedFlights.length > 0
+        ? ((cancelledOrRepeatCount / plannedFlights.length) * 100).toFixed(1)
+        : "0.0";
+
+    const utilization = totalPlannedHours > 0
+        ? ((actualHours / totalPlannedHours) * 100).toFixed(1)
+        : "0.0";
+
+    // MTBF = זמן הפעלה / סכום התקלות
+    const mtbf = validFaults.length > 0
+        ? (totalPlannedHours / validFaults.length).toFixed(1)
+        : totalPlannedHours.toFixed(1);
+
+    // MTBPC = זמן אימון בפועל / סכום תקלות מפעיל
+    const mtbpc = operatorFaults.length > 0
+        ? (actualHours / operatorFaults.length).toFixed(1)
+        : actualHours.toFixed(1);
+
+    return {
+        availability,
+        cancellationRate,
+        mtbpc,
+        utilization,
+        mtbf
+    };
+}
+
+function calculateAverageClosureTime(faults) {
+    const resolved = faults.filter(f => f.status?.isResolved && !f.status?.isClosedWithPermission && f.status?.timestamp && f.firstReportTimestamp);
+    if (resolved.length === 0) return "0";
+    const totalMs = resolved.reduce((acc, f) => acc + (f.status.timestamp - f.firstReportTimestamp), 0);
+    return (totalMs / resolved.length / (1000 * 60 * 60)).toFixed(1);
+}
+
 function createSimulatorCardHTML(simName, index) {
-    const allFaults = window.unifiedFaultsDatabase || {};
     const faults = getFilteredFaults(simName);
     const openFaults = faults.filter(f => f.status && !f.status.isResolved);
     const avgCloseTime = calculateAverageClosureTime(faults);
 
-    const isDown = openFaults.some(f => f.isDowntime); // האם יש תקלה פתוחה שהשביתה?
-
-    const faultsForCard = getFilteredFaults(simName);
-    const cardGeneralResolved = faultsForCard.filter(f => f.status?.isResolved && !f.status?.isClosedWithPermission && f.status?.timestamp && f.firstReportTimestamp);
-    let cardGeneralAvg = "0";
-    if (cardGeneralResolved.length > 0) {
-        const totalMs = cardGeneralResolved.reduce((acc, f) => acc + (f.status.timestamp - f.firstReportTimestamp), 0);
-        cardGeneralAvg = (totalMs / cardGeneralResolved.length / (1000 * 60 * 60)).toFixed(1);
-    }
-
-    const headerBgColor = isDown ? 'bg-red-600' : 'bg-ofer-dark-brown'; // צביעה באדום
+    const isDown = openFaults.some(f => f.isDowntime);
+    const headerBgColor = isDown ? 'bg-red-600' : 'bg-ofer-dark-brown';
     const metrics = calculateSimulatorMetrics(simName, faults, getFilteredFlights(simName));
+
     const openFaultsList = openFaults.length > 0
         ? openFaults.map(f => {
-            // הגנה חזקה על תווים כדי למנוע קריסות Syntax Error במיוחד עם פסיקים, מרכאות ואנטרים 
             const safeKey = f.key ? f.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '') : '';
             const safeDesc = f.description ? f.description.replace(/"/g, '&quot;') : 'ללא תיאור';
             const displayDesc = f.description || 'ללא תיאור';
 
-            // בדיקה האם התקלה השביתה
             const isFaultDown = f.isDowntime;
             const itemBg = isFaultDown ? 'bg-red-500 text-white border-red-600 shadow-sm' : 'bg-red-50 text-gray-800 border-red-100 hover:bg-red-100';
             const textClass = isFaultDown ? 'font-bold' : 'font-medium';
@@ -336,7 +603,7 @@ function createSimulatorCardHTML(simName, index) {
                     </div>
                 </div>
             </div>
-<div class="flex flex-col gap-2 min-h-0">
+            <div class="flex flex-col gap-2 min-h-0">
                 <div class="flex-grow relative border rounded-lg p-2 bg-gray-50 cursor-pointer hover:bg-gray-100 transition" 
                      onclick="window.openSimulatorTrendModal('${simName}')">
                     <h3 id="trend-title-${index}" class="text-xs font-bold text-gray-700 absolute top-2 right-2 z-10">תקלות לפי חודשים (לחץ להגדלה)</h3>
@@ -351,6 +618,513 @@ function createSimulatorCardHTML(simName, index) {
     </div>`;
 }
 
+// ============================================================================
+// הפקת דוח תקופתי מחולק לשבועות (25 עמודות)
+// ============================================================================
+
+// החלף את PERIODIC_REPORT_COLUMNS בקובץ simulatorManager.js במערך הבא:
+const PERIODIC_REPORT_COLUMNS = [
+    {
+        label: "שבוע",
+        tooltip: "מספר השבוע בתקופה וטווח התאריכים שלו (מיום ראשון עד שבת)"
+    },
+    {
+        label: "זמן הפעלה (24/7)",
+        tooltip: "סך שעות היממה בשבוע: 24 שעות × 7 ימים = 168 שעות שבועיות"
+    },
+    {
+        label: "STT זמן תכנון",
+        tooltip: "סכום שעות הגיחות המתוכננות שהוזנו ע\"י המדריכות (ללא גיחות שסומנו כלא מתוכננות)"
+    },
+    {
+        label: "זמן אימון בפועל",
+        tooltip: "סכום שעות הגיחות שבוצעו בפועל במאמן (למעט גיחות שבוטלו או גיחות חלקיות הדורשות ביצוע חוזר)"
+    },
+    {
+        label: "כמות גיחות",
+        tooltip: "סך כל הגיחות המתוכננות והמדווחות בשבוע זה"
+    },
+    {
+        label: "כמות ביטולי גיחה בגלל תקלת איוש",
+        tooltip: "כמות הגיחות שבוטלו כאשר סיבת הביטול הוגדרה כ'איוש'"
+    },
+    {
+        label: "כמות ביטולי גיחות טכניות",
+        tooltip: "כמות הגיחות שבוטלו כאשר סיבת הביטול הוגדרה כ'טכני'"
+    },
+    {
+        label: "כמות ביטולי גיחה בגלל כוח עליון (מלחמה/חשמל/בינוי)",
+        tooltip: "כמות הגיחות שבוטלו עקב כוח עליון (מלחמה / חשמל / בינוי)"
+    },
+    {
+        label: "כמות גיחות חלקיות",
+        tooltip: "כמות הגיחות שדווחו בסטטוס ביצוע חלקי"
+    },
+    {
+        label: "כמות גיחות עם היתר",
+        tooltip: "כמות הגיחות שבהן דווחה תקלה שנסגרה בהיתר או שסומנו כגיחה עם היתר"
+    },
+    {
+        label: "זמן השבתה",
+        tooltip: "סך שעות ההשבתה שסומנו בטופס הגיחה או שעות גיחות שבוטלו מסיבה טכנית"
+    },
+    {
+        label: "כמות תקלות מאומתות",
+        tooltip: "כמות התקלות שנסגרו וסומנו כ'אומת' ע\"י הטכנאי (למעט 'לא תקלה')"
+    },
+    {
+        label: "כמות תקלות לא מאומתות",
+        tooltip: "כמות התקלות שנסגרו וסומנו כ'לא אומת' ע\"י הטכנאי (למעט 'לא תקלה')"
+    },
+    {
+        label: "אחוז אימות תקלות",
+        tooltip: "נוסחה: (כמות תקלות מאומתות / סך התקלות שנסגרו עם סטטוס אימות) × 100"
+    },
+    {
+        label: "כמות תקלות טכנאי",
+        tooltip: "כמות התקלות שהוזנו ידנית במערכת ע\"י טכנאי (למעט 'לא תקלה')"
+    },
+    {
+        label: "סה\"כ כמות תקלות",
+        tooltip: "סך כל התקלות שדווחו במאמן בשבוע זה (למעט דיווחים שסווגו כ'לא תקלה')"
+    },
+    {
+        label: "כמות תקלות שהוגדרו כ\"לא תקלה\"",
+        tooltip: "כמות הדיווחים שנסגרו תחת סיווג סגירה 'לא תקלה'"
+    },
+    {
+        label: "כמות תקלות שהועברו להנדסה",
+        tooltip: "כמות התקלות שנסגרו תחת סיווג 'הועבר לצוות פיתוח' / הנדסה"
+    },
+    {
+        label: "כמות תקלות תפעול",
+        tooltip: "כמות התקלות שנסגרו תחת סיווג 'תפעול' (תפעול שגוי של המדריכה / הטייס)"
+    },
+    {
+        label: "כמות תקלות חוזרות",
+        tooltip: "תקלה באותה תת-מערכת (או מערכת אם אין תת-מערכת) בהפרש של פחות מ-48 שעות או פחות מ-5 גיחות מהתקלה האחרונה בתת-המערכת, או שסומנה ידנית ע\"י מנהל"
+    },
+    {
+        label: "אחוז זמינות טכנית",
+        tooltip: "נוסחה: ((STT זמן תכנון - זמן השבתה) / STT זמן תכנון) × 100"
+    },
+    {
+        label: "אחוז זמינות חוזית",
+        tooltip: "נוסחה: ((זמן הגיחות המתוכננות - (זמן השבתה + זמן האימון החלקי)) / זמן הגיחות המתוכננות) × 100"
+    },
+    {
+        label: "אחוז ביטולי הגיחות",
+        tooltip: "נוסחה: (סה\"כ גיחות שבוטלו / סה\"כ כמות הגיחות) × 100"
+    },
+    {
+        label: "אחוז ניצול",
+        tooltip: "נוסחה: (זמן אימון בפועל / STT זמן תכנון) × 100"
+    },
+    {
+        label: "MTBF",
+        tooltip: "נוסחה: זמן הפעלה (24/7) / סה\"כ כמות התקלות"
+    },
+    {
+        label: "MTBPC",
+        tooltip: "נוסחה: זמן אימון בפועל / סכום תקלות מפעיל"
+    }
+];
+
+window.openSimulatorPeriodicReportModal = function () {
+    const modal = document.getElementById('simulator-periodic-report-modal');
+    if (!modal) return;
+
+    const periodSelect = document.getElementById('sim-report-period-select');
+    const simSelect = document.getElementById('sim-report-sim-select');
+
+    // אכלוס תקופות
+    const periods = getAllAvailablePeriods();
+    if (periodSelect) {
+        periodSelect.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('');
+        const mainSelectedPeriod = document.getElementById('sim-period-select')?.value;
+        const currentPeriod = getEffectivePeriodName(new Date());
+        if (mainSelectedPeriod && periods.includes(mainSelectedPeriod)) {
+            periodSelect.value = mainSelectedPeriod;
+        } else if (periods.includes(currentPeriod)) {
+            periodSelect.value = currentPeriod;
+        } else if (periods.length > 0) {
+            periodSelect.value = periods[periods.length - 1];
+        }
+    }
+
+    // אכלוס מאמנים
+    const sims = window.personnelLists?.simulators || [];
+    if (simSelect) {
+        simSelect.innerHTML = `<option value="ALL">כל המאמנים (מאוחד)</option>` +
+            sims.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+
+    modal.classList.remove('hidden');
+    window.generateSimulatorPeriodicReport();
+};
+
+/**
+ * חישוב שורת נתונים (25 מדדים) עבור שבוע ספציפי או עבור סיכום התקופה
+ */
+function computeMetricsRowForBucket(label, flightsInBucket, faultsInBucket, recurringMap, weeksCountInBucket = 1) {
+    // 1. זמן הפעלה (24/7) -> 168 שעות לכל שבוע
+    const operatingTime24_7 = weeksCountInBucket * 168;
+
+    // 2. STT זמן תכנון - התכנון שהוזן ע"י המדריכות (גיחות מתוכננות ללא גיחות לא מתוכננות)
+    const plannedFlights = flightsInBucket.filter(f => !f.isUnplanned);
+    const sttHours = plannedFlights.reduce((sum, f) => sum + getFlightHours(f), 0);
+
+    // 3. זמן אימון בפועל - זמן שבו התאמנו במאמן
+    const executedFlights = flightsInBucket.filter(f => isFlightExecuted(f));
+    const actualTrainingHours = executedFlights.reduce((sum, f) => {
+        if (isFlightPartial(f) && f.data?.['נדרש ביצוע חוזר'] === 'כן') return sum;
+        return sum + getFlightHours(f);
+    }, 0);
+
+    // 4. כמות גיחות (סה"כ גיחות מתוכננות/מדווחות באותו שבוע)
+    const totalFlightsCount = flightsInBucket.length;
+
+    // 5. כמות ביטולי גיחה בגלל תקלת איוש
+    const cancelledStaffingCount = flightsInBucket.filter(f => {
+        if (!isFlightCancelled(f)) return false;
+        const r = (f.data?.['סיבת ביטול'] || '').trim();
+        return r.includes('איוש');
+    }).length;
+
+    // 6. כמות ביטולי גיחות טכניות
+    const cancelledTechCount = flightsInBucket.filter(f => {
+        if (!isFlightCancelled(f)) return false;
+        const r = (f.data?.['סיבת ביטול'] || '').trim();
+        return r.includes('טכני');
+    }).length;
+
+    // 7. כמות ביטולי גיחה בגלל כוח עליון (מלחמה/חשמל/בינוי)
+    const cancelledForceMajeureCount = flightsInBucket.filter(f => {
+        if (!isFlightCancelled(f)) return false;
+        const r = (f.data?.['סיבת ביטול'] || '').trim();
+        return r.includes('כוח עליון') || r.includes('מלחמה') || r.includes('חשמל') || r.includes('בינוי');
+    }).length;
+
+    // 8. כמות גיחות חלקיות
+    const partialFlightsCount = flightsInBucket.filter(f => isFlightPartial(f)).length;
+
+    // 9. כמות גיחות עם היתר (גיחות שבהן דווחה תקלה שנסגרה בהיתר או שצוין היתר בנתוני הגיחה)
+    const permissionFaultFlightIds = new Set();
+    faultsInBucket.forEach(fl => {
+        if (fl.status?.isClosedWithPermission || fl.status?.wasClosedWithPermission) {
+            (fl.sourceFlights || []).forEach(fid => permissionFaultFlightIds.add(fid));
+        }
+    });
+    const flightsWithPermissionCount = flightsInBucket.filter(f =>
+        permissionFaultFlightIds.has(f.id) ||
+        f.data?.['היתר'] === 'כן' ||
+        f.data?.['בוצעה בהיתר'] === 'כן'
+    ).length;
+
+    // 10. זמן השבתה (שסומן בטופס הגיחה / ביטול טכני)
+    const downtimeHours = flightsInBucket.reduce((sum, f) => sum + getFlightDowntimeHours(f), 0);
+    const partialLostHours = flightsInBucket.reduce((sum, f) => sum + getFlightPartialHours(f), 0);
+
+    // סיווגי תקלות (11-19)
+    // 16. כמות תקלות שהוגדרו כ"לא תקלה"
+    const notAFaultCount = faultsInBucket.filter(fl => fl.status?.faultCategory === 'לא תקלה').length;
+
+    // תקלות תקפות (ללא "לא תקלה")
+    const validFaults = faultsInBucket.filter(fl => fl.status?.faultCategory !== 'לא תקלה');
+
+    // 11. כמות תקלות מאומתות
+    const verifiedFaultsCount = validFaults.filter(fl => fl.status?.isResolved && fl.status?.isVerified === true).length;
+
+    // 12. כמות תקלות לא מאומתות
+    const unverifiedFaultsCount = validFaults.filter(fl => fl.status?.isResolved && fl.status?.isVerified === false).length;
+
+    // 13. אחוז אימות תקלות
+    const totalCheckedForVerification = verifiedFaultsCount + unverifiedFaultsCount;
+    const verificationRate = totalCheckedForVerification > 0
+        ? ((verifiedFaultsCount / totalCheckedForVerification) * 100).toFixed(1) + '%'
+        : '0.0%';
+
+    // 14. כמות תקלות טכנאי (תקלות שהוזנו ידנית ע"י טכנאי)
+    const technicianFaultsCount = validFaults.filter(fl => Boolean(fl.isManualEntry)).length;
+
+    // 15. סה"כ כמות תקלות
+    const totalFaultsCount = validFaults.length;
+
+    // 17. כמות תקלות שהועברו להנדסה
+    const engineeringFaultsCount = validFaults.filter(fl => {
+        const cat = (fl.status?.faultCategory || '').trim();
+        return cat === 'הועבר לצוות פיתוח' || cat.includes('הנדסה') || cat.includes('פיתוח');
+    }).length;
+
+    // 18. כמות תקלות תפעול - תפעול שגוי של המדריכה / הטייס
+    const operationFaultsCount = validFaults.filter(fl => (fl.status?.faultCategory || '').trim() === 'תפעול').length;
+
+    // 19. כמות תקלות חוזרות (לפי <48 שעות או <5 גיחות באותה תת-מערכת + טיוב ידני של מנהל)
+    const recurringFaultsCount = validFaults.filter(fl => Boolean(recurringMap[fl.key])).length;
+
+    // 20. אחוז זמינות טכנית = (STT - זמן השבתה) / STT
+    const techAvailabilityRate = sttHours > 0
+        ? (Math.max(0, (sttHours - downtimeHours) / sttHours) * 100).toFixed(1) + '%'
+        : '100.0%';
+
+    // 21. אחוז זמינות חוזית = (זמן הגיחות המתוכננות - (זמן השבתה + זמן האימון החלקי)) / זמן הגיחות המתוכננות
+    const contractualAvailabilityRate = sttHours > 0
+        ? (Math.max(0, (sttHours - (downtimeHours + partialLostHours)) / sttHours) * 100).toFixed(1) + '%'
+        : '100.0%';
+
+    // 22. אחוז ביטולי הגיחות
+    const totalCancelledFlights = flightsInBucket.filter(f => isFlightCancelled(f)).length;
+    const cancellationRate = totalFlightsCount > 0
+        ? ((totalCancelledFlights / totalFlightsCount) * 100).toFixed(1) + '%'
+        : '0.0%';
+
+    // 23. אחוז ניצול = (זמן אימון בפועל / STT)
+    const utilizationRate = sttHours > 0
+        ? ((actualTrainingHours / sttHours) * 100).toFixed(1) + '%'
+        : '0.0%';
+
+    // 24. MTBF = (זמן הפעלה / סכום התקלות)
+    const mtbfVal = totalFaultsCount > 0
+        ? (operatingTime24_7 / totalFaultsCount).toFixed(1)
+        : '-';
+
+    // 25. MTBPC = (זמן אימון בפועל / סכום תקלות מפעיל)
+    // תקלות מפעיל: תקלות תפעול (או תקלות שדווחו ע"י מפעיל אם אין סיווג סגירה עדיין)
+    const operatorFaultsCount = operationFaultsCount > 0
+        ? operationFaultsCount
+        : validFaults.filter(fl => !fl.isManualEntry).length;
+
+    const mtbpcVal = operatorFaultsCount > 0
+        ? (actualTrainingHours / operatorFaultsCount).toFixed(1)
+        : '-';
+
+    return [
+        label,
+        operatingTime24_7.toFixed(1),
+        sttHours.toFixed(2),
+        actualTrainingHours.toFixed(2),
+        totalFlightsCount,
+        cancelledStaffingCount,
+        cancelledTechCount,
+        cancelledForceMajeureCount,
+        partialFlightsCount,
+        flightsWithPermissionCount,
+        downtimeHours.toFixed(2),
+        verifiedFaultsCount,
+        unverifiedFaultsCount,
+        verificationRate,
+        technicianFaultsCount,
+        totalFaultsCount,
+        notAFaultCount,
+        engineeringFaultsCount,
+        operationFaultsCount,
+        recurringFaultsCount,
+        techAvailabilityRate,
+        contractualAvailabilityRate,
+        cancellationRate,
+        utilizationRate,
+        mtbfVal,
+        mtbpcVal
+    ];
+}
+
+window.generateSimulatorPeriodicReport = function () {
+    const selectedPeriod = document.getElementById('sim-report-period-select')?.value;
+    const selectedSim = document.getElementById('sim-report-sim-select')?.value || 'ALL';
+
+    const thead = document.getElementById('sim-periodic-report-thead');
+    const tbody = document.getElementById('sim-periodic-report-tbody');
+    const tfoot = document.getElementById('sim-periodic-report-tfoot');
+    if (!thead || !tbody || !tfoot) return;
+
+    const recurringMap = computeRecurringFaultsMap();
+
+    // סינון גיחות לתקופה ולמאמן
+    const periodFlights = (window.savedFlights || []).filter(f => {
+        if (!f.date) return false;
+        const p = getEffectivePeriodName(f.date, f);
+        if (p !== selectedPeriod) return false;
+        if (selectedSim !== 'ALL') {
+            const sim = (f.data?.['סימולטור'] || '').trim().toUpperCase();
+            if (sim !== selectedSim.trim().toUpperCase()) return false;
+        }
+        return true;
+    });
+
+    // סינון תקלות לתקופה ולמאמן
+    const periodFaults = Object.values(window.unifiedFaultsDatabase || {}).filter(fl => {
+        if (!fl.firstReportTimestamp) return false;
+        const p = getEffectivePeriodName(new Date(fl.firstReportTimestamp));
+        if (p !== selectedPeriod) return false;
+        if (selectedSim !== 'ALL') {
+            const sim = (fl.simulator || '').trim().toUpperCase();
+            if (sim !== selectedSim.trim().toUpperCase()) return false;
+        }
+        return true;
+    });
+
+    // קביעת השבועות להצגה בתקופה
+    let maxWeek = 26;
+    periodFlights.forEach(f => {
+        const w = getWeekNumberInPeriod(f.date, selectedPeriod);
+        if (w >= 1 && w <= 52 && w > maxWeek) maxWeek = w;
+    });
+    periodFaults.forEach(fl => {
+        const w = getWeekNumberInPeriod(new Date(fl.firstReportTimestamp), selectedPeriod);
+        if (w >= 1 && w <= 52 && w > maxWeek) maxWeek = w;
+    });
+
+    // בניית כותרות הטבלה לתצוגה במסך (ה-Tooltip מוצג רק במעבר עכבר על המסך)
+    thead.innerHTML = `
+        <tr>
+            ${PERIODIC_REPORT_COLUMNS.map((col, idx) => `
+                <th title="${col.tooltip.replace(/"/g, '&quot;')}"
+                    class="group relative border border-gray-300 px-2.5 py-2.5 whitespace-nowrap font-bold cursor-help select-none ${idx === 0 ? 'sticky right-0 bg-gray-200 z-30' : 'bg-gray-100 hover:bg-gray-200 transition'}">
+                    <div class="flex items-center justify-center gap-1">
+                        <span>${col.label}</span>
+                        <i class="fas fa-info-circle text-gray-400 group-hover:text-ofer-orange text-[10px] no-print"></i>
+                    </div>
+                    <div class="no-print hidden group-hover:block absolute top-full mt-1 ${idx < 3 ? 'right-0' : (idx > PERIODIC_REPORT_COLUMNS.length - 4 ? 'left-0' : 'left-1/2 -translate-x-1/2')} z-50 w-56 p-2 bg-gray-900 text-white text-[11px] font-normal rounded-lg shadow-xl whitespace-normal text-right leading-relaxed pointer-events-none">
+                        ${col.tooltip}
+                    </div>
+                </th>
+            `).join('')}
+        </tr>
+    `;
+
+    const startSunday = getPeriodStartSunday(selectedPeriod);
+    const rowsData = [];
+    let tbodyHtml = '';
+
+    for (let w = 1; w <= maxWeek; w++) {
+        const wFlights = periodFlights.filter(f => getWeekNumberInPeriod(f.date, selectedPeriod) === w);
+        const wFaults = periodFaults.filter(fl => getWeekNumberInPeriod(new Date(fl.firstReportTimestamp), selectedPeriod) === w);
+
+        let weekLabel = `שבוע ${w}`;
+        if (startSunday) {
+            const wStart = new Date(startSunday);
+            wStart.setDate(wStart.getDate() + (w - 1) * 7);
+            const wEnd = new Date(wStart);
+            wEnd.setDate(wEnd.getDate() + 6);
+            const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+            weekLabel = `שבוע ${w} (${fmt(wStart)}-${fmt(wEnd)})`;
+        }
+
+        const rowValues = computeMetricsRowForBucket(weekLabel, wFlights, wFaults, recurringMap, 1);
+        rowsData.push(rowValues);
+
+        const hasActivity = wFlights.length > 0 || wFaults.length > 0;
+        const rowClass = hasActivity ? 'hover:bg-blue-50 font-medium text-gray-800' : 'text-gray-400 bg-gray-50/40';
+
+        tbodyHtml += `
+            <tr class="${rowClass}">
+                ${rowValues.map((val, cIdx) => `
+                    <td class="border border-gray-200 px-2 py-1.5 whitespace-nowrap ${cIdx === 0 ? 'sticky right-0 bg-gray-100 font-bold text-gray-900 z-10' : ''}">
+                        ${val}
+                    </td>
+                `).join('')}
+            </tr>
+        `;
+    }
+
+    tbody.innerHTML = tbodyHtml;
+
+    // שורת סיכום תקופתית
+    const summaryRow = computeMetricsRowForBucket(`סה"כ / ממוצע תקופה (${selectedPeriod})`, periodFlights, periodFaults, recurringMap, maxWeek);
+    tfoot.innerHTML = `
+        <tr>
+            ${summaryRow.map((val, cIdx) => `
+                <td class="border border-gray-400 px-2 py-2 whitespace-nowrap ${cIdx === 0 ? 'sticky right-0 bg-orange-200 z-30' : ''}">
+                    ${val}
+                </td>
+            `).join('')}
+        </tr>
+    `;
+
+    // שמירת הכותרות הנקיות בלבד (label) עבור ייצוא והדפסה
+    lastGeneratedPeriodicReport = {
+        period: selectedPeriod,
+        simulator: selectedSim,
+        headers: PERIODIC_REPORT_COLUMNS.map(c => typeof c === 'object' ? c.label : String(c)),
+        rows: rowsData,
+        summary: summaryRow
+    };
+};
+
+window.exportSimulatorPeriodicReportCSV = function () {
+    if (!lastGeneratedPeriodicReport) {
+        window.generateSimulatorPeriodicReport();
+    }
+    if (!lastGeneratedPeriodicReport) return;
+
+    const { period, simulator, headers, rows, summary } = lastGeneratedPeriodicReport;
+    const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    let csvContent = "\uFEFF";
+    // ייצוא שמות העמודות בלבד ללא נוסחאות ה-Tooltip
+    csvContent += headers.map(escapeCSV).join(",") + "\n";
+    rows.forEach(r => {
+        csvContent += r.map(escapeCSV).join(",") + "\n";
+    });
+    csvContent += summary.map(escapeCSV).join(",") + "\n";
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safePeriod = (period || 'all').replace(/\//g, '-');
+    link.setAttribute("href", url);
+    link.setAttribute("download", `דוח_מאמנים_תקופתי_${simulator}_תקופה_${safePeriod}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+window.printSimulatorPeriodicReport = function () {
+    if (!lastGeneratedPeriodicReport) {
+        window.generateSimulatorPeriodicReport();
+    }
+    if (!lastGeneratedPeriodicReport) return;
+
+    const { period, simulator, headers, rows, summary } = lastGeneratedPeriodicReport;
+
+    // בניית טבלה נקייה להדפסה מתוך הכותרות בלבד (ללא אלמנטי ה-Tooltip)
+    const theadHtml = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    const tbodyHtml = rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('');
+    const tfootHtml = `<tr>${summary.map(cell => `<td>${cell}</td>`).join('')}</tr>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(`
+        <html dir="rtl" lang="he">
+        <head>
+            <title>דוח מאמנים תקופתי - ${simulator === 'ALL' ? 'כל המאמנים' : simulator} (${period})</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 15px; direction: rtl; }
+                h2 { text-align: center; margin-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: center; }
+                th, td { border: 1px solid #444; padding: 4px; }
+                thead { background: #e5e7eb; font-weight: bold; }
+                tfoot { background: #fed7aa; font-weight: bold; }
+                @page { size: landscape; margin: 10mm; }
+            </style>
+        </head>
+        <body>
+            <h2>דוח מאמנים תקופתי מחולק לשבועות - מאמן: ${simulator === 'ALL' ? 'כל המאמנים' : simulator} | תקופה: ${period}</h2>
+            <table>
+                <thead>${theadHtml}</thead>
+                <tbody>${tbodyHtml}</tbody>
+                <tfoot>${tfootHtml}</tfoot>
+            </table>
+        </body>
+        </html>
+    `);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
+};
+
+// ============================================================================
+// גרפים, מודאלי פירוט ושעות סגירת מאמנים (מתוקנים)
+// ============================================================================
+
 function getTrendChartData(faults) {
     const dataCounts = {};
     const filterType = document.getElementById('sim-time-filter-type')?.value || 'all';
@@ -358,28 +1132,19 @@ function getTrendChartData(faults) {
     if (filterType === 'week') {
         const selectedWeek = parseInt(document.getElementById('sim-week-select')?.value);
         const selectedPeriod = document.getElementById('sim-period-select')?.value;
-        const planning = window.planningSettings || {};
         let weekStartDate = null;
 
-        // מציאת התאריך האמיתי של תחילת השבוע המסונן
         if (selectedWeek && selectedPeriod) {
-            let baseDateStr = null;
-            if (planning.periodCurrStart && selectedPeriod === getPeriodDisplay(new Date(planning.periodCurrStart))) baseDateStr = planning.periodCurrStart;
-            else if (planning.periodPrevStart && selectedPeriod === getPeriodDisplay(new Date(planning.periodPrevStart))) baseDateStr = planning.periodPrevStart;
-            else if (planning.periodNextStart && selectedPeriod === getPeriodDisplay(new Date(planning.periodNextStart))) baseDateStr = planning.periodNextStart;
-
-            if (baseDateStr) {
-                weekStartDate = new Date(baseDateStr);
-                weekStartDate.setHours(0, 0, 0, 0);
-                weekStartDate.setDate(weekStartDate.getDate() - weekStartDate.getDay()); // הולך ליום ראשון של תחילת התקופה
-                weekStartDate.setDate(weekStartDate.getDate() + (selectedWeek - 1) * 7); // מוסיף את מספר השבועות
+            const startSunday = getPeriodStartSunday(selectedPeriod);
+            if (startSunday) {
+                weekStartDate = new Date(startSunday);
+                weekStartDate.setDate(weekStartDate.getDate() + (selectedWeek - 1) * 7);
             }
         }
 
         const dayNames = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שבת"];
         const dateLabels = [];
 
-        // בניית תוויות עם תאריכים מדויקים
         for (let i = 0; i < 7; i++) {
             if (weekStartDate) {
                 const d = new Date(weekStartDate);
@@ -388,7 +1153,7 @@ function getTrendChartData(faults) {
                 const monthStr = String(d.getMonth() + 1).padStart(2, '0');
                 dateLabels.push(`${dayStr}/${monthStr} (${dayNames[i]})`);
             } else {
-                dateLabels.push(`יום ${dayNames[i]}`); // גיבוי במידה ולא נמצא תאריך בסיס
+                dateLabels.push(`יום ${dayNames[i]}`);
             }
         }
 
@@ -405,7 +1170,6 @@ function getTrendChartData(faults) {
         const selectedMonth = document.getElementById('sim-month-select')?.value;
         const mStr = String(parseInt(selectedMonth) + 1).padStart(2, '0');
 
-        // בניית תוויות עם טווחי תאריכים במקום "שבוע 1"
         const weeks = [
             `01-07/${mStr}`,
             `08-14/${mStr}`,
@@ -440,7 +1204,6 @@ function getTrendChartData(faults) {
         }
 
     } else {
-        // ברירת מחדל (כל הזמן) - 6 חודשים אחרונים
         const now = new Date();
         for (let i = 5; i >= 0; i--) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -458,70 +1221,13 @@ function getTrendChartData(faults) {
     return dataCounts;
 }
 
-// פונקציית עזר לחישוב המדדים המבוקשים
-function calculateSimulatorMetrics(simName, faults, filteredFlights) {
-    // 1. זמן תכנון (סך שעות הגיחות שהיו אמורות להתקיים)
-    const totalPlannedMinutes = filteredFlights.reduce((acc, f) => {
-        const start = f.data['שעת התחלה'], end = f.data['שעת סיום'];
-        if (!start || !end) return acc;
-        let diff = (new Date(`1970-01-01T${end}:00`) - new Date(`1970-01-01T${start}:00`)) / 60000;
-        return acc + (diff > 0 ? diff : diff + 1440);
-    }, 0);
-    const totalPlannedHours = totalPlannedMinutes / 60;
-
-    const actualFlights = filteredFlights.filter(f => {
-        const status = f.executionStatus;
-        return status === 'בוצעה' || (status === 'בוצעה חלקית' && f.data['נדרש ביצוע חוזר'] !== 'כן');
-    });
-    const actualHours = actualFlights.reduce((acc, f) => {
-        const start = f.data['שעת התחלה'], end = f.data['שעת סיום'];
-        if (!start || !end) return acc; // <--- שורת ההגנה שהוספנו
-        let diff = (new Date(`1970-01-01T${end}:00`) - new Date(`1970-01-01T${start}:00`)) / 60000;
-        return acc + (diff > 0 ? diff : diff + 1440);
-    }, 0) / 60;
-
-    // 3. זמן השבתה (גיחות שבוטלו בגלל סיבה טכנית / תקלה משביתה)
-    const downtimeHours = filteredFlights.filter(f => f.executionStatus === 'בוטלה' && f.data['סיבת ביטול'] === 'טכני')
-        .reduce((acc, f) => {
-            const start = f.data['שעת התחלה'], end = f.data['שעת סיום'];
-            if (!start || !end) return acc; // <--- שורת ההגנה שהוספנו
-            let diff = (new Date(`1970-01-01T${end}:00`) - new Date(`1970-01-01T${start}:00`)) / 60000;
-            return acc + (diff > 0 ? diff : diff + 1440);
-        }, 0) / 60;
-    // 4. ספירת תקלות (סינון "לא תקלה")
-    const validFaults = faults.filter(f => f.status?.faultCategory !== 'לא תקלה');
-    const downtimeFaultsCount = validFaults.filter(f => f.isDowntime).length;
-
-    // חישוב המדדים
-    const metrics = {
-        availability: totalPlannedHours > 0 ? ((totalPlannedHours - downtimeHours) / totalPlannedHours * 100).toFixed(1) : "0",
-        cancellationRate: filteredFlights.length > 0 ?
-            (((filteredFlights.filter(f => f.executionStatus === 'בוטלה' || (f.executionStatus === 'בוצעה חלקית' && f.data['נדרש ביצוע חוזר'] === 'כן')).length) / filteredFlights.length) * 100).toFixed(1) : "0",
-        mtbpc: validFaults.length > 0 ? (actualHours / validFaults.length).toFixed(1) : actualHours.toFixed(1),
-        utilization: totalPlannedHours > 0 ? (actualHours / totalPlannedHours * 100).toFixed(1) : "0",
-        mtbf: downtimeFaultsCount > 0 ? (totalPlannedHours / downtimeFaultsCount).toFixed(1) : totalPlannedHours.toFixed(1)
-    };
-
-    return metrics;
-}
-
-// עדכון חישוב זמן טיפול ממוצע - מסנן החוצה גיחות שנסגרו בהיתר כדי לקבל זמן טיפול ממוצע "אמיתי" ומדויק יותר
-function calculateAverageClosureTime(faults) {
-    const resolved = faults.filter(f => f.status?.isResolved && !f.status?.isClosedWithPermission && f.status?.timestamp && f.firstReportTimestamp);
-    if (resolved.length === 0) return "0";
-    const totalMs = resolved.reduce((acc, f) => acc + (f.status.timestamp - f.firstReportTimestamp), 0);
-    return (totalMs / resolved.length / (1000 * 60 * 60)).toFixed(1);
-}
-
 function renderSimulatorCharts(simName, index) {
     if (typeof Chart === 'undefined') return;
 
     const faults = getFilteredFaults(simName);
     const ctxTrend = document.getElementById(`chart-sim-trend-${index}`);
-
     if (!ctxTrend) return;
 
-    // עדכון כותרת הגרף בעמוד הראשי בהתאם לסינון
     const filterType = document.getElementById('sim-time-filter-type')?.value || 'all';
     const trendTitleEl = document.getElementById(`trend-title-${index}`);
     if (trendTitleEl) {
@@ -531,19 +1237,6 @@ function renderSimulatorCharts(simName, index) {
     }
 
     const chartDataMap = getTrendChartData(faults);
-
-    const now = new Date();
-    let currentMonthCount = 0;
-    faults.forEach(f => {
-        if (!f.firstReportTimestamp) return;
-        const d = new Date(f.firstReportTimestamp);
-        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
-            currentMonthCount++;
-        }
-    });
-
-    const currentCountEl = document.getElementById(`monthly-count-${index}`);
-    if (currentCountEl) currentCountEl.textContent = currentMonthCount;
 
     const existingTrend = Chart.getChart(ctxTrend);
     if (existingTrend) existingTrend.destroy();
@@ -575,7 +1268,6 @@ window.openSimulatorTrendModal = function (simName) {
     const content = document.getElementById('modal-content');
     if (!modal || !title || !content) return;
 
-    // עדכון כותרת המודאל הפנימי בהתאם לסינון
     const filterType = document.getElementById('sim-time-filter-type')?.value || 'all';
     let titleStr = `מגמת תקלות (חודשית) - ${simName}`;
     if (filterType === 'week') titleStr = `מגמת תקלות (יומית) - ${simName}`;
@@ -618,12 +1310,9 @@ window.openSimulatorDetailsModal = function (simName) {
 
     title.textContent = `תמונת מצב מפורטת: ${simName}`;
 
-    // תקלות מסוננות (לפי חודש/תקופה)
     const filteredFaults = getFilteredFaults(simName);
     const filteredOpenFaults = filteredFaults.filter(f => f.status && !f.status.isResolved);
 
-
-    // כל התקלות (ללא קשר לסינון בעמוד)
     const allFaults = Object.values(window.unifiedFaultsDatabase || {}).filter(f => f.simulator === simName);
     const allOpenFaults = allFaults.filter(f => f.status && !f.status.isResolved);
 
@@ -634,7 +1323,6 @@ window.openSimulatorDetailsModal = function (simName) {
         return (b.firstReportTimestamp || 0) - (a.firstReportTimestamp || 0);
     });
 
-    // ממוצע 24/7 לכלל התקלות שאינן בהיתר (לפי הסינון)
     const generalResolved = filteredFaults.filter(f => f.status?.isResolved && !f.status?.isClosedWithPermission && f.status?.timestamp && f.firstReportTimestamp);
     let generalAvg = "0";
     if (generalResolved.length > 0) {
@@ -642,21 +1330,18 @@ window.openSimulatorDetailsModal = function (simName) {
         generalAvg = (totalMs / generalResolved.length / (1000 * 60 * 60)).toFixed(1);
     }
 
-    // חישוב ממוצע סגירת תקלה בהיתר (רק לפי שעות הפעלה - לפי הסינון)
     const permissionFaults = filteredFaults.filter(f => f.status && f.status.isResolved && (f.status.isClosedWithPermission || f.status.wasClosedWithPermission));
     let totalOperatingHours = 0;
     let validCount = 0;
 
     permissionFaults.forEach(f => {
         if (f.firstReportTimestamp && f.status.timestamp) {
-            // ---> הוספנו את ה-simName כפרמטר אחרון <---
             totalOperatingHours += calculateOperatingHoursBetween(f.firstReportTimestamp, f.status.timestamp, flights, simName);
             validCount++;
         }
-    })
+    });
     const avgOpCloseTime = validCount > 0 ? (totalOperatingHours / validCount).toFixed(1) : "0";
 
-    // יצירת רשימה לחיצה לטאב "כל התקלות הפתוחות"
     const renderFaultList = (faultList) => {
         if (faultList.length === 0) return '<li class="text-gray-500">אין תקלות פתוחות.</li>';
         return faultList.map(f => {
@@ -666,7 +1351,8 @@ window.openSimulatorDetailsModal = function (simName) {
                 ${f.isDowntime ? '⚠️ ' : ''}<strong>${f.description || 'ללא תיאור'}</strong> 
                 <span class="text-gray-500 text-xs mr-2">(דווח ב: ${f.firstReportTimestamp ? new Date(f.firstReportTimestamp).toLocaleDateString('he-IL') : 'לא ידוע'})</span>
             </li>
-        `}).join('');
+        `;
+        }).join('');
     };
 
     content.innerHTML = `
@@ -706,7 +1392,7 @@ window.openSimulatorDetailsModal = function (simName) {
                     </li>
                     <li class="mr-2">
                         <button class="inline-block p-2 text-sm border-b-2 border-ofer-orange text-ofer-orange font-bold active" id="tab-filtered-open" onclick="window.switchSimFaultTab('filtered')">
-                           כל התקלות בתקופה(${filteredOpenFaults.length})
+                           כל התקלות בתקופה (${filteredOpenFaults.length})
                         </button>
                     </li>
                 </ul>
@@ -752,22 +1438,24 @@ window.exportSimulatorFaultsToExcel = function (simName) {
         return;
     }
 
-    let csvContent = "\uFEFF"; // קידוד שמוודא שעברית נפתחת נכון באקסל
-    csvContent += "מאמן,תיאור תקלה,מערכת,תאריך דיווח,סטטוס,תאריך סגירה,זמן טיפול (שעות),נסגר בהיתר,טכנאי מטפל,תיאור פתרון\n";
+    const recurringMap = computeRecurringFaultsMap();
 
-    // מיון כמו בפופאפ
+    let csvContent = "\uFEFF";
+    csvContent += "מאמן,תיאור תקלה,מערכת,תקלה חוזרת,תאריך דיווח,סטטוס,סיווג סגירה,תאריך סגירה,זמן טיפול (שעות),נסגר בהיתר,טכנאי מטפל,תיאור פתרון\n";
+
     const sortedFaults = [...faults].sort((a, b) => {
         if (a.status?.isResolved !== b.status?.isResolved) return a.status?.isResolved ? 1 : -1;
         return (b.firstReportTimestamp || 0) - (a.firstReportTimestamp || 0);
     });
 
     sortedFaults.forEach(f => {
-        // ניקוי פסיקים ושורות חדשות כדי לא לשבור את העמודות ב-CSV
         const desc = f.description ? f.description.replace(/,/g, ' - ').replace(/\n/g, ' ') : 'ללא תיאור';
         const sys = f.systemClassification ? f.systemClassification.replace(/,/g, ' - ') : '-';
+        const isRec = recurringMap[f.key] ? 'כן' : 'לא';
         const reportDate = f.firstReportTimestamp ? new Date(f.firstReportTimestamp).toLocaleDateString('he-IL') : 'לא ידוע';
 
         let status = 'פתוחה';
+        let category = '-';
         let closeDate = '';
         let handleTime = '';
         let permission = 'לא';
@@ -776,6 +1464,7 @@ window.exportSimulatorFaultsToExcel = function (simName) {
 
         if (f.status && f.status.isResolved) {
             status = 'טופלה';
+            category = f.status.faultCategory || '-';
             closeDate = f.status.date || '';
             if (f.status.isClosedWithPermission || f.status.wasClosedWithPermission) permission = 'כן';
 
@@ -788,7 +1477,7 @@ window.exportSimulatorFaultsToExcel = function (simName) {
             resolutionDesc = f.status.resolutionDescription ? f.status.resolutionDescription.replace(/,/g, ' - ').replace(/\n/g, ' ') : '';
         }
 
-        csvContent += `${simName},${desc},${sys},${reportDate},${status},${closeDate},${handleTime},${permission},${technician},${resolutionDesc}\n`;
+        csvContent += `${simName},${desc},${sys},${isRec},${reportDate},${status},${category},${closeDate},${handleTime},${permission},${technician},${resolutionDesc}\n`;
     });
 
     const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csvContent);
@@ -800,7 +1489,6 @@ window.exportSimulatorFaultsToExcel = function (simName) {
     document.body.removeChild(link);
 };
 
-// פונקציה להחלפת הטאבים (הוסיפי אותה מיד מתחת ל- openSimulatorDetailsModal)
 window.switchSimFaultTab = function (tab) {
     const btnAll = document.getElementById('tab-all-open');
     const btnFiltered = document.getElementById('tab-filtered-open');
@@ -820,17 +1508,12 @@ window.switchSimFaultTab = function (tab) {
     }
 };
 
-// פונקציה שמחשבת את חלון ההפעלה של יום ספציפי: 15 דק' לפני גיחה ראשונה עד שעת הסגירה
 export function getDailyOperatingWindow(dateStr, flights, simName) {
-    // 1. מציאת קטגוריית העל (FFS או VIPT)
-
-
-    // 2. סינון גיחות - אנחנו בודקים את כל הגיחות של *אותה הקטגוריה* באותו יום
-    // כי הפתיחה והסגירה של FFS1 ו-FFS2 קורות באותו זמן
     const dayFlights = flights.filter(f => {
-        if (f.date !== dateStr || f.executionStatus === 'בוטלה' || !f.data['שעת התחלה']) return false;
+        let fDateStr = typeof f.date === 'string' ? f.date.split('T')[0] : '';
+        if (fDateStr !== dateStr || !isFlightExecuted(f) || !f.data?.['שעת התחלה']) return false;
         const flightSim = (f.data['סימולטור'] || '').toUpperCase();
-        return flightSim === simName.toUpperCase(); // Strict match instead of .includes()
+        return flightSim === simName.toUpperCase();
     });
 
     if (dayFlights.length === 0) return null;
@@ -842,15 +1525,12 @@ export function getDailyOperatingWindow(dateStr, flights, simName) {
         if (f.data['שעת סיום'] > latest) latest = f.data['שעת סיום'];
     });
 
-    // זמן פתיחה (15 דק' לפני גיחה ראשונה בקטגוריה)
     const startDt = new Date(`${dateStr}T${earliest}:00`);
     startDt.setMinutes(startDt.getMinutes() - 15);
 
     let endDt;
     const dailyCloseData = window.facilityCloseTimes[dateStr] || {};
-
-    // 3. משיכת שעת הסגירה לפי הקטגוריה הכללית ("FFS" או "VIPT")
-    const closeTimeStr = dailyCloseData[simName];
+    const closeTimeStr = typeof dailyCloseData === 'object' ? dailyCloseData[simName] : dailyCloseData;
 
     if (closeTimeStr) {
         endDt = new Date(`${dateStr}T${closeTimeStr}:00`);
@@ -862,10 +1542,8 @@ export function getDailyOperatingWindow(dateStr, flights, simName) {
     return { start: startDt.getTime(), end: endDt.getTime(), durationHours: (endDt.getTime() - startDt.getTime()) / 3600000 };
 }
 
-// חישוב שעות חופפות בין זמן התקלה לזמני ההפעלה האמיתיים
-// עודכן לקבל ולהעביר simName
 function calculateOperatingHoursBetween(startTs, endTs, flights, simName) {
-    const datesWithFlights = [...new Set(flights.map(f => f.date))];
+    const datesWithFlights = [...new Set(flights.map(f => typeof f.date === 'string' ? f.date.split('T')[0] : ''))].filter(Boolean);
     let operatingMs = 0;
 
     datesWithFlights.forEach(dateStr => {
@@ -887,13 +1565,13 @@ window.openGlobalCloseModal = function () {
     const now = new Date();
     document.getElementById('global-close-time-input').value = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('global-close-modal').classList.remove('hidden');
-}
+};
 
 window.saveGlobalCloseTime = async function () {
     const timeVal = document.getElementById('global-close-time-input').value;
     const dateStr = new Date().toISOString().split('T')[0];
     await _saveFacilityTime(dateStr, timeVal, 'global-close-modal');
-}
+};
 
 window.saveMissingCloseTime = async function () {
     const timeVal = document.getElementById('missing-close-time-input').value;
@@ -903,22 +1581,28 @@ window.saveMissingCloseTime = async function () {
         return;
     }
     await _saveFacilityTime(dateStr, timeVal, 'missing-close-modal');
-}
+};
 
 async function _saveFacilityTime(dateStr, timeVal, modalId) {
     if (!timeVal) return;
     if (window.firestoreFunctions && window.db) {
         const { doc, setDoc } = window.firestoreFunctions;
         try {
+            const sims = window.personnelLists?.simulators || ['FFS', 'VIPT'];
+            const simulatorsMap = {};
+            sims.forEach(s => { simulatorsMap[s] = timeVal; });
+
             await setDoc(doc(window.db, "facility_status", dateStr), {
                 date: dateStr,
                 closeTime: timeVal,
+                simulators: simulatorsMap,
                 timestamp: Date.now()
-            });
-            window.facilityCloseTimes[dateStr] = timeVal; // עדכון מקומי
+            }, { merge: true });
+
+            window.facilityCloseTimes[dateStr] = simulatorsMap;
             import('../components/modals.js').then(m => m.showToast('שעת סגירת מתקן נשמרה', 'green'));
             document.getElementById(modalId).classList.add('hidden');
-            renderSimulatorDashboard(); // רענון נתונים
+            renderSimulatorDashboard();
         } catch (e) {
             console.error(e);
             import('../components/modals.js').then(m => m.showToast('שגיאה בשמירה', 'red'));
@@ -935,7 +1619,7 @@ window.openSpecificSimulatorCloseModal = function () {
     select.innerHTML = simulators.map(sim => `<option value="${sim}">${sim}</option>`).join('');
 
     document.getElementById('specific-sim-close-modal').classList.remove('hidden');
-}
+};
 
 window.saveSpecificSimulatorCloseTime = async function () {
     const timeVal = document.getElementById('specific-sim-close-time').value;
@@ -950,7 +1634,6 @@ window.saveSpecificSimulatorCloseTime = async function () {
     if (window.firestoreFunctions && window.db) {
         const { doc, setDoc, getDoc } = window.firestoreFunctions;
         try {
-            // משיכת מצב נוכחי מהדאטהבייס כדי לא לדרוס מאמנים אחרים
             const docRef = doc(window.db, "facility_status", dateStr);
             const docSnap = await getDoc(docRef);
 
@@ -958,7 +1641,6 @@ window.saveSpecificSimulatorCloseTime = async function () {
             if (docSnap.exists() && docSnap.data().simulators) {
                 simulatorsData = docSnap.data().simulators;
             } else if (docSnap.exists() && docSnap.data().closeTime) {
-                // העתקת המבנה הישן
                 simulatorsData = { 'FFS': docSnap.data().closeTime, 'VIPT': docSnap.data().closeTime };
             }
 
@@ -970,32 +1652,28 @@ window.saveSpecificSimulatorCloseTime = async function () {
                 timestamp: Date.now()
             }, { merge: true });
 
-            // עדכון מקומי
             window.facilityCloseTimes[dateStr] = simulatorsData;
 
             import('../components/modals.js').then(m => m.showToast(`שעת סגירה נשמרה למאמן ${simName}`, 'green'));
             document.getElementById('specific-sim-close-modal').classList.add('hidden');
-            renderSimulatorDashboard(); // רענון הנתונים
+            renderSimulatorDashboard();
         } catch (e) {
             console.error(e);
             import('../components/modals.js').then(m => m.showToast('שגיאה בשמירה', 'red'));
         }
     }
-}
+};
 
-// פונקציה לפתיחת לוח השנה השבועי
 window.openSimulatorHoursModal = function () {
     const gridHeader = document.getElementById('calendar-grid-container');
     const rowsContainer = document.getElementById('simulators-calendar-rows');
     if (!gridHeader || !rowsContainer) return;
 
-    // 1. קביעת 2 הקטגוריות הראשיות בלבד
     const simulators = window.personnelLists?.simulators || [];
     const flights = window.savedFlights || [];
     const now = new Date();
     const currentTime = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-    // 2. איסוף 5 ימי העבודה האחרונים (מדלג על שישי ושבת)
     let headerHtml = '';
     const days = [];
     let daysBack = 0;
@@ -1005,13 +1683,10 @@ window.openSimulatorHoursModal = function () {
         d.setDate(now.getDate() - daysBack);
         daysBack++;
 
-        // 5 = שישי, 6 = שבת -> דלג עליהם
         if (d.getDay() === 5 || d.getDay() === 6) continue;
-
-        days.unshift(d); // מוסיף להתחלה כדי שהסדר יהיה מימין לשמאל באופן כרונולוגי
+        days.unshift(d);
     }
 
-    // קביעת הגריד ל-5 עמודות (במקום 7)
     gridHeader.className = 'grid grid-cols-5 gap-4 min-w-[600px] mb-4';
 
     days.forEach((d) => {
@@ -1028,7 +1703,6 @@ window.openSimulatorHoursModal = function () {
     });
     gridHeader.innerHTML = headerHtml;
 
-    // 3. יצירת שורות למאמנים (FFS ו-VIPT)
     let rowsHtml = '';
     simulators.forEach(simName => {
         rowsHtml += `
@@ -1044,10 +1718,9 @@ window.openSimulatorHoursModal = function () {
             const dateStr = dateObj.toISOString().split('T')[0];
             const isToday = dateObj.toDateString() === now.toDateString();
 
-            // זיהוי פעילות: האם יש גיחה ששם הסימולטור שלה מכיל FFS או VIPT
             const hasActivity = flights.some(f => {
                 const flightSim = (f.data?.['סימולטור'] || '').toUpperCase();
-                return f.date === dateStr && flightSim.includes(simName) && f.executionStatus !== 'בוטלה';
+                return f.date === dateStr && flightSim.includes(simName) && isFlightExecuted(f);
             });
 
             const dailyData = window.facilityCloseTimes[dateStr] || {};
@@ -1080,7 +1753,6 @@ window.openSimulatorHoursModal = function () {
     document.getElementById('simulators-hours-modal').classList.remove('hidden');
 };
 
-// פונקציית שמירה מעודכנת (ללא התראות חוסמות)
 window.saveSpecificSimTime = async function (dateStr, simName) {
     const inputId = `cal-time-${dateStr}-${simName}`;
     const timeVal = document.getElementById(inputId).value;
@@ -1114,7 +1786,6 @@ window.saveSpecificSimTime = async function (dateStr, simName) {
 
             import('../components/modals.js').then(m => m.showToast(`נשמר: ${simName} | ${timeVal}`, 'green'));
 
-            // עדכון הממשק במקום
             const btn = document.querySelector(`button[onclick*="'${dateStr}', '${simName}'"]`);
             if (btn) {
                 btn.textContent = 'עדכון';
